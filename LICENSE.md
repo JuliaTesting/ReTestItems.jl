@@ -1,4 +1,4 @@
-The Example.jl package is licensed under the MIT "Expat" License:
+The ReTestItems.jl package is licensed under the MIT "Expat" License:
 
 > Copyright (c) 2022: Jacob Quinn
 >
