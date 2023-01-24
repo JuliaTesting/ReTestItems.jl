@@ -72,8 +72,8 @@ macro testitem(nm, exs...)
     default_imports = true
     tags = Symbol[]
     setup = Any[]
-    if !(length(exs) == 1 && exs[1] isa Expr && exs[1].head == :block)
-        for ex in exs
+    if length(exs) > 1
+        for ex in exs[1:end-1]
             ex.head == :(=) || error("@testitem options must be passed as keyword arguments")
             if ex.args[1] == :tags
                 tags = ex.args[2]
@@ -85,7 +85,8 @@ macro testitem(nm, exs...)
                 error("unknown @testitem keyword arg $(ex.args[1])")
             end
         end
-    elseif isempty(exs)
+    end
+    if isempty(exs) || !(exs[end] isa Expr && exs[end].head == :block)
         error("expected @testitem to have a body")
     end
     q = QuoteNode(exs[end])

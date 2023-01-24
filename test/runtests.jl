@@ -16,3 +16,8 @@ end
 
 @test ReTestItems.gettestitem("TI1").name == "TI1"
 @test ReTestItems.gettestitem("TI1").file == @__FILE__
+
+@testitem "TI2" tags=[:foo] begin
+    @test true
+end
+@test ReTestItems.gettestitem("TI2").tags == [:foo]
