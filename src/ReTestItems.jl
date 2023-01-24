@@ -57,7 +57,7 @@ struct TestItem
     name::String
     tags::Vector{Symbol}
     default_imports::Bool
-    setup::Vector{Any}
+    setup::Vector{Symbol}
     file::String
     code::Any
     group::Union{String, Nothing}
@@ -81,6 +81,8 @@ macro testitem(nm, exs...)
                 default_imports = ex.args[2]
             elseif ex.args[1] == :setup
                 setup = ex.args[2]
+                @assert setup isa Expr "setup keyword must be passed a collection of testsetup names"
+                setup = map(Symbol, setup.args)
             else
                 error("unknown @testitem keyword arg $(ex.args[1])")
             end
