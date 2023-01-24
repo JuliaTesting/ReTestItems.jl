@@ -1,5 +1,8 @@
 module ReTestItems
 
+using Test: Test, DefaultTestSet
+using .Threads: @spawn
+
 export @testitemgroup, @testsetup, @testitem,
        TestSetup, TestItem
 
@@ -63,6 +66,8 @@ struct TestItem
     group::Union{String, Nothing}
 end
 
+const _TEST_ITEM_CHANNEL = Channel{Union{Nothing,TestItem}}(Inf)
+
 """
     @testitem TestItem "name" [tags...] [default_imports=true] [setup...] begin
         # code that will be run as a test
@@ -93,10 +98,75 @@ macro testitem(nm, exs...)
     end
     q = QuoteNode(exs[end])
     esc(quote
-        $settls!($TestItem, $TestItem($nm, $tags, $default_imports, $setup, $(String(__source__.file)), $q, ReTestItems.gettestitemgroup()), $nm)
+        ti = $TestItem($nm, $tags, $default_imports, $setup, $(String(__source__.file)), $q, ReTestItems.gettestitemgroup())
+        put!($_TEST_ITEM_CHANNEL, ti)
+        return ti
     end)
 end
 
 gettestitem(name) = task_local_storage(nameof(TestItem))[String(name)]
+
+
+function _src_and_test(root_dir)
+    src_dir = joinpath(root_dir, "src")
+    test_dir = joinpath(root_dir, "test")
+    return (src_dir, test_dir)
+end
+
+function runtests()
+    # TODO: check if we're in `.julia/environments/v#.#/` and bail if we are?
+    @show dir = dirname(Base.active_project())
+    return runtests(_src_and_test(dir)...)
+end
+
+function runtests(pkg::Module)
+    dir = pkgdir(pkg)
+    isnothing(dir) && error("Could not find directory for $pkg")
+    return runtests(_src_and_test(dir)...)
+end
+
+function runtests(paths...)
+    # @spawn include_testfiles!(paths...)
+    include_testfiles!(paths...)
+    put!(_TEST_ITEM_CHANNEL, nothing)
+    # @spawn schedule_testitems!()
+    schedule_testitems!()
+end
+
+include_testfiles!(paths...) = foreach(include_testfiles!, paths)
+function include_testfiles!(path::String)
+    for (root, dir, files) in walkdir(path)
+        for file in files
+            @show file
+            endswith(file, "_test.jl") || continue
+            filepath = joinpath(root, file)
+            include(filepath)
+        end
+    end
+    return nothing
+end
+
+function schedule_testitems!()
+    while true
+        ti = take!(_TEST_ITEM_CHANNEL)
+        ti === nothing && break
+        runitem(ti)
+    end
+end
+
+function runitem(ti::TestItem)
+    mod = Core.eval(Main, :(module $(gensym(ti.name)) end))
+    if ti.default_imports
+        Core.eval(mod, :(using Test))
+        # TODO: know which package a TestItem belongs to.
+        # if ti.package !== nothing
+        #     Core.eval(mod, :(using $(ti.package)))
+        # end
+    end
+    Test.push_testset(DefaultTestSet(ti.name; verbose=true))
+    Core.eval(mod, ti.code)
+    Test.finish(Test.pop_testset())
+    return nothing
+end
 
 end # module ReTestItems
