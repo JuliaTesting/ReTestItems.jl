@@ -21,3 +21,11 @@ end
     @test true
 end
 @test ReTestItems.gettestitem("TI2").tags == [:foo]
+
+@testsetup FooSetup begin
+    x = 1
+end
+@testitem "Foo" setup=[FooSetup] begin
+    @test true
+end
+@test ReTestItems.gettestitem("Foo").setup == [:FooSetup]
