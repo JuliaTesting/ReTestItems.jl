@@ -1,5 +1,5 @@
-using Documenter, Example
+using Documenter, ReTestItems
 
-makedocs(modules = [Example], sitename = "Example.jl")
+makedocs(modules = [ReTestItems], sitename = "ReTestItems.jl")
 
-deploydocs(repo = "github.com/quinnj/Example.jl.git", push_preview = true)
+deploydocs(repo = "github.com/quinnj/ReTestItems.jl.git", push_preview = true)

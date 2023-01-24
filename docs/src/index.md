@@ -1,7 +1,5 @@
-# Example
-
-Example Julia package repo.
+# ReTestItems
 
 ```@autodocs
-Modules = [Example]
+Modules = [ReTestItems]
 ```
