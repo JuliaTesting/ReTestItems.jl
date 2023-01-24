@@ -90,7 +90,7 @@ macro testitem(nm, exs...)
     end
     q = QuoteNode(exs[end])
     esc(quote
-        $settls!($TestItem, $TestItem($nm, $tags, $default_imports, $setup, @__FILE__, $q, ReTestItems.gettestitemgroup()), $nm)
+        $settls!($TestItem, $TestItem($nm, $tags, $default_imports, $setup, $(String(__source__.file)), $q, ReTestItems.gettestitemgroup()), $nm)
     end)
 end
 

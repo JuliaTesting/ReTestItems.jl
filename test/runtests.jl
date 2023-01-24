@@ -15,3 +15,4 @@ end
 end
 
 @test ReTestItems.gettestitem("TI1").name == "TI1"
+@test ReTestItems.gettestitem("TI1").file == @__FILE__
