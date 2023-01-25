@@ -1,0 +1,10 @@
+name = "TestsInSrc"
+uuid = "3520ce14-60c1-53a9-8c5b-16f535851c45"
+version = "0.0.0"
+
+[extras]
+ReTestItems = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["ReTestItems", "Test"]
