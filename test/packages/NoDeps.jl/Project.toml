@@ -2,6 +2,10 @@ name = "NoDeps"
 uuid = "2520ce14-60c1-53a9-8c5b-16f535851c44"
 version = "0.0.0"
 
+[deps]
+ReTestItems = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"
+TestEnv = "1e6cf692-eddd-4d53-88a5-2d735e33781b"
+
 [extras]
 ReTestItems = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
