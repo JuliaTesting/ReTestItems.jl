@@ -1,11 +1,13 @@
 module ReTestItems
 
+using Base: @lock
 using Test: Test, DefaultTestSet
-using Distributed: RemoteChannel, @spawnat, nprocs, workers
+using Distributed: RemoteChannel, @spawnat, nprocs, workers, channel_from_id, remoteref_id
 using .Threads: @spawn
 
-export @testitemgroup, @testsetup, @testitem,
-       TestSetup, TestItem, runtestitem
+export runtests, runtestitem
+export @testitemgroup, @testsetup, @testitem
+export TestSetup, TestItem
 
 # pass in a type T, value, and str key
 # we get a Dict{String, T} from task_local_storage
@@ -49,13 +51,26 @@ end
 
 SetupSet() = SetupSet(ReentrantLock(), Dict{Symbol, Module}())
 
+Base.lock(ss::SetupSet) = lock(ss.lock)
+Base.unlock(ss::SetupSet) = unlock(ss.lock)
+Base.getindex(ss::SetupSet, key::Symbol) = getindex(ss.modules, key)
+Base.setindex!(ss::SetupSet, val::Module, key::Symbol) = setindex!(ss.modules, val, key)
+Base.haskey(ss::SetupSet, ey::Symbol) = haskey(ss.modules, key)
+
+"""
+    TestSetup
+
+A module that a `TestItem` can require to be evaluated before that `TestItem` is run.
+Used for declaring code that multiple `TestItem`s rely on.
+Should only be created via the `@testsetup` macro.
+"""
 struct TestSetup
     name::Symbol
     code::Any
 end
 
 """
-    @testsetup TestSetup begin
+    @testsetup MyTestSetup begin
         # code that can be shared between @testitems
     end
 """
@@ -75,13 +90,15 @@ gettestsetup(name) = task_local_storage(nameof(TestSetup))[String(name)]
     SetupContext()
 
 A context for test setups. Used to keep track of
-`@testsetup` expanded `TestSetup` and a `SetupSet`
+`@testsetup`-expanded `TestSetup`s and a `SetupSet`
 for a given process; used in `runtestitem` to ensure
 any setups relied upon by the `@testitem` are evaluated
 on the process that will run the test item.
 """
 mutable struct SetupContext
+    # name => quote'd code
     setups::Dict{String, TestSetup}
+    # name => eval'd code
     setupset::SetupSet
 
     # user of SetupContext must create and set the
@@ -98,7 +115,9 @@ end
     TestItem
 
 A single, independently runnable group of tests.
-Analogous to a `@testset`. 
+Used to wrap tests that must be run together, similar to a `@testset`, but encapsulating
+those test in their own module.
+Should only be created via the `@testitem` macro.
 """
 struct TestItem
     name::String
@@ -111,7 +130,7 @@ struct TestItem
 end
 
 """
-    @testitem TestItem "name" [tags...] [default_imports=true] [setup...] begin
+    @testitem TestItem "name" [tags=[] setup=[] default_imports=true] begin
         # code that will be run as a test
     end
 """
@@ -156,7 +175,7 @@ gettestitem(name) = task_local_storage(nameof(TestItem))[String(name)]
 function _src_and_test(root_dir)
     src_dir = joinpath(root_dir, "src")
     test_dir = joinpath(root_dir, "test")
-    # we don't check isdir here since it happens later in include_testfiles!
+    # Don't need to check `isdir` because `walkdir` just ignores non-existent directories.
     return (src_dir, test_dir)
 end
 
@@ -175,12 +194,13 @@ function runtests end
 
 default_shouldrun(ti::TestItem) = true
 
-runtests(dirs::String...) = runtests(default_shouldrun, dirs...)
+runtests() = runtests(default_shouldrun, dirname(Base.active_project()))
+runtests(dir::String, dirs::String...) = runtests(default_shouldrun, dir, dirs...)
 
 runtests(pkg::Module) = runtests(default_shouldrun, pkg)
 function runtests(shouldrun, pkg::Module)
     dir = pkgdir(pkg)
-    isnothing(dir) && error("Could not find directory for $pkg")
+    isnothing(dir) && error("Could not find directory for `$pkg`")
     return runtests(shouldrun, _src_and_test(dir)...)
 end
 
@@ -194,43 +214,57 @@ struct FilteredChannel{F, T}
 end
 
 Base.put!(ch::FilteredChannel, x) = ch.f(x) && put!(ch.ch, x)
+Base.take!(ch::FilteredChannel) = take!(ch.ch)
+Base.close(ch::FilteredChannel) = close(ch.ch)
+Base.close(ch::FilteredChannel, e::Exception) = close(ch.ch, e)
+Base.isopen(ch::FilteredChannel) = isopen(ch.ch)
 
 function runtests(shouldrun, dirs::String...)
-    if isempty(dirs)
-        dirs = (dirname(Base.active_project()),)
-    end
     setupctx = SetupContext()
+    # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
+    get(task_local_storage(), :__RE_TEST_RUNNING__, false) && return nothing
     ch = RemoteChannel(() -> Channel{TestItem}(Inf))
     # run test file including @spawn so we can immediately
     # start executing tests as they're put into our test channel
     fch = FilteredChannel(shouldrun, chan(ch))
-    Threads.@spawn include_testfiles!($(setupctx.setups), $fch, dirs...)
+    @debug "Including tests in $dirs."
+    errormonitor(@spawn include_testfiles!($(setupctx.setups), $fch, dirs...))
+    @debug "Scheduling tests on $(nprocs()) processes."
     if nprocs() == 1
         schedule_testitems!(setupctx, chan(ch))
     else
         futures = [@spawnat(p, schedule_testitems!(setupctx, ch)) for p in workers()]
         foreach(wait, futures)
     end
+    return nothing
+end
+
+# TODO: change to include any file under `test/`. Will need take full filepath.
+function istestfile(filename)
+    endswith(filename, "_test.jl") || endswith(filename, "_tests.jl") || filename == "runtests.jl"
 end
 
 # for each directory, kick off a recursive test-finding task
 function include_testfiles!(setups::Dict{String, TestSetup}, ch::FilteredChannel, dirs...)
     @sync for dir in dirs
-        isdir(dir) || error("`$dir` directory doesn't exist")
-        for (root, dir, files) in walkdir(dir)
+        @debug "Including test items from directory `$dir`"
+        isdir(dir) || @warn "`$dir` directory doesn't exist"
+        for (root, _, files) in walkdir(dir)
             for file in files
                 # channel should only be closed if there was an error
-                isopen(ch) || return
-                @show file
-                endswith(file, "_test.jl") || continue
+                isopen(ch) || return nothing
+                istestfile(file) || continue
+                @debug "Including test items from file `$filepath`"
                 filepath = joinpath(root, file)
-                Threads.@spawn begin
+                errormonitor(@spawn begin
                     try
-                        task_local_storage(:__RE_TEST_CHANNEL__, $ch) do
-                            # ensure any `@testsetup` macros are expanded into
-                            # our setups Dict
-                            task_local_storage(nameof(TestSetup), $setups) do
-                                include($filepath)
+                        task_local_storage(:__RE_TEST_RUNNING__, true) do
+                            task_local_storage(:__RE_TEST_CHANNEL__, $ch) do
+                                # ensure any `@testsetup` macros are expanded into
+                                # our setups Dict
+                                task_local_storage(nameof(TestSetup), $setups) do
+                                    include($filepath)
+                                end
                             end
                         end
                     catch e
@@ -238,23 +272,25 @@ function include_testfiles!(setups::Dict{String, TestSetup}, ch::FilteredChannel
                         # use the exception to close our TestItem channel so it gets propagated
                         close($ch, e)
                     end
-                end
+                end)
             end
         end
     end
     # because we @sync waited on all our spawned tasks to finish, we know
-    # at this point, we've finished including all test files in dirs, so
+    # at this point we've finished including all test files in dirs, so
     # now we close our test channel to signal that no more will be added
+    @debug "All testfiles included."
     close(ch)
-    return
+    @debug "Closed test channel."
+    return nothing
 end
 
 function schedule_testitems!(setupctx::SetupContext, ch::Channel)
     setupctx.setupset = SetupSet()
     @sync for ti in ch
-        Threads.@spawn runtestitem($ti, $setupctx)
+        @spawn runtestitem($ti, $setupctx)
     end
-    return
+    return nothing
 end
 
 function schedule_testitems!(setupctx::SetupContext, ch::RemoteChannel)
@@ -272,18 +308,18 @@ function schedule_testitems!(setupctx::SetupContext, ch::RemoteChannel)
             end
         end
     end
-    return
+    return nothing
 end
 
 function ensure_setup!(setupctx::SetupContext, setup::Symbol)
-    Base.@lock setupctx.setupset.lock begin
-        if !haskey(setupctx.setupset.setups, setup)
+    @lock setupctx.setupset begin
+        if !haskey(setupctx.setupset, setup)
             # we haven't eval-ed this setup module yet
             ts = setupctx.setups[String(setup)]
             mod = Core.eval(Main, :(module $(gensym(ts.name)) end))
-            setupctx.setupset.setups[setup] = mod
+            setupctx.setupset[setup] = mod
         end
-        return nameof(setupctx.setupset.setups[setup])
+        return nameof(setupctx.setupset[setup])
     end
 end
 
@@ -297,7 +333,9 @@ function runtestitem(ti::TestItem)
 end
 
 function runtestitem(ti::TestItem, setupctx::SetupContext)
-    mod = Core.eval(Main, :(module $(gensym(ti.name)) end))
+    name = ti.name
+    @debug "Running test item." name
+    mod = Core.eval(Main, :(module $(gensym(name)) end))
     if ti.default_imports
         Core.eval(mod, :(using Test))
         # TODO: know which package a TestItem belongs to.
@@ -311,10 +349,12 @@ function runtestitem(ti::TestItem, setupctx::SetupContext)
         # eval using in our @testitem module
         Core.eval(mod, :(using $ts_mod))
     end
-    Test.push_testset(DefaultTestSet(ti.name; verbose=true))
+    @debug "Setup done." name
+    Test.push_testset(DefaultTestSet(name; verbose=true))
     Core.eval(mod, ti.code)
     Test.finish(Test.pop_testset())
-    return
+    @debug "Test item done." name
+    return nothing
 end
 
 end # module ReTestItems
