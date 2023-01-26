@@ -188,14 +188,6 @@ Base.close(ch::FilteredChannel) = close(ch.ch)
 Base.close(ch::FilteredChannel, e::Exception) = close(ch.ch, e)
 Base.isopen(ch::FilteredChannel) = isopen(ch.ch)
 
-# get the /src and /test directories for a project/package
-function _src_and_test(root_dir)
-    src_dir = joinpath(root_dir, "src")
-    test_dir = joinpath(root_dir, "test")
-    # Don't need to check `isdir` because `walkdir` just ignores non-existent directories.
-    return (src_dir, test_dir)
-end
-
 """
     ReTestItems.runtests()
     ReTestItems.runtests(mod::Module)
@@ -212,70 +204,76 @@ function runtests end
 default_shouldrun(ti::TestItem) = true
 
 runtests(; kw...) = runtests(default_shouldrun, dirname(Base.active_project()); kw...)
-runtests(dir::String, dirs::String...; kw...) = runtests(default_shouldrun, dir, dirs...; kw...)
+runtests(dir::String; kw...) = runtests(default_shouldrun, dir; kw...)
 
 runtests(pkg::Module; kw...) = runtests(default_shouldrun, pkg; kw...)
 function runtests(shouldrun, pkg::Module; kw...)
     dir = pkgdir(pkg)
     isnothing(dir) && error("Could not find directory for `$pkg`")
-    return runtests(shouldrun, _src_and_test(dir)...; kw...)
+    return runtests(shouldrun, dir; kw...)
 end
 
-function runtests(shouldrun, dirs::String...; verbose=false)
+function runtests(shouldrun, dir::String; verbose=false)
     if verbose > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=verbose) do
-            _runtests(shouldrun, dirs...)
+            _runtests(shouldrun, dir)
         end
     else
-        return _runtests(shouldrun, dirs...)
+        return _runtests(shouldrun, dir)
     end
 end
 
-function _runtests(shouldrun, dirs::String...)
+function _runtests(shouldrun, dir::String)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     get(task_local_storage(), :__RE_TEST_RUNNING__, false) && return nothing
-    # identify project directory for which we're running tests
+    # identify project file for which we're running tests
     projectfile = ""
-    for dir in dirs
-        path = dir
-        while true
-            path == "/" && break
-            pf = Base.locate_project_file(path)
-            if pf !== true
-                projectfile = pf
-                @goto found_project
-            end
-            path = dirname(path)
+    path = abspath(dir)
+    while true
+        path == "/" && break
+        pf = Base.locate_project_file(path)
+        if pf !== true
+            projectfile = pf
+            @goto found_project
         end
+        path = dirname(path)
     end
     @label found_project
-    projectfile == "" && error("Could not find project directory for `$(dirs)`")
+    projectfile == "" && error("Could not find project directory for `$(dir)`")
     @debugv 1 "Running tests for project at $projectfile"
-    activate(projectfile) do
-        TestEnv.activate() do
-            setupctx = SetupContext()
-            ch = RemoteChannel(() -> Channel{TestItem}(Inf))
-            # run test file including @spawn so we can immediately
-            # start executing tests as they're put into our test channel
-            fch = FilteredChannel(shouldrun, chan(ch))
-            @debugv 1 "Including tests in $dirs."
-            inc_task = errormonitor(@spawn include_testfiles!($(setupctx.setups), $fch, dirs...))
-            @debugv 1 "Scheduling tests on $(nprocs()) processes."
-            try
-                if nprocs() == 1
-                    schedule_testitems!(setupctx, chan(ch))
-                else
-                    futures = [@spawnat(p, schedule_testitems!(projectfile, setupctx, ch)) for p in workers()]
-                    foreach(wait, futures)
-                end
-            finally
-                # we wouldn't expect to need to wait on inc_task
-                # since schedule_testitems! shouldn't return until the test channel
-                # is closed, but in case of unexpected errors, this at least
-                # ensures that all tasks spawned by runtests finish before it returns
-                wait(inc_task)
+    if !project_in_env(projectfile)
+        @debugv 1 "Project not in active environment, activating"
+        return activate(projectfile) do
+            TestEnv.activate() do
+                _runtests(shouldrun, dirname(projectfile))
             end
         end
+    end
+    setupctx = SetupContext()
+    ch = RemoteChannel(() -> Channel{TestItem}(Inf))
+    # run test file including @spawn so we can immediately
+    # start executing tests as they're put into our test channel
+    fch = FilteredChannel(shouldrun, chan(ch))
+    @debugv 1 "Including tests in $dir"
+    inc_task = errormonitor(@spawn begin
+        include_testfiles!($(setupctx.setups), $fch, dir)
+        close($fch)
+    end)
+    @debugv 1 "Scheduling tests on $(nprocs()) processes."
+    try
+        if nprocs() == 1
+            schedule_testitems!(setupctx, chan(ch))
+        else
+            proj = Base.active_project()
+            futures = [@spawnat(p, schedule_testitems!(proj, setupctx, ch)) for p in workers()]
+            foreach(wait, futures)
+        end
+    finally
+        # we wouldn't expect to need to wait on inc_task
+        # since schedule_testitems! shouldn't return until the test channel
+        # is closed, but in case of unexpected errors, this at least
+        # ensures that all tasks spawned by runtests finish before it returns
+        wait(inc_task)
     end
     return nothing
 end
@@ -286,41 +284,31 @@ function istestfile(filename)
 end
 
 # for each directory, kick off a recursive test-finding task
-function include_testfiles!(setups::Dict{String, TestSetup}, ch::FilteredChannel, dirs...)
-    @sync for dir in dirs
-        @debugv 1 "Including test items from directory `$dir`"
-        isdir(dir) || @warn "`$dir` directory doesn't exist"
-        for (root, _, files) in walkdir(dir)
-            for file in files
-                # channel should only be closed if there was an error
-                isopen(ch) || return nothing
-                istestfile(file) || continue
-                filepath = joinpath(root, file)
-                @debugv 1 "Including test items from file `$filepath`"
-                @spawn try
-                    task_local_storage(:__RE_TEST_RUNNING__, true) do
-                        task_local_storage(:__RE_TEST_CHANNEL__, ch) do
-                            # ensure any `@testsetup` macros are expanded into
-                            # our setups Dict
-                            task_local_storage(nameof(TestSetup), setups) do
-                                include($filepath)
-                            end
+function include_testfiles!(setups::Dict{String, TestSetup}, ch::FilteredChannel, dir)
+    @sync for (root, _, files) in walkdir(dir)
+        for file in files
+            # channel should only be closed if there was an error
+            isopen(ch) || return nothing
+            istestfile(file) || continue
+            filepath = joinpath(root, file)
+            @debugv 1 "Including test items from file `$filepath`"
+            @spawn try
+                task_local_storage(:__RE_TEST_RUNNING__, true) do
+                    task_local_storage(:__RE_TEST_CHANNEL__, ch) do
+                        # ensure any `@testsetup` macros are expanded into
+                        # our setups Dict
+                        task_local_storage(nameof(TestSetup), setups) do
+                            Base.include(Main, $filepath)
                         end
                     end
-                catch e
-                    @error "Error including test items from file `$filepath`" exception=(e, catch_backtrace())
-                    # use the exception to close our TestItem channel so it gets propagated
-                    close($ch, e)
                 end
+            catch e
+                @error "Error including test items from file `$filepath`" exception=(e, catch_backtrace())
+                # use the exception to close our TestItem channel so it gets propagated
+                close($ch, e)
             end
         end
     end
-    # because we @sync waited on all our spawned tasks to finish, we know
-    # at this point we've finished including all test files in dirs, so
-    # now we close our test channel to signal that no more will be added
-    @debugv 1 "All testfiles included."
-    close(ch)
-    @debugv 1 "Closed test channel."
     return nothing
 end
 
@@ -335,6 +323,14 @@ function activate(f::Function, new_project::AbstractString)
     end
 end
 
+function project_in_env(projectfile::String)
+    # read Project.toml file to get project name
+    proj = TestEnv.Pkg.Types.read_package(projectfile)
+    # get "reachable" packages in the current environment
+    deps = TestEnv.Pkg.Types.Context().env.project.deps
+    return haskey(deps, proj.name)
+end
+
 function schedule_testitems!(setupctx::SetupContext, ch::Channel)
     setupctx.setupset = SetupSet()
     @sync for ti in ch
@@ -343,21 +339,19 @@ function schedule_testitems!(setupctx::SetupContext, ch::Channel)
     return nothing
 end
 
-function schedule_testitems!(projectfile::String, setupctx::SetupContext, ch::RemoteChannel)
-    cd(projectfile) do
-        TestEnv.activate(".") do
-            setupctx.setupset = SetupSet()
-            while true
-                try
-                    ti = take!(ch)
-                    runtestitem(ti, setupctx)
-                    !isopen(ch) && !isready(ch) && break
-                catch e
-                    if isa(e, InvalidStateException) && !isopen(ch)
-                        break
-                    else
-                        rethrow(e)
-                    end
+function schedule_testitems!(proj::String, setupctx::SetupContext, ch::RemoteChannel)
+    activate(proj) do
+        setupctx.setupset = SetupSet()
+        while true
+            try
+                ti = take!(ch)
+                runtestitem(ti, setupctx)
+                !isopen(ch) && !isready(ch) && break
+            catch e
+                if isa(e, InvalidStateException) && !isopen(ch)
+                    break
+                else
+                    rethrow(e)
                 end
             end
         end

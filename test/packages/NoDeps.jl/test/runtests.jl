@@ -1,4 +1,5 @@
 using ReTestItems
+using NoDeps
 
 @testitem "NoDeps" begin
     using NoDeps
@@ -6,4 +7,4 @@ using ReTestItems
     println("NoDeps tests done!")
 end
 
-runtests(verbose=1)
+runtests(NoDeps, verbose=1)
