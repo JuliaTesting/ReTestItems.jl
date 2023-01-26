@@ -4,10 +4,18 @@ using Base: @lock
 using Test: Test, DefaultTestSet
 using Distributed: RemoteChannel, @spawnat, nprocs, workers, channel_from_id, remoteref_id
 using .Threads: @spawn
+using TestEnv
+using LoggingExtras
 
 export runtests, runtestitem
 export @testitemgroup, @testsetup, @testitem
 export TestSetup, TestItem
+
+if isdefined(Base, :errormonitor)
+    const errmon = Base.errormonitor
+else
+    const errmon = identity
+end
 
 # pass in a type T, value, and str key
 # we get a Dict{String, T} from task_local_storage
@@ -96,6 +104,8 @@ any setups relied upon by the `@testitem` are evaluated
 on the process that will run the test item.
 """
 mutable struct SetupContext
+    # name of overall project we're eval-ing in
+    projectname::String
     # name => quote'd code
     setups::Dict{String, TestSetup}
     # name => eval'd code
@@ -104,7 +114,7 @@ mutable struct SetupContext
     # user of SetupContext must create and set the
     # SetupSet explicitly, since they must be process-local
     # and shouldn't be serialized across processes
-    SetupContext() = new(Dict{String, TestSetup}())
+    SetupContext(name) = new(name, Dict{String, TestSetup}())
 end
 
 # NOTE: TestItems are serialized across processes for
@@ -171,13 +181,20 @@ end
 
 gettestitem(name) = task_local_storage(nameof(TestItem))[String(name)]
 
-# get the /src and /test directories for a project/package
-function _src_and_test(root_dir)
-    src_dir = joinpath(root_dir, "src")
-    test_dir = joinpath(root_dir, "test")
-    # Don't need to check `isdir` because `walkdir` just ignores non-existent directories.
-    return (src_dir, test_dir)
+chan(ch::RemoteChannel) = channel_from_id(remoteref_id(ch))
+
+# FilteredChannel applies a filtering function `f` to items
+# when you try to `put!` and only puts if `f` returns true.
+struct FilteredChannel{F, T}
+    f::F
+    ch::T
 end
+
+Base.put!(ch::FilteredChannel, x) = ch.f(x) && put!(ch.ch, x)
+Base.take!(ch::FilteredChannel) = take!(ch.ch)
+Base.close(ch::FilteredChannel) = close(ch.ch)
+Base.close(ch::FilteredChannel, e::Exception) = close(ch.ch, e)
+Base.isopen(ch::FilteredChannel) = isopen(ch.ch)
 
 """
     ReTestItems.runtests()
@@ -194,47 +211,78 @@ function runtests end
 
 default_shouldrun(ti::TestItem) = true
 
-runtests() = runtests(default_shouldrun, dirname(Base.active_project()))
-runtests(dir::String, dirs::String...) = runtests(default_shouldrun, dir, dirs...)
+runtests(; kw...) = runtests(default_shouldrun, dirname(Base.active_project()); kw...)
+runtests(dir::String; kw...) = runtests(default_shouldrun, dir; kw...)
 
-runtests(pkg::Module) = runtests(default_shouldrun, pkg)
-function runtests(shouldrun, pkg::Module)
+runtests(pkg::Module; kw...) = runtests(default_shouldrun, pkg; kw...)
+function runtests(shouldrun, pkg::Module; kw...)
     dir = pkgdir(pkg)
     isnothing(dir) && error("Could not find directory for `$pkg`")
-    return runtests(shouldrun, _src_and_test(dir)...)
+    return runtests(shouldrun, dir; kw...)
 end
 
-chan(ch::RemoteChannel) = channel_from_id(remoteref_id(ch))
-
-# FilteredChannel applies a filtering function `f` to items
-# when you try to `put!` and only puts if `f` returns true.
-struct FilteredChannel{F, T}
-    f::F
-    ch::T
+function runtests(shouldrun, dir::String; verbose=false)
+    if verbose > 0
+        LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=verbose) do
+            _runtests(shouldrun, dir)
+        end
+    else
+        return _runtests(shouldrun, dir)
+    end
 end
 
-Base.put!(ch::FilteredChannel, x) = ch.f(x) && put!(ch.ch, x)
-Base.take!(ch::FilteredChannel) = take!(ch.ch)
-Base.close(ch::FilteredChannel) = close(ch.ch)
-Base.close(ch::FilteredChannel, e::Exception) = close(ch.ch, e)
-Base.isopen(ch::FilteredChannel) = isopen(ch.ch)
-
-function runtests(shouldrun, dirs::String...)
-    setupctx = SetupContext()
+function _runtests(shouldrun, dir::String)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     get(task_local_storage(), :__RE_TEST_RUNNING__, false) && return nothing
+    # identify project file for which we're running tests
+    projectfile = ""
+    path = abspath(dir)
+    while true
+        path == "/" && break
+        pf = locate_project_file(path)
+        if pf !== true
+            projectfile = pf
+            @goto found_project
+        end
+        path = dirname(path)
+    end
+    @label found_project
+    projectfile == "" && error("Could not find project directory for `$(dir)`")
+    @debugv 1 "Running tests for project at $projectfile"
+    if !project_in_env(projectfile)
+        @debugv 1 "Project not in active environment, activating"
+        return activate(projectfile) do
+            TestEnv.activate() do
+                _runtests(shouldrun, dirname(projectfile))
+            end
+        end
+    end
+    projname = TestEnv.Pkg.Types.read_package(projectfile).name
+    setupctx = SetupContext(projname)
     ch = RemoteChannel(() -> Channel{TestItem}(Inf))
     # run test file including @spawn so we can immediately
     # start executing tests as they're put into our test channel
     fch = FilteredChannel(shouldrun, chan(ch))
-    @debug "Including tests in $dirs."
-    errormonitor(@spawn include_testfiles!($(setupctx.setups), $fch, dirs...))
-    @debug "Scheduling tests on $(nprocs()) processes."
-    if nprocs() == 1
-        schedule_testitems!(setupctx, chan(ch))
-    else
-        futures = [@spawnat(p, schedule_testitems!(setupctx, ch)) for p in workers()]
-        foreach(wait, futures)
+    @debugv 1 "Including tests in $dir"
+    inc_task = errmon(@spawn begin
+        include_testfiles!($(setupctx.setups), $fch, dir)
+        close($fch)
+    end)
+    @debugv 1 "Scheduling tests on $(nprocs()) processes."
+    try
+        if nprocs() == 1
+            schedule_testitems!(setupctx, chan(ch))
+        else
+            proj = Base.active_project()
+            futures = [@spawnat(p, schedule_testitems!(proj, setupctx, ch)) for p in workers()]
+            foreach(wait, futures)
+        end
+    finally
+        # we wouldn't expect to need to wait on inc_task
+        # since schedule_testitems! shouldn't return until the test channel
+        # is closed, but in case of unexpected errors, this at least
+        # ensures that all tasks spawned by runtests finish before it returns
+        wait(inc_task)
     end
     return nothing
 end
@@ -245,44 +293,62 @@ function istestfile(filename)
 end
 
 # for each directory, kick off a recursive test-finding task
-function include_testfiles!(setups::Dict{String, TestSetup}, ch::FilteredChannel, dirs...)
-    @sync for dir in dirs
-        @debug "Including test items from directory `$dir`"
-        isdir(dir) || @warn "`$dir` directory doesn't exist"
-        for (root, _, files) in walkdir(dir)
-            for file in files
-                # channel should only be closed if there was an error
-                isopen(ch) || return nothing
-                istestfile(file) || continue
-                @debug "Including test items from file `$filepath`"
-                filepath = joinpath(root, file)
-                errormonitor(@spawn begin
-                    try
-                        task_local_storage(:__RE_TEST_RUNNING__, true) do
-                            task_local_storage(:__RE_TEST_CHANNEL__, $ch) do
-                                # ensure any `@testsetup` macros are expanded into
-                                # our setups Dict
-                                task_local_storage(nameof(TestSetup), $setups) do
-                                    include($filepath)
-                                end
-                            end
+function include_testfiles!(setups::Dict{String, TestSetup}, ch::FilteredChannel, dir)
+    @sync for (root, _, files) in walkdir(dir)
+        for file in files
+            # channel should only be closed if there was an error
+            isopen(ch) || return nothing
+            istestfile(file) || continue
+            filepath = joinpath(root, file)
+            @debugv 1 "Including test items from file `$filepath`"
+            @spawn try
+                task_local_storage(:__RE_TEST_RUNNING__, true) do
+                    task_local_storage(:__RE_TEST_CHANNEL__, ch) do
+                        # ensure any `@testsetup` macros are expanded into
+                        # our setups Dict
+                        task_local_storage(nameof(TestSetup), setups) do
+                            Base.include(Main, $filepath)
                         end
-                    catch e
-                        @error "error including test file $filepath" exception=(e, catch_backtrace())
-                        # use the exception to close our TestItem channel so it gets propagated
-                        close($ch, e)
                     end
-                end)
+                end
+            catch e
+                @error "Error including test items from file `$filepath`" exception=(e, catch_backtrace())
+                # use the exception to close our TestItem channel so it gets propagated
+                close($ch, e)
             end
         end
     end
-    # because we @sync waited on all our spawned tasks to finish, we know
-    # at this point we've finished including all test files in dirs, so
-    # now we close our test channel to signal that no more will be added
-    @debug "All testfiles included."
-    close(ch)
-    @debug "Closed test channel."
     return nothing
+end
+
+# copied from Pkg.jl
+function activate(f::Function, new_project::AbstractString)
+    old = Base.ACTIVE_PROJECT[]
+    Base.ACTIVE_PROJECT[] = new_project
+    try
+        f()
+    finally
+        Base.ACTIVE_PROJECT[] = old
+    end
+end
+
+function project_in_env(projectfile::String)
+    # read Project.toml file to get project name
+    proj = TestEnv.Pkg.Types.read_package(projectfile)
+    # get "reachable" packages in the current environment
+    deps = TestEnv.Pkg.Types.Context().env.project.deps
+    return haskey(deps, proj.name)
+end
+
+# copied from Base loading.jl for compat
+function locate_project_file(env::String)
+    for proj in Base.project_names
+        project_file = joinpath(env, proj)
+        if Base.isfile_casesensitive(project_file)
+            return project_file
+        end
+    end
+    return true
 end
 
 function schedule_testitems!(setupctx::SetupContext, ch::Channel)
@@ -293,18 +359,20 @@ function schedule_testitems!(setupctx::SetupContext, ch::Channel)
     return nothing
 end
 
-function schedule_testitems!(setupctx::SetupContext, ch::RemoteChannel)
-    setupctx.setupset = SetupSet()
-    while true
-        try
-            ti = take!(ch)
-            runtestitem(ti, setupctx)
-            !isopen(ch) && !isready(ch) && break
-        catch e
-            if isa(e, InvalidStateException) && !isopen(ch)
-                break
-            else
-                rethrow(e)
+function schedule_testitems!(proj::String, setupctx::SetupContext, ch::RemoteChannel)
+    activate(proj) do
+        setupctx.setupset = SetupSet()
+        while true
+            try
+                ti = take!(ch)
+                runtestitem(ti, setupctx)
+                !isopen(ch) && !isready(ch) && break
+            catch e
+                if isa(e, InvalidStateException) && !isopen(ch)
+                    break
+                else
+                    rethrow(e)
+                end
             end
         end
     end
@@ -326,7 +394,7 @@ end
 # convenience method for testing
 # assumes any required setups were expanded in current task_local_storage
 function runtestitem(ti::TestItem)
-    ctx = SetupContext()
+    ctx = SetupContext("")
     ctx.setups = get(() -> Dict{String, TestSetup}(), task_local_storage(), nameof(TestSetup))
     ctx.setupset = SetupSet()
     runtestitem(ti, ctx)
@@ -334,14 +402,13 @@ end
 
 function runtestitem(ti::TestItem, setupctx::SetupContext)
     name = ti.name
-    @debug "Running test item." name
+    @debugv 1 "Running test item." name
     mod = Core.eval(Main, :(module $(gensym(name)) end))
     if ti.default_imports
         Core.eval(mod, :(using Test))
-        # TODO: know which package a TestItem belongs to.
-        # if ti.package !== nothing
-        #     Core.eval(mod, :(using $(ti.package)))
-        # end
+        if !isempty(setupctx.projectname)
+            Core.eval(mod, :(using $(Symbol(setupctx.projectname))))
+        end
     end
     for setup in ti.setup
         # ensure setup has been evaled before
@@ -349,11 +416,11 @@ function runtestitem(ti::TestItem, setupctx::SetupContext)
         # eval using in our @testitem module
         Core.eval(mod, :(using $ts_mod))
     end
-    @debug "Setup done." name
+    @debugv 1 "Setup done." name
     Test.push_testset(DefaultTestSet(name; verbose=true))
     Core.eval(mod, ti.code)
     Test.finish(Test.pop_testset())
-    @debug "Test item done." name
+    @debugv 1 "Test item done." name
     return nothing
 end
 

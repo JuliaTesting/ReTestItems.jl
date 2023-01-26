@@ -1,4 +1,4 @@
-using ReTestItems, Test
+using ReTestItems, Test, Pkg
 
 # this file specifically tests *unit* tests for ReTestItems
 # so *not* the `runtests` functionality, which utilizes specific
@@ -46,3 +46,12 @@ end
     @test FooSetup.x == 1
 end
 @test ReTestItems.gettestitem("Foo").setup == [:FooSetup]
+
+# test we can call runtests manually w/ directory
+ReTestItems.runtests("packages/NoDeps.jl")
+
+# running a project tests via Pkg also works
+cd("packages/NoDeps.jl") do
+    Pkg.activate(".")
+    Pkg.test()
+end
