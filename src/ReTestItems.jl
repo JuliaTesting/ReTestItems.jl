@@ -14,7 +14,7 @@ export TestSetup, TestItem
 if isdefined(Base, :errormonitor)
     const errmon = Base.errormonitor
 else
-    const errmon = x -> nothing
+    const errmon = identity
 end
 
 # pass in a type T, value, and str key
