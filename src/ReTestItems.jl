@@ -11,6 +11,12 @@ export runtests, runtestitem
 export @testitemgroup, @testsetup, @testitem
 export TestSetup, TestItem
 
+if isdefined(Base, :errormonitor)
+    const errmon = Base.errormonitor
+else
+    const errmon = x -> nothing
+end
+
 # pass in a type T, value, and str key
 # we get a Dict{String, T} from task_local_storage
 # and set key => value
@@ -98,6 +104,8 @@ any setups relied upon by the `@testitem` are evaluated
 on the process that will run the test item.
 """
 mutable struct SetupContext
+    # name of overall project we're eval-ing in
+    projectname::String
     # name => quote'd code
     setups::Dict{String, TestSetup}
     # name => eval'd code
@@ -106,7 +114,7 @@ mutable struct SetupContext
     # user of SetupContext must create and set the
     # SetupSet explicitly, since they must be process-local
     # and shouldn't be serialized across processes
-    SetupContext() = new(Dict{String, TestSetup}())
+    SetupContext(name) = new(name, Dict{String, TestSetup}())
 end
 
 # NOTE: TestItems are serialized across processes for
@@ -249,13 +257,14 @@ function _runtests(shouldrun, dir::String)
             end
         end
     end
-    setupctx = SetupContext()
+    projname = TestEnv.Pkg.Types.read_package(projectfile).name
+    setupctx = SetupContext(projname)
     ch = RemoteChannel(() -> Channel{TestItem}(Inf))
     # run test file including @spawn so we can immediately
     # start executing tests as they're put into our test channel
     fch = FilteredChannel(shouldrun, chan(ch))
     @debugv 1 "Including tests in $dir"
-    inc_task = errormonitor(@spawn begin
+    inc_task = errmon(@spawn begin
         include_testfiles!($(setupctx.setups), $fch, dir)
         close($fch)
     end)
@@ -385,7 +394,7 @@ end
 # convenience method for testing
 # assumes any required setups were expanded in current task_local_storage
 function runtestitem(ti::TestItem)
-    ctx = SetupContext()
+    ctx = SetupContext("")
     ctx.setups = get(() -> Dict{String, TestSetup}(), task_local_storage(), nameof(TestSetup))
     ctx.setupset = SetupSet()
     runtestitem(ti, ctx)
@@ -397,10 +406,9 @@ function runtestitem(ti::TestItem, setupctx::SetupContext)
     mod = Core.eval(Main, :(module $(gensym(name)) end))
     if ti.default_imports
         Core.eval(mod, :(using Test))
-        # TODO: know which package a TestItem belongs to.
-        # if ti.package !== nothing
-        #     Core.eval(mod, :(using $(ti.package)))
-        # end
+        if !isempty(setupctx.projectname)
+            Core.eval(mod, :(using $(Symbol(setupctx.projectname))))
+        end
     end
     for setup in ti.setup
         # ensure setup has been evaled before
