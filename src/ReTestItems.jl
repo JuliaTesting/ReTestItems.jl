@@ -336,8 +336,8 @@ function project_in_env(projectfile::String)
     # read Project.toml file to get project name
     proj = TestEnv.Pkg.Types.read_package(projectfile)
     # get "reachable" packages in the current environment
-    deps = TestEnv.Pkg.Types.Context().env.project.deps
-    return haskey(deps, proj.name)
+    curproj = TestEnv.Pkg.Types.Context().env.project
+    return curproj.name == proj.name || haskey(curproj.deps, proj.name)
 end
 
 # copied from Base loading.jl for compat
