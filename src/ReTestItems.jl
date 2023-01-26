@@ -231,7 +231,7 @@ function _runtests(shouldrun, dir::String)
     path = abspath(dir)
     while true
         path == "/" && break
-        pf = Base.locate_project_file(path)
+        pf = locate_project_file(path)
         if pf !== true
             projectfile = pf
             @goto found_project
@@ -329,6 +329,17 @@ function project_in_env(projectfile::String)
     # get "reachable" packages in the current environment
     deps = TestEnv.Pkg.Types.Context().env.project.deps
     return haskey(deps, proj.name)
+end
+
+# copied from Base loading.jl for compat
+function locate_project_file(env::String)
+    for proj in Base.project_names
+        project_file = joinpath(env, proj)
+        if Base.isfile_casesensitive(project_file)
+            return project_file
+        end
+    end
+    return true
 end
 
 function schedule_testitems!(setupctx::SetupContext, ch::Channel)
