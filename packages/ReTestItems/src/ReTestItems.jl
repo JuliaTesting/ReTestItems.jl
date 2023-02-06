@@ -205,6 +205,10 @@ function _runtests_in_current_env(shouldrun, dir::String, projectfile::String, v
     return nothing
 end
 
+is_invalid_state(ex::Exception) = false
+is_invalid_state(ex::InvalidStateException) = true
+is_invalid_state(ex::RemoteException) = ex.captured.ex isa InvalidStateException
+
 function process_test_setups!(ctx::TestContext, setups)
     while true
         try
@@ -212,20 +216,18 @@ function process_test_setups!(ctx::TestContext, setups)
             println("Processing test setup: $(ts.name) from $(ts.file)")
             ctx.setups_quoted[String(ts.name)] = ts
             !isopen(setups) && !isready(setups) && break
-        catch e
-            if !isopen(setups) &&
-                (e isa InvalidStateException ||
-                e isa RemoteException && e.captured.ex isa InvalidStateException)
-            break
+        catch ex
+            if !isopen(setups) && is_invalid_state(ex)
+                break
             else
-                rethrow(e)
+                rethrow(ex)
             end
         end
     end
     # once we've exited the loop, we know there aren't any more test setups coming
     # so let's cleanup our test context by closing all the futures eval tasks might
     # be waiting on (in the case a test item depends on a non-existent test setup)
-    for (_, v) in ctx.setups_quoted.setups
+    @lock ctx.setups_quoted.lock for (_, v) in ctx.setups_quoted.setups
         close(v)
     end
     return nothing
@@ -356,13 +358,11 @@ function schedule_testitems!(ctx::TestContext, fre::FirstRunExclusive, testitems
                 runtestitem(ti, ctx, results)
             end
             !isopen(testitems) && !isready(testitems) && break
-        catch e
-            if !isopen(testitems) &&
-                    (e isa InvalidStateException ||
-                    e isa RemoteException && e.captured.ex isa InvalidStateException)
+        catch ex
+            if !isopen(testitems) && is_invalid_state(ex)
                 break
             else
-                rethrow(e)
+                rethrow(ex)
             end
         end
     end
