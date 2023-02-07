@@ -18,59 +18,6 @@ else
     const errmon = identity
 end
 
-macro atomicget(ex)
-    @static if VERSION < v"1.7"
-        return esc(Expr(:ref, ex))
-    else
-        return esc(:(@atomic $ex))
-    end
-end
-
-macro atomicset(ex)
-    @static if VERSION < v"1.7"
-        return esc(:(Threads.atomic_xchg!($(ex.args[1]), $(ex.args[2]))))
-    else
-        return esc(:(@atomic :release $ex))
-    end
-end
-
-# helper struct to ensure that the first time a function is called
-# it's exclusive, and subsequent calls can proceed concurrently
-mutable struct FirstRunExclusive
-    lock::ReentrantLock
-@static if VERSION < v"1.7"
-    set::Threads.Atomic{Bool}
-    FirstRunExclusive() = new(ReentrantLock(), Threads.Atomic{Bool}(false))
-else
-    @atomic set::Bool
-    FirstRunExclusive() = new(ReentrantLock(), false)
-end
-end
-
-function check(f, x::FirstRunExclusive)
-    # atomically check if x is already set and if so
-    # we know x has already been through the lock region once
-    if @atomicget(x.set)
-        f()
-        return
-    end
-    @lock x.lock begin
-        # if here, the initial set check was false, so we tried to
-        # acquire the lock to run `f`; if another task won, x will
-        # be set and we can proceed as above
-        if x.set
-            f()
-        else
-            # otherwise, we get to run `f` exclusively!
-            f()
-            # now we atomically set x, meaning subsequent checkers
-            # will proceed without needing to lock
-            @atomicset x.set = true
-        end
-    end
-    return
-end
-
 include("macros.jl")
 include("testcontext.jl")
 
@@ -177,8 +124,7 @@ function _runtests_in_current_env(shouldrun, dir::String, projectfile::String, v
             # we use a single TestSetupModules for all tasks
             ctx.setups_evaled = TestSetupModules()
             errmon(@spawn process_test_setups!($ctx, $setups))
-            fre = FirstRunExclusive()
-            [@spawn schedule_testitems!($ctx, $fre, chan(testitems), chan(results)) for _ in 1:ntasks]
+            [@spawn schedule_testitems!($ctx, chan(testitems), chan(results)) for _ in 1:ntasks]
         else
             # create a setups RemoteChannel per worker
             setups_chans = [RemoteChannel(() -> Channel{TestSetup}(Inf)) for _ in workers()]
@@ -337,26 +283,23 @@ function schedule_remote_testitems!(proj::String, proj_name::String, setups::Rem
         # on remote workers, we need a per-worker TestSetupModules
         ctx = TestContext(proj_name)
         ctx.setups_evaled = TestSetupModules()
-        fre = FirstRunExclusive()
         errmon(@spawn process_test_setups!($ctx, $setups))
         if verbose > 0
             LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=verbose) do
-                schedule_testitems!(ctx, fre, testitems, results)
+                schedule_testitems!(ctx, testitems, results)
             end
         else
-            schedule_testitems!(ctx, fre, testitems, results)
+            schedule_testitems!(ctx, testitems, results)
         end
     end
 end
 
-function schedule_testitems!(ctx::TestContext, fre::FirstRunExclusive, testitems, results)
+function schedule_testitems!(ctx::TestContext, testitems, results)
     while true
         try
             ti = take!(testitems)
             @debugv 2 "Scheduling test item: $(ti.name) from $(ti.file)"
-            check(fre) do
-                runtestitem(ti, ctx, results)
-            end
+            runtestitem(ti, ctx, results)
             !isopen(testitems) && !isready(testitems) && break
         catch ex
             if !isopen(testitems) && is_invalid_state(ex)
@@ -402,7 +345,7 @@ function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, Rem
         push!(body.args, :(using Test))
         if !isempty(ctx.projectname)
             # this obviously assumes we're in an environment where projectname is reachable
-            push!(body.args, :(using $(Symbol(ctx.projectname))))
+            push!(body.args, :(Base.@lock Base.require_lock using $(Symbol(ctx.projectname))))
         end
     end
     for setup in ti.setup
