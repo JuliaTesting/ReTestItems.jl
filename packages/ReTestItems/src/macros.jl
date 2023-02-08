@@ -95,6 +95,7 @@ struct TestItem
     default_imports::Bool
     setup::Vector{Symbol}
     file::String
+    line::Int
     code::Any
 end
 
@@ -195,7 +196,7 @@ macro testitem(nm, exs...)
     q = QuoteNode(exs[end])
     ti = gensym()
     esc(quote
-        $ti = $TestItem($nm, $tags, $default_imports, $setup, $(String(__source__.file)), $q)
+        $ti = $TestItem($nm, $tags, $default_imports, $setup, $(String(__source__.file)), $(__source__.line), $q)
         $store_test_item($ti)
         $ti
     end)

@@ -381,8 +381,7 @@ function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, Rem
                 # Copied from Test.@testset's catch block:
                 Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
                                     (Test.Base).current_exceptions(),
-                                    # TODO: Maybe we should add a line number to testitems?
-                                    LineNumberNode(#=ti.line=# 0, ti.file)))
+                                    LineNumberNode(ti.line, ti.file)))
             end
         end
     catch e
