@@ -45,33 +45,8 @@ macro testsetup(mod)
     nm = QuoteNode(name)
     q = QuoteNode(code)
     esc(quote
-        $store_testsetup($TestSetup($nm, $q, $(String(__source__.file))))
+        $store_test_item_setup($TestSetup($nm, $q, $(String(__source__.file))))
     end)
-end
-
-function store_testsetup(ts::TestSetup)
-    @debugv 2 "expanding test setup $(ts.name)"
-    tls = task_local_storage()
-    setups = get(tls, :TestSetup, nothing)
-    if setups === nothing
-        # we're not in a runtests context, so just use ReTestItems global TestContext
-        GLOBAL_TEST_CONTEXT_FOR_TESTING.setups_quoted[String(ts.name)] = ts
-    else
-        put!(setups, ts)
-    end
-    return nothing
-end
-
-# retrieve a test setup by name; ONLY FOR TESTING
-function get_test_setup(name)
-    tls = task_local_storage()
-    setups = get(tls, :TestSetup, nothing)
-    if setups === nothing
-        # we're not in a runtests context, so just use ReTestItems global TestContext
-        return GLOBAL_TEST_CONTEXT_FOR_TESTING.setups_quoted[String(name)]
-    else
-        throw(ArgumentError("test setup $name not found"))
-    end
 end
 
 ###
@@ -93,10 +68,11 @@ struct TestItem
     name::String
     tags::Vector{Symbol}
     default_imports::Bool
-    setup::Vector{Symbol}
+    setups::Vector{Symbol}
     file::String
     line::Int
     code::Any
+    testsetups::Vector{TestSetup} # populated by runtests coordinator
 end
 
 """
@@ -194,19 +170,24 @@ macro testitem(nm, exs...)
         error("expected `@testitem` to have a body")
     end
     q = QuoteNode(exs[end])
-    ti = gensym()
     esc(quote
-        $ti = $TestItem($nm, $tags, $default_imports, $setup, $(String(__source__.file)), $(__source__.line), $q)
-        $store_test_item($ti)
-        $ti
+        $store_test_item_setup(
+            $TestItem($nm, $tags, $default_imports, $setup, $(String(__source__.file)), $(__source__.line), $q, $TestSetup[])
+        )
     end)
 end
 
-function store_test_item(ti::TestItem)
-    @debugv 2 "expanding test item $(ti.name)"
+function store_test_item_setup(ti::Union{TestItem, TestSetup})
+    @debugv 2 "expanding test item/setup: `$(ti.name)`"
     tls = task_local_storage()
-    if haskey(tls, :__RE_TEST_CHANNEL__)
-        put!(tls[:__RE_TEST_CHANNEL__], ti)
+    if haskey(tls, :__RE_TEST_INCOMING_CHANNEL__)
+        ch = tls[:__RE_TEST_INCOMING_CHANNEL__]
+        if ti isa TestSetup
+            # don't apply filter on test setups
+            put!(chan(ch), ti)
+        else
+            put!(ch, ti)
+        end
     end
-    return nothing
+    return ti
 end

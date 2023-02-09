@@ -88,24 +88,23 @@ end
 
 function _runtests_in_current_env(shouldrun, dir::String, projectfile::String, verbose)
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
-    setups = Channel{TestSetup}(Inf)
+    incoming = Channel{Union{TestItem, TestSetup}}(Inf)
     testitems = RemoteChannel(() -> Channel{TestItem}(Inf))
     results = RemoteChannel(() -> Channel{Tuple{String,DefaultTestSet}}(Inf))
     # run test file including @spawn so we can immediately
     # start executing tests as they're put into our test channel
-    fch = FilteredChannel(shouldrun, chan(testitems))
+    fch = FilteredChannel(shouldrun, incoming)
     @debugv 1 "Including tests in $dir"
     include_task = @spawn begin
-        include_testfiles!($setups, $fch, $dir)
+        include_testfiles!($fch, $dir)
         close($fch)
-        close($setups)
     end
     try
         test_proj = Base.active_project()
         # Avoid `record` printing a summary; we want to print just one summary at the end.
         Test.TESTSET_PRINT_ENABLE[] = false
         parent_ts = DefaultTestSet(proj_name; verbose=true)
-        file_testsets = Dict{String,DefaultTestSet}()
+        file_testsets = Dict{String, DefaultTestSet}()
         result_task = @spawn begin
             for (file, ts) in $(chan(results))
                 filename = relpath(file, $(dirname(projectfile)))
@@ -116,6 +115,8 @@ function _runtests_in_current_env(shouldrun, dir::String, projectfile::String, v
                 Test.record(parent_ts, file_ts)
             end
         end
+        @debugv 1 "Starting task to process incoming test items/setups"
+        errmon(@spawn process_incoming!($incoming, $(chan(testitems))))
         @debugv 1 "Scheduling tests on $(nprocs()) processes."
         schedule_tasks = if nprocs() == 1
             ntasks = nthreads()
@@ -123,14 +124,10 @@ function _runtests_in_current_env(shouldrun, dir::String, projectfile::String, v
             ctx = TestContext(proj_name)
             # we use a single TestSetupModules for all tasks
             ctx.setups_evaled = TestSetupModules()
-            errmon(@spawn process_test_setups!($ctx, $setups))
             [@spawn schedule_testitems!($ctx, chan(testitems), chan(results)) for _ in 1:ntasks]
         else
-            # create a setups RemoteChannel per worker
-            setups_chans = [RemoteChannel(() -> Channel{TestSetup}(Inf)) for _ in workers()]
             # spawn a task that broadcasts from coordinator-local setups channel to worker remote setup channels
-            errmon(@spawn broadcast_test_setups!($setups, $setups_chans))
-            [@spawnat(p, schedule_remote_testitems!(test_proj, proj_name, setups_chans[i], testitems, results, verbose)) for (i, p) in enumerate(workers())]
+            [@spawnat(p, schedule_remote_testitems!(test_proj, proj_name, testitems, results, verbose)) for (i, p) in enumerate(workers())]
         end
         foreach(wait, schedule_tasks)
         # once all test items have been run, close the results channel
@@ -155,36 +152,52 @@ is_invalid_state(ex::Exception) = false
 is_invalid_state(ex::InvalidStateException) = true
 is_invalid_state(ex::RemoteException) = ex.captured.ex isa InvalidStateException
 
-function process_test_setups!(ctx::TestContext, setups)
-    while true
-        try
-            ts = take!(setups)
-            println("Processing test setup: $(ts.name) from $(ts.file)")
-            ctx.setups_quoted[String(ts.name)] = ts
-            !isopen(setups) && !isready(setups) && break
-        catch ex
-            if !isopen(setups) && is_invalid_state(ex)
-                break
-            else
-                rethrow(ex)
+function process_incoming!(incoming::Channel, testitems::Channel)
+    setups = Dict{Symbol, TestSetup}()
+    waiting = Dict{Symbol, Vector{TestItem}}() # maps TestSetup.name to list of TestItems waiting for that setup
+    for ti in incoming
+        @debugv 1 "Processing test item/setup: $(ti.name) from $(ti.file)"
+        if ti isa TestSetup
+            setups[ti.name] = ti
+            # check if any test items are waiting for this setup
+            if haskey(waiting, ti.name)
+                for wti in waiting[ti.name]
+                    push!(wti.testsetups, ti)
+                    if length(wti.testsetups) == length(wti.setups)
+                        # all required setups have been seen, so we can run this test item
+                        put!(testitems, wti)
+                    end
+                end
+                delete!(waiting, ti.name)
+            end
+        elseif ti isa TestItem
+            # check if we know about all the required setups
+            for s in ti.setups
+                if haskey(setups, s)
+                    push!(ti.testsetups, setups[s])
+                else
+                    push!(get!(() -> TestItem[], waiting, s), ti)
+                end
+            end
+            if length(ti.setups) == length(ti.testsetups)
+                # we have all the required setups, so we can run this test item
+                put!(testitems, ti)
             end
         end
     end
-    # once we've exited the loop, we know there aren't any more test setups coming
-    # so let's cleanup our test context by closing all the futures eval tasks might
-    # be waiting on (in the case a test item depends on a non-existent test setup)
-    @lock ctx.setups_quoted.lock for (_, v) in ctx.setups_quoted.setups
-        close(v)
-    end
-    return nothing
-end
-
-function broadcast_test_setups!(setups::Channel, remotechans::Vector{<:RemoteChannel})
-    for ts in setups
-        for rc in remotechans
-            put!(rc, ts)
+    # we know no more test items/setups are coming, so now we deal w/ any test items that are stuck waiting
+    seen = Set{String}()
+    for (_, tis) in waiting
+        for ti in tis
+            ti.name in seen && continue
+            @debugv 1 "Test item $(ti.name) from $(ti.file) is stuck waiting for at least one of $(ti.setups)"
+            # by forcing evaluation, we'll get an appropriate error message when the test setup isn't found
+            put!(testitems, ti)
+            push!(seen, ti.name)
         end
     end
+    # close the testitems channel so schedule_testitems! knows to stop
+    close(testitems)
     return nothing
 end
 
@@ -193,7 +206,7 @@ end
 istestfile(filepath) = endswith(filepath, "_test.jl") || endswith(filepath, "_tests.jl")
 
 # for each directory, kick off a recursive test-finding task
-function include_testfiles!(setups::Channel, testitems::FilteredChannel, dir)
+function include_testfiles!(incoming::FilteredChannel, dir)
     # don't recurse into subprojects
     subproject_root = nothing
     @sync for (root, _, files) in walkdir(dir)
@@ -205,25 +218,20 @@ function include_testfiles!(setups::Channel, testitems::FilteredChannel, dir)
         end
         for file in files
             # channel should only be closed if there was an error
-            isopen(testitems) || return nothing
+            isopen(incoming) || return nothing
             filepath = joinpath(root, file)
             istestfile(filepath) || continue
             @debugv 1 "Including test items from file `$filepath`"
             @spawn try
                 task_local_storage(:__RE_TEST_RUNNING__, true) do
-                    task_local_storage(:__RE_TEST_CHANNEL__, $testitems) do
-                        # ensure any `@testsetup` macros are expanded into
-                        # our setups channel
-                        task_local_storage(:TestSetup, $setups) do
-                            Base.include(Main, $filepath)
-                        end
+                    task_local_storage(:__RE_TEST_INCOMING_CHANNEL__, $incoming) do
+                        Base.include(Main, $filepath)
                     end
                 end
             catch e
                 @error "Error including test items from file `$filepath`" exception=(e, catch_backtrace())
                 # use the exception to close our TestItem channel so it gets propagated
-                close($testitems, e)
-                close($setups, e)
+                close($incoming, e)
             end
         end
     end
@@ -277,13 +285,12 @@ function with_source_path(f, path)
     end
 end
 
-function schedule_remote_testitems!(proj::String, proj_name::String, setups::RemoteChannel, testitems::RemoteChannel, results::RemoteChannel, verbose)
+function schedule_remote_testitems!(proj::String, proj_name::String, testitems::RemoteChannel, results::RemoteChannel, verbose)
     # activate the project for which we're running tests on the worker process
     Pkg.activate(proj) do
         # on remote workers, we need a per-worker TestSetupModules
         ctx = TestContext(proj_name)
         ctx.setups_evaled = TestSetupModules()
-        errmon(@spawn process_test_setups!($ctx, $setups))
         if verbose > 0
             LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=verbose) do
                 schedule_testitems!(ctx, testitems, results)
@@ -312,31 +319,48 @@ function schedule_testitems!(ctx::TestContext, testitems, results)
     return nothing
 end
 
-function ensure_setup!(ctx::TestContext, setup::Symbol)
-    return nameof(getmodule(ctx.setups_evaled, setup) do
-        # we haven't eval-ed this setup module yet
-        ts = ctx.setups_quoted[String(setup)]
+function ensure_setup!(ctx::TestContext, setup::Symbol, setups::Vector{TestSetup})
+    mods = ctx.setups_evaled
+    @lock mods.lock begin
+        mod = get(mods.modules, setup, nothing)
+        if mod !== nothing
+            # we've eval-ed this module before, so just return the module name
+            return nameof(mod)
+        end
+        # we haven't eval-ed this module before, so we need to eval it
+        i = findfirst(s -> s.name == setup, setups)
+        if i === nothing
+            # if the setup hasn't been eval-ed before and we don't have it
+            # in our testsetups, then it was never found during including
+            # in that case, we return the expected test setup module name
+            # which will turn into a `using $setup` in the test item
+            # which will throw an appropriate error
+            return setup
+        end
+        ts = setups[i]
         mod_expr = :(module $(gensym(ts.name)) end)
         # replace the module expr body with our @testsetup code
         mod_expr.args[3] = ts.code
-        return with_source_path(ts.file) do
-            Core.eval(Main, mod_expr)
-        end
-    end)
+        newmod = with_source_path(() -> Core.eval(Main, mod_expr), ts.file)
+        # add the new module to our TestSetupModules
+        mods.modules[setup] = newmod
+        return nameof(newmod)
+    end
 end
 
 # convenience method/globals for testing
 const GLOBAL_TEST_CONTEXT_FOR_TESTING = TestContext("ReTestItems")
-reset_global_test_context!() = empty!(GLOBAL_TEST_CONTEXT_FOR_TESTING.setups_quoted.setups)
 
 # assumes any required setups were expanded outside of a runtests context
-function runtestitem(ti::TestItem)
+function runtestitem(ti::TestItem, setups::Vector{TestSetup}=TestSetup[]; kw...)
     # make a fresh TestSetupModules for each testitem run
     GLOBAL_TEST_CONTEXT_FOR_TESTING.setups_evaled = TestSetupModules()
-    runtestitem(ti, GLOBAL_TEST_CONTEXT_FOR_TESTING, nothing)
+    empty!(ti.testsetups)
+    append!(ti.testsetups, setups)
+    runtestitem(ti, GLOBAL_TEST_CONTEXT_FOR_TESTING, nothing; kw...)
 end
 
-function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, RemoteChannel, Nothing})
+function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, RemoteChannel, Nothing}; finish_test::Bool=true)
     name = ti.name
     @debugv 1 "Running test item." name
     # start with empty block expr and build up our @testitem module body
@@ -348,50 +372,43 @@ function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, Rem
             push!(body.args, :(Base.@lock Base.require_lock using $(Symbol(ctx.projectname))))
         end
     end
-    for setup in ti.setup
-        # TODO(nhd): Consider implementing some affinity to setups, so that we can
-        # prefer to send testitems to the workers that have already eval'd setups.
-        # Or maybe allow user-configurable grouping of test items by worker?
-        # Or group them by file by default?
-
-        # ensure setup has been evaled before
-        ts_mod = ensure_setup!(ctx, setup)
-        # eval using in our @testitem module
-        @debugv 1 "Importing setup $setup." name
-        push!(body.args, Expr(:using, Expr(:., :., :., ts_mod)))
-        # ts_mod is a gensym'd name so that setup modules don't clash
-        # so we set a const alias inside our @testitem module to make things work
-        push!(body.args, :(const $setup = $ts_mod))
-    end
-    @debugv 1 "Setup done." name
     ts = DefaultTestSet(name; verbose=true)
     Test.push_testset(ts)
-    # add our @testitem quoted code to module body expr
-    append!(body.args, ti.code.args)
-    mod_expr = :(module $(gensym(name)) end)
-    # replace the module body with our built up expr
-    mod_expr.args[3] = body
     try
-        with_source_path(ti.file) do
-            try
-                Core.eval(Main, mod_expr)
-            catch err
-                err isa InterruptException && rethrow()
-                # Handle exceptions thrown outside a `@test` in the body of the @testitem:
-                # Copied from Test.@testset's catch block:
-                Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
-                                    (Test.Base).current_exceptions(),
-                                    LineNumberNode(ti.line, ti.file)))
-            end
+        for setup in ti.setups
+            # TODO(nhd): Consider implementing some affinity to setups, so that we can
+            # prefer to send testitems to the workers that have already eval'd setups.
+            # Or maybe allow user-configurable grouping of test items by worker?
+            # Or group them by file by default?
+
+            # ensure setup has been evaled before
+            ts_mod = ensure_setup!(ctx, setup, ti.testsetups)
+            # eval using in our @testitem module
+            @debugv 1 "Importing setup $setup." name
+            push!(body.args, Expr(:using, Expr(:., :., :., ts_mod)))
+            # ts_mod is a gensym'd name so that setup modules don't clash
+            # so we set a const alias inside our @testitem module to make things work
+            push!(body.args, :(const $setup = $ts_mod))
         end
-    catch e
-        e isa InterruptException && rethrow()
-        @error "Error running testitem $(repr(ti.name)) from file `$(ti.file)`" exception=(e, catch_backtrace())
+        @debugv 1 "Setup done." name
+        # add our @testitem quoted code to module body expr
+        append!(body.args, ti.code.args)
+        mod_expr = :(module $(gensym(name)) end)
+        # replace the module body with our built up expr
+        mod_expr.args[3] = body
+        with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
+    catch err
+        err isa InterruptException && rethrow()
+        # Handle exceptions thrown outside a `@test` in the body of the @testitem:
+        # Copied from Test.@testset's catch block:
+        Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
+            (Test.Base).current_exceptions(),
+            LineNumberNode(ti.line, ti.file)))
     finally
         ts1 = Test.pop_testset()
         @assert ts1 === ts
         try
-            Test.finish(ts) # This will throw an exception if any of the tests failed.
+            finish_test && Test.finish(ts) # This will throw an exception if any of the tests failed.
         catch e
             e isa TestSetException || rethrow()
         end
@@ -400,7 +417,7 @@ function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, Rem
         end
     end
     @debugv 1 "Test item done." name
-    return nothing
+    return ts
 end
 
 # copied from XUnit.jl

@@ -20,6 +20,10 @@ end
     @test false  # this is never executed
 end
 
+@testitem "nonexistent test setup" setup=[NonexistentSetup] begin
+    @test true
+end
+
 @testsetup module ErrorSetup
     const NON_BOOL = missing
 end

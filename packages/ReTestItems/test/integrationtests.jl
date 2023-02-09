@@ -107,7 +107,7 @@ end
         # @show length(non_passes(results)), length(failures(results)), length(errors(results))
         # println("\n\n\n\n\n\n")
         @test length(failures(results)) == 4
-        @test length(errors(results)) == 6
+        @test length(errors(results)) == 7
     end
 end
 

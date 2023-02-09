@@ -1,13 +1,13 @@
 # this file specifically tests *unit* tests for ReTestItems
 # so *not* the `runtests` functionality, which utilizes specific
 # contrived packages/testfiles
-ReTestItems.reset_global_test_context!()
+n_passed(ts) = ts.n_passed
 
 @testset "testsetup macro basic" begin
-    @testsetup module TS1
+    ts = @testsetup module TS1
         x = 1
     end
-    @test ReTestItems.get_test_setup(:TS1).name == :TS1
+    @test ts.name == :TS1
 end
 
 @testset "testitem macro basic" begin
@@ -16,7 +16,7 @@ end
     end
     @test ti.name == "TI1"
     @test ti.file == @__FILE__
-    @test ReTestItems.runtestitem(ti) === nothing
+    @test n_passed(ReTestItems.runtestitem(ti)) == 1
 end
 
 @testset "testitem with tags" begin
@@ -24,7 +24,7 @@ end
         @test true
     end
     @test ti2.tags == [:foo]
-    @test ReTestItems.runtestitem(ti2) === nothing
+    @test n_passed(ReTestItems.runtestitem(ti2)) == 1
 end
 
 @testset "testitem with macro import" begin
@@ -41,17 +41,17 @@ end
         end
         @test MacroTest(1) isa MacroTest
     end
-    @test ReTestItems.runtestitem(ti3) === nothing
+    @test n_passed(ReTestItems.runtestitem(ti3)) == 1
 end
 
 @testset "testitem with setup" begin
-    @testsetup module FooSetup
+    ts1 = @testsetup module FooSetup
         x = 1
         const y = 2
         export y
     end
     # test that imported macro usage also works in testsetup
-    @testsetup module FooSetup2
+    ts2 = @testsetup module FooSetup2
         using AutoHashEquals: @auto_hash_equals
         @auto_hash_equals struct Foo
             x::Int
@@ -63,16 +63,24 @@ end
         @test y == 2
         @test FooSetup2.Foo(1) isa FooSetup2.Foo
     end
-    @test ti4.setup == [:FooSetup, :FooSetup2]
-    @test ReTestItems.runtestitem(ti4) === nothing
+    @test ti4.setups == [:FooSetup, :FooSetup2]
+    @test n_passed(ReTestItems.runtestitem(ti4, [ts1, ts2])) == 3
 end
 
 @testset "testsetup and testitem with includes" begin
-    @testsetup module FooSetup3
+    ts = @testsetup module FooSetup3
         include("_testsetupinclude.jl")
     end
     ti5 = @testitem "Foo3" setup=[FooSetup3] begin
         include("_testiteminclude.jl")
     end
-    @test ReTestItems.runtestitem(ti5) === nothing
+    @test n_passed(ReTestItems.runtestitem(ti5, [ts])) == 2
+end
+
+@testset "missing testsetup" begin
+    ti6 = @testitem "Foo4" setup=[NonExistentSetup] begin
+        @test 1 + 1 == 2
+    end
+    ts = ReTestItems.runtestitem(ti6; finish_test=false)
+    @test ts.results[1] isa Test.Error
 end
