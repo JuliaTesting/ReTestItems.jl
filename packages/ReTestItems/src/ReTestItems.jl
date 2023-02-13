@@ -21,19 +21,17 @@ end
 include("macros.jl")
 include("testcontext.jl")
 
-# TODO: add `runtests(dirs...)` so from command line we can run things like
-# `runtests("test/dir1/", "test/dir4")`
 """
     ReTestItems.runtests()
     ReTestItems.runtests(mod::Module)
-    ReTestItems.runtests(dir)
+    ReTestItems.runtests(paths::AbstractString...)
 
 Execute `@testitem` tests.
 
-If no arguments are passed, the current
-project is searched for `@testitem`s. If a directory is passed, only that
-directory is searched for `@testitem`s. Only files ending in `_test.jl` or
-`_tests.jl` will be searched for test items.
+Only files ending in `_test.jl` or `_tests.jl` will be searched for test items.
+
+If no arguments are passed, the current project is searched for `@testitem`s.
+If directory or file paths are passed, only those directories and files are searched.
 """
 function runtests end
 
@@ -41,52 +39,57 @@ default_shouldrun(ti::TestItem) = true
 
 runtests(; kw...) = runtests(default_shouldrun, dirname(Base.active_project()); kw...)
 runtests(shouldrun; kw...) = runtests(shouldrun, dirname(Base.active_project()); kw...)
-runtests(dir::String; kw...) = runtests(default_shouldrun, dir; kw...)
+runtests(paths::AbstractString...; kw...) = runtests(default_shouldrun, paths...; kw...)
 
 runtests(pkg::Module; kw...) = runtests(default_shouldrun, pkg; kw...)
 function runtests(shouldrun, pkg::Module; kw...)
     dir = pkgdir(pkg)
     isnothing(dir) && error("Could not find directory for `$pkg`")
-    return runtests(shouldrun, dir; kw...)
+    src = joinpath(dir, "src")
+    test = joinpath(dir, "test")
+    return runtests(shouldrun, src, test; kw...)
 end
 
-function runtests(shouldrun, dir::String; verbose=false)
+function runtests(shouldrun, paths::AbstractString...; verbose=false)
     if verbose > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=verbose) do
-            _runtests(shouldrun, dir, verbose)
+            _runtests(shouldrun, paths, verbose)
         end
     else
-        return _runtests(shouldrun, dir, verbose)
+        return _runtests(shouldrun, paths, verbose)
     end
 end
 
-function _runtests(shouldrun, dir::String, verbose)
+function _runtests(shouldrun, paths, verbose)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
     get(task_local_storage(), :__RE_TEST_RUNNING__, false) && return nothing
 
+    # If passed multiple directories/files, we assume/require they share the same environment.
+    dir = first(paths)
+    @assert dir isa AbstractString
     # If the test env is already active, then we just need to find the main `Project.toml`
     # to find the package name so we can import the package inside the `@testitem`s.
     # Otherwise, then we need the `Project.toml` to activate the env.
     proj_file = identify_project(dir)
     proj_file == "" && error("Could not find project directory for `$(dir)`")
-    @debugv 1 "Running tests in `$dir` for project at `$proj_file`"
+    @debugv 1 "Running tests in `$paths` for project at `$proj_file`"
     if is_running_test_runtests_jl(proj_file)
         # Assume this is `Pkg.test`, so test env already active.
         @debugv 2 "Running in current environment `$(Base.active_project())`"
-        return _runtests_in_current_env(shouldrun, dir, proj_file, verbose)
+        return _runtests_in_current_env(shouldrun, paths, proj_file, verbose)
     else
         @debugv 1 "Activating test environment for `$proj_file`"
         return Pkg.activate(proj_file) do
             TestEnv.activate() do
-                _runtests_in_current_env(shouldrun, dir, proj_file, verbose)
+                _runtests_in_current_env(shouldrun, paths, proj_file, verbose)
             end
         end
     end
 end
 
-function _runtests_in_current_env(shouldrun, dir::String, projectfile::String, verbose)
+function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose)
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
     incoming = Channel{Union{TestItem, TestSetup}}(Inf)
     testitems = RemoteChannel(() -> Channel{TestItem}(Inf))
@@ -94,9 +97,11 @@ function _runtests_in_current_env(shouldrun, dir::String, projectfile::String, v
     # run test file including @spawn so we can immediately
     # start executing tests as they're put into our test channel
     fch = FilteredChannel(shouldrun, incoming)
-    @debugv 1 "Including tests in $dir"
+    @debugv 1 "Including tests in $paths"
     include_task = @spawn begin
-        include_testfiles!($fch, $dir)
+        @debugv 2 "Begin including $paths"
+        include_testfiles!($fch, $projectfile, $paths)
+        @debugv 2 "Done including $paths"
         close($fch)
     end
     try
@@ -205,14 +210,20 @@ end
 # i.e. if it ends with `_test.jl` or `_tests.jl`.
 istestfile(filepath) = endswith(filepath, "_test.jl") || endswith(filepath, "_tests.jl")
 
+
+# walkdir accepting iterable of paths and which works on files (not just directories)
+walkdir(paths::AbstractString...) = Iterators.flatten(Iterators.map(_walkdir, paths))
+_walkdir(path::AbstractString) = isfile(path) ? _walkfile(path) : Base.walkdir(path)
+_walkfile(path::AbstractString) = [(dirname(path), String[], [basename(path)])]
+
 # for each directory, kick off a recursive test-finding task
-function include_testfiles!(incoming::FilteredChannel, dir)
-    # don't recurse into subprojects
-    subproject_root = nothing
-    @sync for (root, _, files) in walkdir(dir)
+function include_testfiles!(incoming::FilteredChannel, projectfile, paths)
+    subproject_root = nothing  # don't recurse into directories with their own Project.toml.
+    @sync for (root, _, files) in ReTestItems.walkdir(paths...)
         if subproject_root !== nothing && startswith(root, subproject_root)
+            @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
             continue
-        elseif _project_file(root) !== nothing && root != dir
+        elseif _project_file(root) !== nothing && abspath(_project_file(root)) != projectfile
             subproject_root = root
             continue
         end

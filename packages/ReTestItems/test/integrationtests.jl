@@ -13,8 +13,10 @@ include(joinpath(_TEST_DIR, "integration_test_tools.jl"))
 # the package's test failures/errors cause ReTestItems' tests to fail/error.
 function with_test_package(f, name)
     return encased_testset() do
-        Pkg.activate(joinpath(TEST_PKG_DIR, name)) do
-            f()
+        cd(joinpath(TEST_PKG_DIR, name)) do
+            Pkg.activate(".") do
+                f()
+            end
         end
     end
 end
@@ -22,7 +24,7 @@ end
 # test we can call runtests manually w/ directory
 @testset "manual `runtests(dir)`" begin
     results = encased_testset() do
-        runtests("packages/NoDeps.jl")
+        runtests(joinpath(TEST_PKG_DIR, "NoDeps.jl"))
     end
     @test n_passed(results) == 1  # NoDeps has a single test
 end
@@ -129,7 +131,7 @@ const nworkers = 2
 end
 
 @testset "don't recurse into subpackages" begin
-if VERSION < v"1.9"
+if VERSION < v"1.9.0-"
     # The MonoRepo.jl setup requires Julia v1.9:
     # https://github.com/JuliaLang/Pkg.jl/commit/46f0de21dcfc5d1a3f4e6fbafe40462f88632359
     @warn "Skipping tests on MonoRepo.jl which requires Julia Version v1.9+" VERSION
@@ -150,7 +152,7 @@ end
 # Test that, starting in an env which has a local subpackage as a dependency,
 # we can trigger that subpackage's tests and run them in the correct test env.
 @testset "trigger subpackage tests" begin
-if VERSION < v"1.9"
+if VERSION < v"1.9.0-"
     # The MonoRepo.jl setup requires Julia v1.9:
     # https://github.com/JuliaLang/Pkg.jl/commit/46f0de21dcfc5d1a3f4e6fbafe40462f88632359
     @warn "Skipping tests on MonoRepo.jl which requires Julia Version v1.9+" VERSION
@@ -177,4 +179,38 @@ else
         @test n_tests(results) == 2
     end
 end # VERSION
+end
+
+@testset "passing file (not dir)" begin
+    results = with_test_package("TestsInSrc.jl") do
+        runtests("src/bar_tests.jl")
+    end
+    @test n_tests(results) == 4  # src/bar_test.jl has 4 tests
+end
+
+@testset "passing multiple files/dirs" begin
+    # dir and file
+    results = with_test_package("TestsInSrc.jl") do
+        runtests("src/bar_tests.jl", "test")
+    end
+    @test n_tests(results) == 4  # src/bar_test.jl has 4 tests, test has none
+    # order should not matter
+    results = with_test_package("TestsInSrc.jl") do
+        runtests("test", "src/bar_tests.jl")
+    end
+    @test n_tests(results) == 4
+
+    # multiple files
+    results = with_test_package("TestsInSrc.jl") do
+        runtests("src/foo_test.jl", "src/bar_tests.jl")
+    end
+    @test n_tests(results) == 2 + 4  # foo_test.jl has 2, bar_test.jl has 4
+
+    # with filter function
+    results = with_test_package("TestsInSrc.jl") do
+        runtests("src/foo_test.jl", "src/bar_tests.jl") do ti
+            contains(ti.name, "bar")
+        end
+    end
+    @test n_tests(results) == 4
 end
