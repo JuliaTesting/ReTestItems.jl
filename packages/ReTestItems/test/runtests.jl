@@ -4,6 +4,7 @@ using ReTestItems, Test, Pkg, Distributed
     include("internals.jl")
     include("macrotests.jl")
     include("integrationtests.jl")
+    include("log_capture.jl")
 
     # After all tests have run, check we didn't leave Test printing disabled.
     @test Test.TESTSET_PRINT_ENABLE[]

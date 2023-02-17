@@ -2,15 +2,19 @@ module ReTestItems
 
 using Base: @lock
 using Test: Test, DefaultTestSet, TestSetException
-using Distributed: RemoteChannel, @spawnat, nprocs, workers, channel_from_id, remoteref_id, RemoteException
+using Distributed: RemoteChannel, @spawnat, nprocs, workers, channel_from_id, remoteref_id, RemoteException, myid
 using .Threads: @spawn, nthreads
 using Pkg: Pkg
 using TestEnv
 using LoggingExtras
+using ContextVariablesX
+import Distributed
 
 export runtests, runtestitem
 export @testsetup, @testitem
 export TestSetup, TestItem
+
+const STALLED_LIMIT_SECONDS = 30*60
 
 if isdefined(Base, :errormonitor)
     const errmon = Base.errormonitor
@@ -20,6 +24,15 @@ end
 
 include("macros.jl")
 include("testcontext.jl")
+include("log_capture.jl")
+
+function __init__()
+    DEFAULT_STDOUT[] = stdout
+    DEFAULT_STDERR[] = stderr
+    DEFAULT_LOGSTATE[] = Base.CoreLogging._global_logstate
+    DEFAULT_LOGGER[] = Base.CoreLogging._global_logstate.logger
+    return nothing
+end
 
 """
     ReTestItems.runtests()
@@ -93,7 +106,7 @@ function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
     incoming = Channel{Union{TestItem, TestSetup}}(Inf)
     testitems = RemoteChannel(() -> Channel{TestItem}(Inf))
-    results = RemoteChannel(() -> Channel{Tuple{String,DefaultTestSet}}(Inf))
+    results = RemoteChannel(() -> Channel{Tuple{TestItem,DefaultTestSet}}(Inf))
     # run test file including @spawn so we can immediately
     # start executing tests as they're put into our test channel
     fch = FilteredChannel(shouldrun, incoming)
@@ -107,13 +120,13 @@ function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose
     try
         test_proj = Base.active_project()
         # Avoid `record` printing a summary; we want to print just one summary at the end.
-        Test.TESTSET_PRINT_ENABLE[] = false
         parent_ts = DefaultTestSet(proj_name; verbose=true)
         file_testsets = Dict{String, DefaultTestSet}()
         result_task = @spawn begin
-            for (file, ts) in $(chan(results))
-                filename = relpath(file, $(dirname(projectfile)))
-                file_ts = get!(file_testsets, file, DefaultTestSet(filename; verbose=true))
+            for (ti, ts) in $(chan(results))
+                filename = relpath(ti.file, $(dirname(projectfile)))
+                file_ts = get!(file_testsets, ti.file, DefaultTestSet(filename; verbose=true))
+                print_errors_and_captured_logs(ti, ts, verbose=verbose>0)
                 Test.record(file_ts, ts)
             end
             for file_ts in values(file_testsets)
@@ -124,7 +137,10 @@ function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose
         errmon(@spawn process_incoming!($incoming, $(chan(testitems))))
         @debugv 1 "Scheduling tests on $(nprocs()) processes."
         schedule_tasks = if nprocs() == 1
+            # This is where we disable printing for the multithreaded executor case.
+            Test.TESTSET_PRINT_ENABLE[] = false
             ntasks = nthreads()
+            ntasks > 1 && _setup_multithreaded_log_capture()
             @debugv 1 "Spawning $ntasks tasks to run testitems."
             ctx = TestContext(proj_name)
             # we use a single TestSetupModules for all tasks
@@ -132,7 +148,8 @@ function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose
             [@spawn schedule_testitems!($ctx, chan(testitems), chan(results)) for _ in 1:ntasks]
         else
             # spawn a task that broadcasts from coordinator-local setups channel to worker remote setup channels
-            [@spawnat(p, schedule_remote_testitems!(test_proj, proj_name, testitems, results, verbose)) for (i, p) in enumerate(workers())]
+            # We don't schedule any testitems on worker 1 as it handles file includes and result collection
+            [@spawnat(p, schedule_remote_testitems!(test_proj, proj_name, testitems, results, verbose)) for p in workers()]
         end
         foreach(wait, schedule_tasks)
         # once all test items have been run, close the results channel
@@ -140,7 +157,6 @@ function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose
         # make sure to wait on result_task to finish finalizing testitem testsets
         wait(result_task)
         Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
-        Test.print_test_errors(parent_ts)  # print details of each failure/error
         Test.finish(parent_ts)             # print summary of total passes/failures/errors
     finally
         Test.TESTSET_PRINT_ENABLE[] = true
@@ -149,6 +165,7 @@ function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose
         # is closed, but in case of unexpected errors, this at least
         # ensures that all tasks spawned by runtests finish before it returns
         wait(include_task)
+        (nthreads() > 1 && nprocs() == 1) && _teardown_multithreaded_log_capture()
     end
     return nothing
 end
@@ -161,7 +178,7 @@ function process_incoming!(incoming::Channel, testitems::Channel)
     setups = Dict{Symbol, TestSetup}()
     waiting = Dict{Symbol, Vector{TestItem}}() # maps TestSetup.name to list of TestItems waiting for that setup
     for ti in incoming
-        @debugv 1 "Processing test item/setup: $(ti.name) from $(ti.file)"
+        @debugv 1 "Processing test item/setup: $(repr(ti.name)) from $(ti.file):$(ti.line)"
         if ti isa TestSetup
             setups[ti.name] = ti
             # check if any test items are waiting for this setup
@@ -195,7 +212,7 @@ function process_incoming!(incoming::Channel, testitems::Channel)
     for (_, tis) in waiting
         for ti in tis
             ti.name in seen && continue
-            @debugv 1 "Test item $(ti.name) from $(ti.file) is stuck waiting for at least one of $(ti.setups)"
+            @debugv 1 "Test item $(repr(ti.name)) from $(ti.file):$(ti.line) is stuck waiting for at least one of $(ti.setups)"
             # by forcing evaluation, we'll get an appropriate error message when the test setup isn't found
             put!(testitems, ti)
             push!(seen, ti.name)
@@ -299,6 +316,8 @@ end
 function schedule_remote_testitems!(proj::String, proj_name::String, testitems::RemoteChannel, results::RemoteChannel, verbose)
     # activate the project for which we're running tests on the worker process
     Pkg.activate(proj) do
+        # This is where we disable printing for the distributed executor case (called on each worker).
+        Test.TESTSET_PRINT_ENABLE[] = false
         # on remote workers, we need a per-worker TestSetupModules
         ctx = TestContext(proj_name)
         ctx.setups_evaled = TestSetupModules()
@@ -316,7 +335,8 @@ function schedule_testitems!(ctx::TestContext, testitems, results)
     while true
         try
             ti = take!(testitems)
-            @debugv 2 "Scheduling test item: $(ti.name) from $(ti.file)"
+            ti.workerid[] = myid()
+            @debugv 2 "Scheduling test item$(_on_worker()): $(repr(ti.name)) from $(ti.file):$(ti.line)"
             runtestitem(ti, ctx, results)
             !isopen(testitems) && !isready(testitems) && break
         catch ex
@@ -373,7 +393,7 @@ end
 
 function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, RemoteChannel, Nothing}; finish_test::Bool=true)
     name = ti.name
-    @debugv 1 "Running test item." name
+    log_running(ti)
     # start with empty block expr and build up our @testitem module body
     body = Expr(:block)
     if ti.default_imports
@@ -385,6 +405,9 @@ function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, Rem
     end
     ts = DefaultTestSet(name; verbose=true)
     Test.push_testset(ts)
+    timer = let ti=ti
+        Timer(_->log_stalled(ti), STALLED_LIMIT_SECONDS)
+    end
     try
         for setup in ti.setups
             # TODO(nhd): Consider implementing some affinity to setups, so that we can
@@ -395,19 +418,21 @@ function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, Rem
             # ensure setup has been evaled before
             ts_mod = ensure_setup!(ctx, setup, ti.testsetups)
             # eval using in our @testitem module
-            @debugv 1 "Importing setup $setup." name
+            @debugv 1 "Importing setup for test item $(repr(name)) $(setup)$(_on_worker())."
             push!(body.args, Expr(:using, Expr(:., :., :., ts_mod)))
             # ts_mod is a gensym'd name so that setup modules don't clash
             # so we set a const alias inside our @testitem module to make things work
             push!(body.args, :(const $setup = $ts_mod))
         end
-        @debugv 1 "Setup done." name
+        @debugv 1 "Setup for test item $(repr(name)) done$(_on_worker())."
         # add our @testitem quoted code to module body expr
         append!(body.args, ti.code.args)
         mod_expr = :(module $(gensym(name)) end)
         # replace the module body with our built up expr
         mod_expr.args[3] = body
-        with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
+        _capture_logs(ti) do
+            with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
+        end
     catch err
         err isa InterruptException && rethrow()
         # Handle exceptions thrown outside a `@test` in the body of the @testitem:
@@ -416,6 +441,7 @@ function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, Rem
             (Test.Base).current_exceptions(),
             LineNumberNode(ti.line, ti.file)))
     finally
+        close(timer)
         ts1 = Test.pop_testset()
         @assert ts1 === ts
         try
@@ -424,10 +450,10 @@ function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, Rem
             e isa TestSetException || rethrow()
         end
         if results !== nothing
-            put!(results, (ti.file, convert_results_to_be_transferrable(ts)))
+            put!(results, (ti, convert_results_to_be_transferrable(ts)))
         end
     end
-    @debugv 1 "Test item done." name
+    @debugv 1 "Test item $(repr(name)) done$(_on_worker())."
     return ts
 end
 

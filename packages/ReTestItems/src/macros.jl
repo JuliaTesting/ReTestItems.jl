@@ -73,6 +73,8 @@ struct TestItem
     line::Int
     code::Any
     testsetups::Vector{TestSetup} # populated by runtests coordinator
+    logstore::IOBuffer
+    workerid::Ref{Int} # populated when the test item is scheduled
 end
 
 """
@@ -172,7 +174,7 @@ macro testitem(nm, exs...)
     q = QuoteNode(exs[end])
     esc(quote
         $store_test_item_setup(
-            $TestItem($nm, $tags, $default_imports, $setup, $(String(__source__.file)), $(__source__.line), $q, $TestSetup[])
+            $TestItem($nm, $tags, $default_imports, $setup, $(String(__source__.file)), $(__source__.line), $q, $TestSetup[], IOBuffer(), Ref{Int}())
         )
     end)
 end
