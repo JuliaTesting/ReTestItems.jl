@@ -71,6 +71,7 @@ struct TestItem
     setups::Vector{Symbol}
     file::String
     line::Int
+    project_root::String
     code::Any
     testsetups::Vector{TestSetup} # populated by runtests coordinator
     logstore::IOBuffer
@@ -172,9 +173,11 @@ macro testitem(nm, exs...)
         error("expected `@testitem` to have a body")
     end
     q = QuoteNode(exs[end])
+    tls = task_local_storage()
+    proj = haskey(tls, :__RE_TEST_PROJECT__) ? tls[:__RE_TEST_PROJECT__] : "."
     esc(quote
         $store_test_item_setup(
-            $TestItem($nm, $tags, $default_imports, $setup, $(String(__source__.file)), $(__source__.line), $q, $TestSetup[], IOBuffer(), Ref{Int}())
+            $TestItem($nm, $tags, $default_imports, $setup, $(String(__source__.file)), $(__source__.line), $proj, $q, $TestSetup[], IOBuffer(), Ref{Int}())
         )
     end)
 end

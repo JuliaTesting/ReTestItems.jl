@@ -253,7 +253,9 @@ function include_testfiles!(incoming::FilteredChannel, projectfile, paths)
             @spawn try
                 task_local_storage(:__RE_TEST_RUNNING__, true) do
                     task_local_storage(:__RE_TEST_INCOMING_CHANNEL__, $incoming) do
-                        Base.include(Main, $filepath)
+                        task_local_storage(:__RE_TEST_PROJECT__, $(dirname(projectfile))) do
+                            Base.include(Main, $filepath)
+                        end
                     end
                 end
             catch e

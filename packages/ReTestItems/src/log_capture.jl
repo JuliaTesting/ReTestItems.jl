@@ -41,6 +41,7 @@ end
 _not_compiling() = ccall(:jl_generating_output, Cint, ()) == 0
 _on_worker() = nprocs() == 1 ? "" : " on worker $(myid())"
 _on_worker(ti::TestItem) = nprocs() == 1 ? "" : " on worker $(ti.workerid[])"
+_file_info(ti::TestItem) = string(relpath(ti.file, ti.project_root), ":", ti.line)
 
 """
     print_errors_and_captured_logs(ti::TestItem, ts::DefaultTestSet; verbose=false)
@@ -73,7 +74,7 @@ function _print_captured_logs(io, ti::TestItem)
     if ti.logstore.size > 0
         printstyled(io, "Captured logs"; bold=true, color=Base.info_color())
         print(io, " for test item $(repr(ti.name)) at ")
-        printstyled(io, "$(ti.file):$(ti.line)"; bold=true, color=:default)
+        printstyled(io, _file_info(ti); bold=true, color=:default)
         println(io, _on_worker(ti))
         # Not consuming the buffer with take! to make testing log capture easier
         write(io, ti.logstore.data)
@@ -100,7 +101,7 @@ function log_stalled(ti::TestItem)
     report_iob = IOContext(IOBuffer(), :color=>Base.get_have_color())
     printstyled(report_iob, "STALLED"; bold=true)
     print(report_iob, " test item $(repr(ti.name)) at ")
-    printstyled(report_iob, "$(ti.file):$(ti.line)"; bold=true, color=:default)
+    printstyled(report_iob, _file_info(ti); bold=true, color=:default)
     println(report_iob, _on_worker(ti))
     # Let's also print any logs we might have collected for the stalled test item
     _print_captured_logs(report_iob, ti)
@@ -113,7 +114,7 @@ function log_running(ti::TestItem)
     report_iob = IOContext(IOBuffer(), :color=>Base.get_have_color())
     printstyled(report_iob, "RUNNING"; bold=true)
     print(report_iob, " test item $(repr(ti.name)) at ")
-    printstyled(report_iob, "$(ti.file):$(ti.line)"; bold=true, color=:default)
+    printstyled(report_iob, _file_info(ti); bold=true, color=:default)
     println(report_iob, _on_worker(ti))
     @loglock write(DEFAULT_STDOUT[], take!(report_iob.io))
 end
