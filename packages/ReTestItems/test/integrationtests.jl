@@ -214,3 +214,54 @@ end
     end
     @test n_tests(results) == 4
 end
+
+@testset "print report sorted" begin
+    # Test that the final summary has testitems by file, with files sorted alphabetically
+    using IOCapture
+    results = with_test_package("TestsInSrc.jl") do
+        runtests()
+    end
+    testset = only(results.results) # unwrap the TestsInSrc testset
+    c = IOCapture.capture() do
+        Test.print_test_results(testset)
+        ## Should look like (possibly with different Time values):
+        # Test Summary:               | Pass  Total  Time
+        # TestsInSrc                  |   11     11  0.0s
+        #   src/a_dir/a1_test.jl      |    1      1
+        #     a1                      |    1      1  0.0s
+        #   src/a_dir/a2_test.jl      |    2      2
+        #     a2                      |    2      2  0.0s
+        #       a2_testset            |    1      1  0.0s
+        #   src/a_dir/x_dir/x_test.jl |    1      1
+        #     x                       |    1      1  0.0s
+        #   src/b_dir/b_test.jl       |    1      1
+        #     b                       |    1      1  0.0s
+        #   src/bar_tests.jl          |    4      4
+        #     bar                     |    4      4  0.0s
+        #       bar values            |    2      2  0.0s
+        #   src/foo_test.jl           |    2      2
+        #     foo                     |    2      2  0.0s
+    end
+    # Test with `contains` rather than `match` so failure print an informative message.
+    @test contains(
+        c.output,
+        r"""
+        Test Summary:               \| Pass  Total  Time
+        TestsInSrc                  \|   11     11  \s*\d*.\ds
+          src/a_dir/a1_test.jl      \|    1      1  \s*
+            a1                      \|    1      1  \s*\d*.\ds
+          src/a_dir/a2_test.jl      \|    2      2  \s*
+            a2                      \|    2      2  \s*\d*.\ds
+              a2_testset            \|    1      1  \s*\d*.\ds
+          src/a_dir/x_dir/x_test.jl \|    1      1  \s*
+            x                       \|    1      1  \s*\d*.\ds
+          src/b_dir/b_test.jl       \|    1      1  \s*
+            b                       \|    1      1  \s*\d*.\ds
+          src/bar_tests.jl          \|    4      4  \s*
+            bar                     \|    4      4  \s*\d*.\ds
+              bar values            \|    2      2  \s*\d*.\ds
+          src/foo_test.jl           \|    2      2  \s*
+            foo                     \|    2      2  \s*\d*.\ds
+        """
+    )
+end

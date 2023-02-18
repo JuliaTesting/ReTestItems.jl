@@ -129,7 +129,8 @@ function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose
                 print_errors_and_captured_logs(ti, ts, verbose=verbose>0)
                 Test.record(file_ts, ts)
             end
-            for file_ts in values(file_testsets)
+            # We want the final summary to print alphabetically by file name.
+            for file_ts in sort(collect(values(file_testsets)); by=(ts)->(ts.description))
                 Test.record(parent_ts, file_ts)
             end
         end
