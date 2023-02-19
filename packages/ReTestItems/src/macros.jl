@@ -152,15 +152,19 @@ macro testitem(nm, exs...)
     tags = Symbol[]
     setup = Any[]
     if length(exs) > 1
+        kw_seen = Set{Symbol}()
         for ex in exs[1:end-1]
             ex.head == :(=) || error("`@testitem` options must be passed as keyword arguments")
-            if ex.args[1] == :tags
+            kw = ex.args[1]
+            kw in kw_seen && error("`@testitem` has duplicate keyword `$kw`")
+            push!(kw_seen, kw)
+            if kw == :tags
                 tags = ex.args[2]
                 @assert tags isa Expr "`tags` keyword must be passed a collection of `Symbol`s"
-            elseif ex.args[1] == :default_imports
+            elseif kw == :default_imports
                 default_imports = ex.args[2]
                 @assert default_imports isa Bool "`default_imports` keyword must be passed a `Bool`"
-            elseif ex.args[1] == :setup
+            elseif kw == :setup
                 setup = ex.args[2]
                 @assert setup isa Expr "`setup` keyword must be passed a collection of `@testsetup` names"
                 setup = map(Symbol, setup.args)

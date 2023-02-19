@@ -84,3 +84,13 @@ end
     ts = ReTestItems.runtestitem(ti6; finish_test=false)
     @test ts.results[1] isa Test.Error
 end
+
+@testset "testitem with duplicate keywords" begin
+    # can only check for text of the error message in Julia v1.8+
+    expected = VERSION < v"1.8" ? Exception : "duplicate keyword"
+    @test_throws expected (
+        @eval @testitem "Bad" tags=[:tag1] tags=[:tags2] begin
+            @test true
+        end
+    )
+end
