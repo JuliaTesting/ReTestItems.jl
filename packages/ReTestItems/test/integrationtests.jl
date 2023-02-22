@@ -1,11 +1,11 @@
 using ReTestItems, Pkg, Test
 
+const _TEST_DIR = joinpath(pkgdir(ReTestItems), "test")
+const TEST_PKG_DIR = joinpath(_TEST_DIR, "packages")
+
 # Note "DontPass.jl" is handled specifically below, as it's the package which doesn't have
 # passing tests. Other packages should pass tests and be added here:
 const TEST_PKGS = ("NoDeps.jl", "TestsInSrc.jl")
-
-const _TEST_DIR = joinpath(pkgdir(ReTestItems), "test")
-const TEST_PKG_DIR = joinpath(_TEST_DIR, "packages")
 
 include(joinpath(_TEST_DIR, "integration_test_tools.jl"))
 

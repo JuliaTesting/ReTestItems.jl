@@ -229,42 +229,47 @@ end
 istestfile(filepath) = endswith(filepath, "_test.jl") || endswith(filepath, "_tests.jl")
 
 
-# walkdir accepting iterable of paths and which works on files (not just directories)
-walkdir(paths::AbstractString...) = Iterators.flatten(Iterators.map(_walkdir, paths))
-_walkdir(path::AbstractString) = isfile(path) ? _walkfile(path) : Base.walkdir(path)
+# walkdir that accepts both files and directories
+walkdir(path::AbstractString) = isfile(path) ? _walkfile(path) : Base.walkdir(path)
 _walkfile(path::AbstractString) = [(dirname(path), String[], [basename(path)])]
 
 # for each directory, kick off a recursive test-finding task
 function include_testfiles!(incoming::FilteredChannel, projectfile, paths)
     subproject_root = nothing  # don't recurse into directories with their own Project.toml.
-    @sync for (root, _, files) in ReTestItems.walkdir(paths...)
-        if subproject_root !== nothing && startswith(root, subproject_root)
-            @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
-            continue
-        elseif _project_file(root) !== nothing && abspath(_project_file(root)) != projectfile
-            subproject_root = root
-            continue
-        end
-        for file in files
-            # channel should only be closed if there was an error
-            isopen(incoming) || return nothing
-            filepath = joinpath(root, file)
-            istestfile(filepath) || continue
-            @debugv 1 "Including test items from file `$filepath`"
-            @spawn try
-                task_local_storage(:__RE_TEST_RUNNING__, true) do
-                    task_local_storage(:__RE_TEST_INCOMING_CHANNEL__, $incoming) do
-                        task_local_storage(:__RE_TEST_PROJECT__, $(dirname(projectfile))) do
-                            Base.include(Main, $filepath)
+    project_dirname = dirname(projectfile)
+    @sync for path in paths
+        has_tests = false
+        for (root, _, files) in ReTestItems.walkdir(path)
+            if subproject_root !== nothing && startswith(root, subproject_root)
+                @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
+                continue
+            elseif _project_file(root) !== nothing && abspath(_project_file(root)) != projectfile
+                subproject_root = root
+                continue
+            end
+            for file in files
+                # channel should only be closed if there was an error
+                isopen(incoming) || return nothing
+                filepath = joinpath(root, file)
+                istestfile(filepath) || continue
+                has_tests = true
+                @debugv 1 "Including test items from file `$filepath`"
+                @spawn try
+                    task_local_storage(:__RE_TEST_RUNNING__, true) do
+                        task_local_storage(:__RE_TEST_INCOMING_CHANNEL__, $incoming) do
+                            task_local_storage(:__RE_TEST_PROJECT__, $(project_dirname)) do
+                                Base.include(Main, $filepath)
+                            end
                         end
                     end
+                catch e
+                    @error "Error including test items from file `$filepath`" exception=(e, catch_backtrace())
+                    # use the exception to close our TestItem channel so it gets propagated
+                    close($incoming, e)
                 end
-            catch e
-                @error "Error including test items from file `$filepath`" exception=(e, catch_backtrace())
-                # use the exception to close our TestItem channel so it gets propagated
-                close($incoming, e)
             end
         end
+        has_tests || @warn "No test file found at path $(repr(path))."
     end
     return nothing
 end
