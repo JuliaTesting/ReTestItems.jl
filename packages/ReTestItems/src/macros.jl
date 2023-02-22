@@ -12,6 +12,7 @@ struct TestSetup
     name::Symbol
     code::Any
     file::String
+    line::Int
 end
 
 """
@@ -45,7 +46,7 @@ macro testsetup(mod)
     nm = QuoteNode(name)
     q = QuoteNode(code)
     esc(quote
-        $store_test_item_setup($TestSetup($nm, $q, $(String(__source__.file))))
+        $store_test_item_setup($TestSetup($nm, $q, $(String(__source__.file)), $(__source__.line)))
     end)
 end
 
