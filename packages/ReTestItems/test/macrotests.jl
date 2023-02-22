@@ -94,3 +94,48 @@ end
         end
     )
 end
+
+# Make these globals so that our testitem can access it via Main.was_finalized
+was_finalized = Threads.Atomic{Bool}(false)
+# Define the struct outside the testitem, since otherwise the Method Table prevents the
+# testitem module from being GC'd. See: https://github.com/JuliaLang/julia/issues/48711
+mutable struct MyTempType
+    v::Int
+    function MyTempType(v)
+        x = new(v)
+        Core.println("I made a new ", pointer_from_objref(x))
+        finalizer(x) do obj
+            Core.println("I am destroyed!")
+            Core.println(pointer_from_objref(obj))
+            Main.was_finalized[] = true
+        end
+        return x
+    end
+end
+
+@testset "testitems are GC'd correctly" begin
+    ti7 = @testitem "Foo7" begin
+        x = Main.MyTempType(1)
+        x = nothing
+        GC.gc()
+        GC.gc()
+        @test Main.was_finalized[] = true
+
+        # Now reset this, and keep a "global" object around
+        Main.was_finalized[] = false
+        x2 = Main.MyTempType(1)
+        @test x2.v == 1
+
+        # Then return. After running GC.gc() _outside_ the testitem, we should
+        # free the entire testitem, including the global objects its holding onto,
+        # including `x2`, which should set was_finalized[] back to true. :)
+    end
+    ts = ReTestItems.runtestitem(ti7; finish_test=true)
+    @test n_passed(ts) == 2
+
+    @test Main.was_finalized[] == false
+    ts = ti7 = nothing
+    GC.gc()
+    GC.gc()
+    @test Main.was_finalized[] == true
+end

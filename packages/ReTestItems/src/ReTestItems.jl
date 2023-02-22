@@ -422,7 +422,9 @@ function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, Rem
             ts_mod = ensure_setup!(ctx, setup, ti.testsetups)
             # eval using in our @testitem module
             @debugv 1 "Importing setup for test item $(repr(name)) $(setup)$(_on_worker())."
-            push!(body.args, Expr(:using, Expr(:., :., :., ts_mod)))
+            # We look up the testsetups from Main (since tests are eval'd in their own
+            # temporary anonymous module environment.)
+            push!(body.args, Expr(:using, Expr(:., :Main, ts_mod)))
             # ts_mod is a gensym'd name so that setup modules don't clash
             # so we set a const alias inside our @testitem module to make things work
             push!(body.args, :(const $setup = $ts_mod))
@@ -433,8 +435,12 @@ function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, Rem
         mod_expr = :(module $(gensym(name)) end)
         # replace the module body with our built up expr
         mod_expr.args[3] = body
+        # eval the testitem into a temporary module, so that all results can be GC'd
+        # once the test is done and sent over the wire. (However, note that anonymous modules
+        # aren't always GC'd right now: https://github.com/JuliaLang/julia/issues/48711)
+        environment = Module()
         _capture_logs(ti) do
-            with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
+            with_source_path(() -> Core.eval(environment, mod_expr), ti.file)
         end
     catch err
         err isa InterruptException && rethrow()
