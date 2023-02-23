@@ -8,6 +8,7 @@ using Pkg: Pkg
 using TestEnv
 using LoggingExtras
 using ContextVariablesX
+using DataStructures: DataStructures, dequeue!, PriorityQueue
 import Distributed
 
 export runtests, runtestitem
@@ -120,20 +121,7 @@ function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose
     try
         test_proj = Base.active_project()
         # Avoid `record` printing a summary; we want to print just one summary at the end.
-        parent_ts = DefaultTestSet(proj_name; verbose=true)
-        file_testsets = Dict{String, DefaultTestSet}()
-        result_task = @spawn begin
-            for (ti, ts) in $(chan(results))
-                filename = relpath(ti.file, $(dirname(projectfile)))
-                file_ts = get!(file_testsets, ti.file, DefaultTestSet(filename; verbose=true))
-                print_errors_and_captured_logs(ti, ts, verbose=verbose>0)
-                Test.record(file_ts, ts)
-            end
-            # We want the final summary to print alphabetically by file name.
-            for file_ts in sort(collect(values(file_testsets)); by=(ts)->(ts.description))
-                Test.record(parent_ts, file_ts)
-            end
-        end
+        result_task = @spawn process_results!($(chan(results)), $proj_name, $(dirname(projectfile)), $verbose)
         @debugv 1 "Starting task to process incoming test items/setups"
         errmon(@spawn process_incoming!($incoming, $(chan(testitems))))
         @debugv 1 "Scheduling tests on $(nprocs()) processes."
@@ -156,9 +144,9 @@ function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose
         # once all test items have been run, close the results channel
         close(results)
         # make sure to wait on result_task to finish finalizing testitem testsets
-        wait(result_task)
+        testset = fetch(result_task)
         Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
-        Test.finish(parent_ts)             # print summary of total passes/failures/errors
+        Test.finish(testset)               # print summary of total passes/failures/errors
     finally
         Test.TESTSET_PRINT_ENABLE[] = true
         # we wouldn't expect to need to wait on include_task
@@ -174,6 +162,70 @@ end
 is_invalid_state(ex::Exception) = false
 is_invalid_state(ex::InvalidStateException) = true
 is_invalid_state(ex::RemoteException) = ex.captured.ex isa InvalidStateException
+
+# Struct for hierarchical testset handling. Used for structuring the final table of results.
+# Stores directory and file level testsets ordered by their depth in the directory tree.
+struct TestSetTree
+    queue::PriorityQueue{String,Int}
+    testsets::Dict{String,DefaultTestSet}
+
+    function TestSetTree()
+        return new(
+            PriorityQueue{String,Int}(Base.Order.Reverse),
+            Dict{String,DefaultTestSet}()
+        )
+    end
+end
+
+_depth(path) = length(splitpath(path))
+
+function DataStructures.dequeue!(tree::TestSetTree)
+    name = dequeue!(tree.queue)
+    return pop!(tree.testsets, name)
+end
+
+Base.isempty(tree::TestSetTree) = isempty(tree.queue)
+
+function Base.get!(f, tree::TestSetTree, key::String)
+    if haskey(tree.testsets, key)
+        return tree.testsets[key]
+    else
+        return get!(tree, key, f())
+    end
+end
+
+function Base.get!(tree::TestSetTree, key::String, value::DefaultTestSet)
+    get!(tree.queue, key, _depth(key))
+    return get!(tree.testsets, key, value)
+end
+
+
+function process_results!(results::Channel, project_name::String, project_root::String, verbose)
+    project_ts = DefaultTestSet(project_name; verbose=true)
+    testsets = TestSetTree()
+    for (ti, ts) in results
+        print_errors_and_captured_logs(ti, ts, verbose=verbose>0)
+        filename = relpath(ti.file, project_root)
+        file_ts = get!(() -> DefaultTestSet(filename; verbose=true), testsets, filename)
+        Test.record(file_ts, ts)
+    end
+    while !isempty(testsets)
+        ts = dequeue!(testsets)
+        # We want the final summary to print the directory structure alphabetically.
+        # We know `ts.results` is a vector of `DefaultTestSet`s (not `Result`s).
+        sort!(ts.results, by=(ts)->(ts.description))
+        dir_name = dirname(ts.description)
+        if isempty(dir_name)
+            # We're at the root of the project, so record to the top-most testset.
+            Test.record(project_ts, ts)
+        else
+            dir_ts = get!(() -> DefaultTestSet(dir_name; verbose=true), testsets, dir_name)
+            Test.record(dir_ts, ts)
+        end
+    end
+    sort!(project_ts.results, by=(ts)->(ts.description))
+    return project_ts
+end
 
 function process_incoming!(incoming::Channel, testitems::Channel)
     setups = Dict{Symbol, TestSetup}()
@@ -411,7 +463,7 @@ function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, Rem
             push!(body.args, :(Base.@lock Base.require_lock using $(Symbol(ctx.projectname))))
         end
     end
-    ts = DefaultTestSet(name; verbose=true)
+    ts = DefaultTestSet(name; verbose=false)
     Test.push_testset(ts)
     timer = let ti=ti
         Timer(_->log_stalled(ti), STALLED_LIMIT_SECONDS)

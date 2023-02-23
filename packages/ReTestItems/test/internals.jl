@@ -108,3 +108,33 @@ end
     @assert Base.n_avail(c.ch) > 0
     empty!(c.ch.data)
 end
+
+@testset "TestSetTree" begin
+    using ReTestItems: TestSetTree
+    using DataStructures: dequeue!
+    using Test: DefaultTestSet
+    files_to_depth = Dict(
+        "dir1/file1.jl" => 2,
+        "dir1/dir2/file2.jl" => 3,
+        "dir1/dir2/file3.jl" => 3,
+        "dir1/dir2/dir3/file4.jl" => 4,
+        "dir1/dir2b/file5.jl" => 3,
+    )
+    files_to_testsets = Dict(file => DefaultTestSet(file) for file in keys(files_to_depth))
+    tree = TestSetTree()
+    for (file, ts) in files_to_testsets
+        get!(tree, file, ts)
+    end
+    @test tree.queue == files_to_depth
+    @test tree.testsets == files_to_testsets
+    deepest_file = "dir1/dir2/dir3/file4.jl"
+    @test haskey(tree.testsets, deepest_file)
+    @test dequeue!(tree) == files_to_testsets[deepest_file]
+    @test !haskey(tree.testsets, deepest_file)
+    # also test `get!(func, ...) method
+    get!(tree, deepest_file) do
+        files_to_testsets[deepest_file]
+    end
+    @test haskey(tree.testsets, deepest_file)
+    @test dequeue!(tree) == files_to_testsets[deepest_file]
+end
