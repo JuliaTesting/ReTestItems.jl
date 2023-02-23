@@ -228,7 +228,7 @@ function redirect_logs_to_iobuffer(f, io)
             temp_stdout = pipe.in
             temp_stderr = pipe.in
         end
-        errmon(@async Base.write(io, pipe))
+        errmon(@spawn Base.write(io, pipe))
 
         # approach adapted from https://github.com/JuliaLang/IJulia.jl/pull/667/files
         logstate = Base.CoreLogging._global_logstate
