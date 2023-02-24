@@ -46,6 +46,11 @@ Only files ending in `_test.jl` or `_tests.jl` will be searched for test items.
 
 If no arguments are passed, the current project is searched for `@testitem`s.
 If directory or file paths are passed, only those directories and files are searched.
+
+# Keywords
+- `verbose::Bool`: If `true`, print the logs from all `@testitem`s to `stdout`.
+  Otherwise, logs are only printed for `@testitem`s with errors or failures.
+  Defaults to `true` when Julia is running in an interactive session, otherwise `false`.
 """
 function runtests end
 
@@ -64,17 +69,18 @@ function runtests(shouldrun, pkg::Module; kw...)
     return runtests(shouldrun, src, test; kw...)
 end
 
-function runtests(shouldrun, paths::AbstractString...; verbose=false)
-    if verbose > 0
-        LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=verbose) do
-            _runtests(shouldrun, paths, verbose)
+function runtests(shouldrun, paths::AbstractString...; verbose::Bool=isinteractive(), debug=0)
+    debuglvl = Int(debug)
+    if debuglvl > 0
+        LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
+            _runtests(shouldrun, paths, verbose, debuglvl)
         end
     else
-        return _runtests(shouldrun, paths, verbose)
+        return _runtests(shouldrun, paths, verbose, debuglvl)
     end
 end
 
-function _runtests(shouldrun, paths, verbose)
+function _runtests(shouldrun, paths, verbose::Bool, debug::Int)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -92,18 +98,18 @@ function _runtests(shouldrun, paths, verbose)
     if is_running_test_runtests_jl(proj_file)
         # Assume this is `Pkg.test`, so test env already active.
         @debugv 2 "Running in current environment `$(Base.active_project())`"
-        return _runtests_in_current_env(shouldrun, paths, proj_file, verbose)
+        return _runtests_in_current_env(shouldrun, paths, proj_file, verbose, debug)
     else
         @debugv 1 "Activating test environment for `$proj_file`"
         return Pkg.activate(proj_file) do
             TestEnv.activate() do
-                _runtests_in_current_env(shouldrun, paths, proj_file, verbose)
+                _runtests_in_current_env(shouldrun, paths, proj_file, verbose, debug)
             end
         end
     end
 end
 
-function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose)
+function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose::Bool, debug::Int)
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
     incoming = Channel{Union{TestItem, TestSetup}}(Inf)
     testitems = RemoteChannel(() -> Channel{TestItem}(Inf))
@@ -134,11 +140,14 @@ function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose
             ctx = TestContext(proj_name)
             # we use a single TestSetupModules for all tasks
             ctx.setups_evaled = TestSetupModules()
-            [@spawn schedule_testitems!($ctx, chan(testitems), chan(results)) for _ in 1:ntasks]
+            [@spawn schedule_testitems!($ctx, chan(testitems), chan(results), $verbose) for _ in 1:ntasks]
         else
             # spawn a task that broadcasts from coordinator-local setups channel to worker remote setup channels
             # We don't schedule any testitems on worker 1 as it handles file includes and result collection
-            [@spawnat(p, schedule_remote_testitems!(test_proj, proj_name, testitems, results, verbose)) for p in workers()]
+            [
+                @spawnat(p, schedule_remote_testitems!(test_proj, proj_name, testitems, results, verbose, debug))
+                for p in workers()
+            ]
         end
         foreach(wait, schedule_tasks)
         # once all test items have been run, close the results channel
@@ -200,11 +209,11 @@ function Base.get!(tree::TestSetTree, key::String, value::DefaultTestSet)
 end
 
 
-function process_results!(results::Channel, project_name::String, project_root::String, verbose)
+function process_results!(results::Channel, project_name::String, project_root::String, verbose::Bool)
     project_ts = DefaultTestSet(project_name; verbose=true)
     testsets = TestSetTree()
     for (ti, ts) in results
-        print_errors_and_captured_logs(ti, ts, verbose=verbose>0)
+        print_errors_and_captured_logs(ti, ts; verbose=verbose)
         filename = relpath(ti.file, project_root)
         file_ts = get!(() -> DefaultTestSet(filename; verbose=true), testsets, filename)
         Test.record(file_ts, ts)
@@ -373,7 +382,14 @@ function with_source_path(f, path)
     end
 end
 
-function schedule_remote_testitems!(proj::String, proj_name::String, testitems::RemoteChannel, results::RemoteChannel, verbose)
+function schedule_remote_testitems!(
+    proj::String,
+    proj_name::String,
+    testitems::RemoteChannel,
+    results::RemoteChannel,
+    verbose::Bool,
+    debug::Int,
+)
     # activate the project for which we're running tests on the worker process
     Pkg.activate(proj) do
         # This is where we disable printing for the distributed executor case (called on each worker).
@@ -381,23 +397,23 @@ function schedule_remote_testitems!(proj::String, proj_name::String, testitems::
         # on remote workers, we need a per-worker TestSetupModules
         ctx = TestContext(proj_name)
         ctx.setups_evaled = TestSetupModules()
-        if verbose > 0
-            LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=verbose) do
-                schedule_testitems!(ctx, testitems, results)
+        if debug > 0
+            LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debug) do
+                schedule_testitems!(ctx, testitems, results, verbose)
             end
         else
-            schedule_testitems!(ctx, testitems, results)
+            schedule_testitems!(ctx, testitems, results, verbose)
         end
     end
 end
 
-function schedule_testitems!(ctx::TestContext, testitems, results)
+function schedule_testitems!(ctx::TestContext, testitems, results, verbose::Bool)
     while true
         try
             ti = take!(testitems)
             ti.workerid[] = myid()
             @debugv 2 "Scheduling test item$(_on_worker()): $(repr(ti.name)) from $(ti.file):$(ti.line)"
-            runtestitem(ti, ctx, results)
+            runtestitem(ti, ctx, results; verbose=verbose)
             !isopen(testitems) && !isready(testitems) && break
         catch ex
             if !isopen(testitems) && is_invalid_state(ex)
@@ -443,15 +459,18 @@ end
 const GLOBAL_TEST_CONTEXT_FOR_TESTING = TestContext("ReTestItems")
 
 # assumes any required setups were expanded outside of a runtests context
-function runtestitem(ti::TestItem, setups::Vector{TestSetup}=TestSetup[]; kw...)
+function runtestitem(ti::TestItem, setups::Vector{TestSetup}=TestSetup[], results=nothing; kw...)
     # make a fresh TestSetupModules for each testitem run
     GLOBAL_TEST_CONTEXT_FOR_TESTING.setups_evaled = TestSetupModules()
     empty!(ti.testsetups)
     append!(ti.testsetups, setups)
-    runtestitem(ti, GLOBAL_TEST_CONTEXT_FOR_TESTING, nothing; kw...)
+    runtestitem(ti, GLOBAL_TEST_CONTEXT_FOR_TESTING, results; kw...)
 end
 
-function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, RemoteChannel, Nothing}; finish_test::Bool=true)
+function runtestitem(
+    ti::TestItem, ctx::TestContext, results::Union{Channel, RemoteChannel, Nothing};
+    verbose::Bool=false, finish_test::Bool=true
+)
     name = ti.name
     log_running(ti)
     # start with empty block expr and build up our @testitem module body
@@ -463,7 +482,7 @@ function runtestitem(ti::TestItem, ctx::TestContext, results::Union{Channel, Rem
             push!(body.args, :(Base.@lock Base.require_lock using $(Symbol(ctx.projectname))))
         end
     end
-    ts = DefaultTestSet(name; verbose=false)
+    ts = DefaultTestSet(name; verbose=verbose)
     Test.push_testset(ts)
     timer = let ti=ti
         Timer(_->log_stalled(ti), STALLED_LIMIT_SECONDS)

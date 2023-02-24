@@ -1,6 +1,6 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.10.0-DEV"
+julia_version = "1.9.0-beta4"
 manifest_format = "2.0"
 project_hash = "94b07ce18ac1025b2606fb89a0790c8a17a20e02"
 
@@ -47,6 +47,12 @@ version = "0.1.3"
 path = "monorepo_packages/D"
 uuid = "bf733257-898a-45a0-b2f2-c1c188bdd870"
 version = "0.0.0"
+
+[[deps.DataStructures]]
+deps = ["Compat", "InteractiveUtils", "OrderedCollections"]
+git-tree-sha1 = "d1fff3a548102f48987a52a2e0d114fa97d730f0"
+uuid = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
+version = "0.18.13"
 
 [[deps.Dates]]
 deps = ["Printf"]
@@ -125,10 +131,15 @@ deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
 uuid = "4536629a-c528-5b80-bd46-f80d51c5b363"
 version = "0.3.21+0"
 
+[[deps.OrderedCollections]]
+git-tree-sha1 = "85f8e6578bf1f9ee0d11e7bb1b1456435479d47c"
+uuid = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
+version = "1.4.1"
+
 [[deps.Pkg]]
 deps = ["Artifacts", "Dates", "Downloads", "FileWatching", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "REPL", "Random", "SHA", "Serialization", "TOML", "Tar", "UUIDs", "p7zip_jll"]
 uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
-version = "1.10.0"
+version = "1.9.0"
 
 [[deps.Printf]]
 deps = ["Unicode"]
@@ -143,7 +154,7 @@ deps = ["SHA", "Serialization"]
 uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
 [[deps.ReTestItems]]
-deps = ["ContextVariablesX", "Distributed", "LoggingExtras", "Pkg", "Test", "TestEnv"]
+deps = ["ContextVariablesX", "DataStructures", "Distributed", "LoggingExtras", "Pkg", "Test", "TestEnv"]
 path = "../../.."
 uuid = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"
 version = "0.1.0"
@@ -174,9 +185,9 @@ uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [[deps.TestEnv]]
 deps = ["Pkg"]
-git-tree-sha1 = "e988c5e77685bf75f9b304e6be448d7cffb953f0"
+git-tree-sha1 = "b5a483bcc8c9f0df569101df166601e5e699f346"
 uuid = "1e6cf692-eddd-4d53-88a5-2d735e33781b"
-version = "1.10.1"
+version = "1.9.3"
 
 [[deps.UUIDs]]
 deps = ["Random", "SHA"]

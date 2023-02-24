@@ -273,3 +273,41 @@ end
         """
     )
 end
+
+@testset "`verbose` and `debug` keywords" begin
+    using IOCapture
+    orig = ReTestItems.DEFAULT_STDOUT[]
+    for verbose in (true, false), debug in (true, false)
+        try
+            c = IOCapture.capture() do
+                with_test_package("NoDeps.jl") do
+                    runtests(; verbose=verbose, debug=debug)
+                end
+            end
+            # Test we have the expected log messages
+            if verbose
+                @test contains(c.output, "tests done")
+            else
+                @test !contains(c.output, "tests done")
+            end
+            if debug
+                @test contains(c.output, "Debug:")
+            else
+                @test !contains(c.output, "Debug:")
+            end
+            # Test we have the expected summary table
+            results = c.value
+            testset = only(results.results) # unwrap the NoDeps testset
+            c2 = IOCapture.capture() do
+                Test.print_test_results(testset)
+            end
+            if verbose
+                @test contains(c2.output, "inner-testset")
+            else
+                @test !contains(c2.output, "inner-testset")
+            end
+        finally
+            ReTestItems.DEFAULT_STDOUT[] = orig
+        end
+    end
+end
