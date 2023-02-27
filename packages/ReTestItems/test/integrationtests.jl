@@ -311,3 +311,136 @@ end
         end
     end
 end
+
+@testset "filter `runtests(x; tags)`" begin
+    file = joinpath(_TEST_DIR, "_filter_tests.jl")
+    # These testitems are expected in the file
+    # @testitem "Test item no tags"
+    # @testitem "Test item tag1"      tags=[:tag1]
+    # @testitem "Test item tag1 tag2" tags=[:tag1, :tag2]
+    results = encased_testset(()->runtests(file))
+    @assert n_tests(results) == 3
+
+
+    results = encased_testset(()->runtests(file, tags=:tag1))
+    @test n_tests(results) == 2
+
+    results = encased_testset(()->runtests(file, tags=[:tag1]))
+    @test n_tests(results) == 2
+
+    results = encased_testset(()->runtests(file, tags=[:tag2]))
+    @test n_tests(results) == 1
+
+    results = encased_testset(()->runtests(file, tags=[:tag2, :tag1]))
+    @test n_tests(results) == 1
+
+    results = encased_testset(()->runtests(file, tags=@view [:tag2, :tag1][1:2]))
+    @test n_tests(results) == 1
+
+    # There is no test with tag3
+    results = encased_testset(()->runtests(file, tags=[:tag1, :tag3]))
+    @test n_tests(results) == 0
+
+    results = encased_testset(()->runtests(file, tags=[:tag3]))
+    @test n_tests(results) == 0
+
+    results = encased_testset(()->runtests(file, tags=:tag3))
+    @test n_tests(results) == 0
+end
+
+@testset "filter `runtests(x; name)`" begin
+    file = joinpath(_TEST_DIR, "_filter_tests.jl")
+    # These testitems are expected in the file
+    # @testitem "Test item no tags"
+    # @testitem "Test item tag1"      tags=[:tag1]
+    # @testitem "Test item tag1 tag2" tags=[:tag1, :tag2]
+    results = encased_testset(()->runtests(file))
+    @assert n_tests(results) == 3
+
+    results = encased_testset(()->runtests(file, name=""))
+    @test n_tests(results) == 0
+
+    results = encased_testset(()->runtests(file, name="Test item no tags"))
+    @test n_tests(results) == 1
+
+    results = encased_testset(()->runtests(file, name=@view "Test item no tags"[begin:end]))
+    @test n_tests(results) == 1
+
+    results = encased_testset(()->runtests(file, name=r"No such name in that file"))
+    @test n_tests(results) == 0
+
+    results = encased_testset(()->runtests(file, name=r"Test item"))
+    @test n_tests(results) == 3
+
+    results = encased_testset(()->runtests(file, name=r"tag[^s]"))
+    @test n_tests(results) == 2
+
+    results = encased_testset(()->runtests(file, name=r"tag2|tags"))
+    @test n_tests(results) == 2
+end
+
+@testset "filter `runtests(x; name, tags)`" begin
+    file = joinpath(_TEST_DIR, "_filter_tests.jl")
+    # These testitems are expected in the file
+    # @testitem "Test item no tags"
+    # @testitem "Test item tag1"      tags=[:tag1]
+    # @testitem "Test item tag1 tag2" tags=[:tag1, :tag2]
+    results = encased_testset(()->runtests(file))
+    @assert n_tests(results) == 3
+
+
+    results = encased_testset(()->runtests(file, name="", tags=Symbol[]))
+    @test n_tests(results) == 0
+
+    results = encased_testset(()->runtests(file, name=r".", tags=:tag3))
+    @test n_tests(results) == 0
+
+    results = encased_testset(()->runtests(file, name="", tags=:tag3))
+    @test n_tests(results) == 0
+
+    results = encased_testset(()->runtests(file, name=r".", tags=Symbol[]))
+    @test n_tests(results) == 3
+
+    results = encased_testset(()->runtests(file, name=r"tag1", tags=:tag1))
+    @test n_tests(results) == 2
+
+    results = encased_testset(()->runtests(file, name=r"tag2", tags=[:tag1]))
+    @test n_tests(results) == 1
+
+    results = encased_testset(()->runtests(file, name=r"tag1", tags=[:tag2, :tag2]))
+    @test n_tests(results) == 1
+end
+
+@testset "filter `runtests(func, x; name, tags)`" begin
+    file = joinpath(_TEST_DIR, "_filter_tests.jl")
+    # These testitems are expected in the file
+    # @testitem "Test item no tags"
+    # @testitem "Test item tag1"      tags=[:tag1]
+    # @testitem "Test item tag1 tag2" tags=[:tag1, :tag2]
+    results = encased_testset(()->runtests(file))
+    @assert n_tests(results) == 3
+
+    results = encased_testset(()->runtests(ti-> false, file, name="", tags=:tag3))
+    @test n_tests(results) == 0
+
+    results = encased_testset(()->runtests(ti-> false, file, name="", tags=Symbol[]))
+    @test n_tests(results) == 0
+
+    results = encased_testset(()->runtests(ti-> false, file, name=r".", tags=:tag3))
+    @test n_tests(results) == 0
+
+    results = encased_testset(()->runtests(ti-> true, file, name="", tags=:tag3))
+    @test n_tests(results) == 0
+
+    results = encased_testset(()->runtests(ti-> true, file, name="", tags=Symbol[]))
+    @test n_tests(results) == 0
+
+    results = encased_testset(()->runtests(ti-> true, file, name=r".", tags=:tag3))
+    @test n_tests(results) == 0
+
+    results = encased_testset(()->runtests(ti-> false, file, name=r".", tags=Symbol[]))
+    @test n_tests(results) == 0
+
+    results = encased_testset(()->runtests(ti-> true, file, name=r".", tags=Symbol[]))
+    @test n_tests(results) == 3
+end

@@ -51,8 +51,31 @@ If directory or file paths are passed, only those directories and files are sear
 - `verbose::Bool`: If `true`, print the logs from all `@testitem`s to `stdout`.
   Otherwise, logs are only printed for `@testitem`s with errors or failures.
   Defaults to `true` when Julia is running in an interactive session, otherwise `false`.
+- `name::Union{Regex,AbstractString,Nothing}=nothing`: Used to filter `@testitem`s by their name.
+    `AbstractString` input will only keep the `@testitem` that exactly matches `name`,
+    `Regex` can be used to partially match mutilple `@testitem`s. By default, no filtering is
+    applied.
+- `tags::Union{Symbol,AbstractVector{Symbol},Nothing}=nothing`: Used to filter `@testitem`s by their tags.
+    A single tag can be used to match any `@testitem` that contains it, when multiple tags
+    are provided, only `@testitem`s that contain _all_ of the tags will be run.
+    By default, no filtering is applied.
+
+`name` and `tags` filters are applied together and only those `@testitem`s that pass both filters
+will be run.
 """
 function runtests end
+
+# We assume copy-pasting test name would be the most common use-case
+_shouldrun(name::AbstractString, ti_name) = name == ti_name
+# Regex used for partial matches on test item name (commonly used with XUnit.jl)
+_shouldrun(pattern::Regex, ti_name) = contains(ti_name, pattern)
+_shouldrun(tags::AbstractVector{Symbol}, ti_tags) = issubset(tags, ti_tags)
+# All tags must be present in the test item, aka we use AND chaining for tags.
+# OR chaining would make it hard to run more specific subsets of tests + one can run
+# mutliple independents `runtests` with AND chaining to get most of the benefits of OR chaining
+# (with the caveat that overlaps would be run multiple times)
+_shouldrun(tag::Symbol, ti_tags) = tag in ti_tags
+_shouldrun(::Nothing, x) = true
 
 default_shouldrun(ti::TestItem) = true
 
@@ -69,14 +92,23 @@ function runtests(shouldrun, pkg::Module; kw...)
     return runtests(shouldrun, src, test; kw...)
 end
 
-function runtests(shouldrun, paths::AbstractString...; verbose::Bool=isinteractive(), debug=0)
+function runtests(
+    shouldrun,
+    paths::AbstractString...;
+    verbose=isinteractive(),
+    debug=0,
+    name::Union{Regex,AbstractString,Nothing}=nothing,
+    tags::Union{Symbol,AbstractVector{Symbol},Nothing}=nothing,
+)
+    shouldrun_combined = ti -> shouldrun(ti) && _shouldrun(name, ti.name) && _shouldrun(tags, ti.tags)
+
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun, paths, verbose, debuglvl)
+            _runtests(shouldrun_combined, paths, verbose, debuglvl)
         end
     else
-        return _runtests(shouldrun, paths, verbose, debuglvl)
+        return _runtests(shouldrun_combined, paths, verbose, debuglvl)
     end
 end
 
