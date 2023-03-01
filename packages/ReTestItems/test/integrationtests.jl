@@ -444,3 +444,13 @@ end
     results = encased_testset(()->runtests(ti-> true, file, name=r".", tags=Symbol[]))
     @test n_tests(results) == 3
 end
+
+@testset "Warn on empty test set -- integration test" begin
+    @test_logs (:warn, """
+    Test item "Warn on empty test set -- integration test" at test/_empty_testsets_tests.jl:4 contains test sets without tests:
+    "Empty testset"
+    "Inner empty testset"
+    """) match_mode=:any begin
+        ReTestItems.runtests(joinpath(_TEST_DIR, "_empty_testsets_tests.jl"))
+    end
+end

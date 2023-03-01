@@ -246,6 +246,7 @@ function process_results!(results::Channel, project_name::String, project_root::
     testsets = TestSetTree()
     for (ti, ts) in results
         print_errors_and_captured_logs(ti, ts; verbose=verbose)
+        report_empty_testsets(ti, ts)
         filename = relpath(ti.file, project_root)
         file_ts = get!(() -> DefaultTestSet(filename; verbose=true), testsets, filename)
         Test.record(file_ts, ts)

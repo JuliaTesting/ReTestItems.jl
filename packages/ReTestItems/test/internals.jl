@@ -138,3 +138,47 @@ end
     @test haskey(tree.testsets, deepest_file)
     @test dequeue!(tree) == files_to_testsets[deepest_file]
 end
+
+@testset "Warn on empty test set" begin
+    using ReTestItems: TestItem, report_empty_testsets
+    using Test: DefaultTestSet, Fail, Error
+    ti = TestItem("Dummy TestItem", [], false, [], "source/path", 42, ".", nothing, [], IOBuffer(), Ref{Int}())
+
+    ts = DefaultTestSet("Empty testset")
+    report_empty_testsets(ti, ts)
+    @test_logs (:warn, r"\"Empty testset\"") report_empty_testsets(ti, ts)
+
+    ts = DefaultTestSet("Testset containing an empty testset")
+    push!(ts.results, DefaultTestSet("Empty testset"))
+    # Only the inner testset is considered empty
+    @test_logs (:warn, """
+        Test item "Dummy TestItem" at source/path:42 contains test sets without tests:
+        "Empty testset"
+        """) begin
+        report_empty_testsets(ti, ts)
+    end
+
+    ts = DefaultTestSet("Testset containing empty testsets")
+    push!(ts.results, DefaultTestSet("Empty testset 1"))
+    push!(ts.results, DefaultTestSet("Empty testset 2"))
+    # Only the inner testsets are considered empty
+    @test_logs (:warn, """
+        Test item "Dummy TestItem" at source/path:42 contains test sets without tests:
+        "Empty testset 1"
+        "Empty testset 2"
+        """) begin
+        report_empty_testsets(ti, ts)
+    end
+
+    ts = DefaultTestSet("Testset containing a passing test")
+    ts.n_passed = 1
+    @test_nowarn report_empty_testsets(ti, ts)
+
+    ts = DefaultTestSet("Testset containing a failed test")
+    push!(ts.results, Fail(:test, "false", nothing, false, LineNumberNode(43)));
+    @test_nowarn report_empty_testsets(ti, ts)
+
+    ts = DefaultTestSet("Testset that errored")
+    push!(ts.results, Error(:test_nonbool, "\"False\"", nothing, nothing, LineNumberNode(43)));
+    @test_nowarn report_empty_testsets(ti, ts)
+end

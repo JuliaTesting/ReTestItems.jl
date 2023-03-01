@@ -39,6 +39,9 @@ end
  # specifically until `Base.init_stdio` has been called. This is why we store
  # the e.g. DEFAULT_STDOUT reference during __init__.
 _not_compiling() = ccall(:jl_generating_output, Cint, ()) == 0
+
+### Logging and reporting helpers ##########################################################
+
 _on_worker() = nprocs() == 1 ? "" : " on worker $(myid())"
 _on_worker(ti::TestItem) = nprocs() == 1 ? "" : " on worker $(ti.workerid[])"
 _file_info(ti::TestItem) = string(relpath(ti.file, ti.project_root), ":", ti.line)
@@ -117,6 +120,29 @@ function log_running(ti::TestItem)
     printstyled(report_iob, _file_info(ti); bold=true, color=:default)
     println(report_iob, _on_worker(ti))
     @loglock write(DEFAULT_STDOUT[], take!(report_iob.io))
+end
+
+function report_empty_testsets(ti::TestItem, ts::DefaultTestSet)
+    empty_testsets = String[]
+    _find_empty_testsets!(empty_testsets, ts)
+    if !isempty(empty_testsets)
+        @warn """
+            Test item $(repr(ti.name)) at $(_file_info(ti)) contains test sets without tests:
+            $(join(empty_testsets, '\n'))
+            """
+    end
+    return nothing
+end
+
+function _find_empty_testsets!(empty_testsets::Vector{String}, ts::DefaultTestSet)
+    if (isempty(ts.results) && ts.n_passed == 0)
+        push!(empty_testsets, repr(ts.description))
+        return nothing
+    end
+    for result in ts.results
+        isa(result, DefaultTestSet) && _find_empty_testsets!(empty_testsets, result)
+    end
+    return nothing
 end
 
 ### Log capture for multithreaded executor #################################################
