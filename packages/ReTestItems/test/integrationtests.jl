@@ -109,7 +109,7 @@ end
         # @show length(non_passes(results)), length(failures(results)), length(errors(results))
         # println("\n\n\n\n\n\n")
         @test length(failures(results)) == 4
-        @test length(errors(results)) == 7
+        @test length(errors(results)) == 9
     end
 end
 
@@ -453,4 +453,42 @@ end
     """) match_mode=:any begin
         ReTestItems.runtests(joinpath(_TEST_DIR, "_empty_testsets_tests.jl"))
     end
+end
+
+@testset "log capture for an errored TestSetup" begin
+    c = IOCapture.capture() do
+        results = with_test_package("DontPass.jl") do
+            runtests("test/error_in_setup_test.jl")
+        end
+    end
+    @test occursin("""
+    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+    SetupThatErrors msg
+    """,
+    c.output)
+
+    @test occursin("""
+    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+    SetupThatErrors msg
+    """,
+    c.output)
+
+    # Since the test setup never succeeds it will be evaluated mutliple times. Here we test
+    # that we don't accumulate logs from all previous failed attempts (which would get
+    # really spammy if the test setup is used by 100 test items).
+    good_test_has_two_logs = occursin("""
+        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+        SetupThatErrors msg
+        SetupThatErrors msg
+        """,
+        c.output
+    )
+    bad_test_has_two_logs = occursin("""
+        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+        SetupThatErrors msg
+        SetupThatErrors msg
+        """,
+        c.output
+    )
+    @test !good_test_has_two_logs && !bad_test_has_two_logs
 end

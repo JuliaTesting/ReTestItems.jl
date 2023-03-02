@@ -478,10 +478,16 @@ function ensure_setup!(ctx::TestContext, setup::Symbol, setups::Vector{TestSetup
             return setup
         end
         ts = setups[i]
+        # In case the setup fails to eval, we discard its logs -- the setup will be
+        # attempted to eval for each of the dependent test items and we'd for each
+        # failed test item, we'd print the cumulative logs from all the previous attempts.
+        truncate(ts.logstore, 0)
         mod_expr = :(module $(gensym(ts.name)) end)
         # replace the module expr body with our @testsetup code
         mod_expr.args[3] = ts.code
-        newmod = with_source_path(() -> Core.eval(Main, mod_expr), ts.file)
+        newmod = _capture_logs(ts; close_pipe=false) do
+            with_source_path(() -> Core.eval(Main, mod_expr), ts.file)
+        end
         # add the new module to our TestSetupModules
         mods.modules[setup] = newmod
         return nameof(newmod)
