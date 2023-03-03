@@ -136,6 +136,7 @@ end
 # Called from a Timer object if a tests takes longer than STALLED_LIMIT_SECONDS
 function log_stalled(ti::TestItem)
     report_iob = IOContext(IOBuffer(), :color=>Base.get_have_color())
+    print(report_iob, format(now(), "HH:MM:SS "))
     printstyled(report_iob, "STALLED"; bold=true)
     print(report_iob, " test item $(repr(ti.name)) at ")
     printstyled(report_iob, _file_info(ti); bold=true, color=:default)
@@ -149,6 +150,7 @@ end
 # Marks the start of each test item
 function log_running(ti::TestItem)
     report_iob = IOContext(IOBuffer(), :color=>Base.get_have_color())
+    print(report_iob, format(now(), "HH:MM:SS "))
     printstyled(report_iob, "RUNNING"; bold=true)
     print(report_iob, " test item $(repr(ti.name)) at ")
     printstyled(report_iob, _file_info(ti); bold=true, color=:default)

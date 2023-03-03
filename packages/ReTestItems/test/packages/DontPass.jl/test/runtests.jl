@@ -1,2 +1,2 @@
 using ReTestItems, DontPass
-runtests(DontPass; verbose=2)
+runtests(DontPass; verbose=true)

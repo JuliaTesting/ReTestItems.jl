@@ -1,6 +1,7 @@
 module ReTestItems
 
 using Base: @lock
+using Dates: format, now
 using Test: Test, DefaultTestSet, TestSetException
 using Distributed: RemoteChannel, @spawnat, nprocs, workers, channel_from_id, remoteref_id, RemoteException, myid
 using .Threads: @spawn, nthreads
