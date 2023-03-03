@@ -6,6 +6,7 @@ using Distributed: RemoteChannel, @spawnat, nprocs, workers, channel_from_id, re
 using .Threads: @spawn, nthreads
 using Pkg: Pkg
 using TestEnv
+using Logging
 using LoggingExtras
 using ContextVariablesX
 using DataStructures: DataStructures, dequeue!, PriorityQueue
@@ -151,17 +152,33 @@ function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose
     fch = FilteredChannel(shouldrun, incoming)
     @debugv 1 "Including tests in $paths"
     include_task = @spawn begin
-        @debugv 2 "Begin including $paths"
-        include_testfiles!($fch, $projectfile, $paths)
-        @debugv 2 "Done including $paths"
-        close($fch)
+        # Wrapping with the logger that was set before we eval'd any user code to
+        # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
+        with_logger(current_logger()) do
+            @debugv 2 "Begin including $paths"
+            include_testfiles!($fch, $projectfile, $paths)
+            @debugv 2 "Done including $paths"
+            close($fch)
+        end
     end
     try
         test_proj = Base.active_project()
         # Avoid `record` printing a summary; we want to print just one summary at the end.
-        result_task = @spawn process_results!($(chan(results)), $proj_name, $(dirname(projectfile)), $verbose)
+        result_task = @spawn begin
+            # Wrapping with the logger that was set before we eval'd any user code to
+            # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
+            with_logger(current_logger()) do
+                process_results!($(chan(results)), $proj_name, $(dirname(projectfile)), $verbose)
+            end
+        end
         @debugv 1 "Starting task to process incoming test items/setups"
-        errmon(@spawn process_incoming!($incoming, $(chan(testitems))))
+        errmon(@spawn begin
+            # Wrapping with the logger that was set before we eval'd any user code to
+            # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
+            with_logger(current_logger()) do
+                process_incoming!($incoming, $(chan(testitems)))
+            end
+        end)
         @debugv 1 "Scheduling tests on $(nprocs()) processes."
         schedule_tasks = if nprocs() == 1
             # This is where we disable printing for the multithreaded executor case.

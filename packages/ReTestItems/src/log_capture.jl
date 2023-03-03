@@ -28,14 +28,12 @@ end
 function _capture_logs(f, logstore::IOBuffer; close_pipe::Bool=true)
     if !(nthreads() > 1 && nprocs() == 1)
         # Distributed or single-process & single-threaded executor case
-        redirect_logs_to_iobuffer(logstore; close_pipe) do
-            f()
-        end
+        redirect_logs_to_iobuffer(f, logstore; close_pipe)
     else
         # Multithreaded executor case
-        ContextVariablesX.with_context(var"#CURRENT_LOGSTORE" => logstore) do
-            f()
-        end
+        # invokelatest to makes sure we don't run into issues if different task changed the
+        # global logger, in which case we might hit a world age issue
+        Base.invokelatest(ContextVariablesX.with_context, f, var"#CURRENT_LOGSTORE" => logstore)
     end
 end
 
