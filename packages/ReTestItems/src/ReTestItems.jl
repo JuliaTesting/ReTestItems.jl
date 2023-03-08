@@ -514,13 +514,17 @@ end
 
 # convenience method/globals for testing
 const GLOBAL_TEST_CONTEXT_FOR_TESTING = TestContext("ReTestItems")
+const GLOBAL_TEST_SETUPS_FOR_TESTING = Dict{Symbol, TestSetup}()
 
 # assumes any required setups were expanded outside of a runtests context
-function runtestitem(ti::TestItem, setups::Vector{TestSetup}=TestSetup[], results=nothing; kw...)
+function runtestitem(ti::TestItem, results=nothing; kw...)
     # make a fresh TestSetupModules for each testitem run
     GLOBAL_TEST_CONTEXT_FOR_TESTING.setups_evaled = TestSetupModules()
     empty!(ti.testsetups)
-    append!(ti.testsetups, setups)
+    for setup in ti.setups
+        ts = get(GLOBAL_TEST_SETUPS_FOR_TESTING, setup, nothing)
+        ts !== nothing && push!(ti.testsetups, ts)
+    end
     runtestitem(ti, GLOBAL_TEST_CONTEXT_FOR_TESTING, results; kw...)
 end
 

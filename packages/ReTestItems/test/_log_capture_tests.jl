@@ -116,7 +116,7 @@ using ReTestItems, Distributed, Test, Logging
                     println("println msg")
                 end
                 ti = @testitem "setup uses println" setup=[LoggingTestSetup] begin end
-                ReTestItems.runtestitem(ti, [setup])
+                ReTestItems.runtestitem(ti)
                 logs = String(take!(setup.logstore))
                 @test logs == "println msg\n"
             end
@@ -126,7 +126,7 @@ using ReTestItems, Distributed, Test, Logging
                     printstyled("printstyled msg red", color=:red)
                 end
                 ti = @testitem "setup uses printstyled" setup=[LoggingTestSetup] begin end
-                ReTestItems.runtestitem(ti, [setup])
+                ReTestItems.runtestitem(ti)
                 logs = String(take!(setup.logstore))
                 @test logs == "\e[31mprintstyled msg red\e[39m"
             end
@@ -136,7 +136,7 @@ using ReTestItems, Distributed, Test, Logging
                     @error("@error msg")
                 end
                 ti = @testitem "setup uses @error" setup=[LoggingTestSetup] begin end
-                ReTestItems.runtestitem(ti, [setup])
+                ReTestItems.runtestitem(ti)
                 logs = String(take!(setup.logstore))
                 @test startswith(logs, "\e[91m\e[1m┌ \e[22m\e[39m\e[91m\e[1mError: \e[22m\e[39m@error msg\n\e[91m\e[1m└ \e[22m\e[39m\e[90m@ ")
             end
@@ -153,7 +153,7 @@ using ReTestItems, Distributed, Test, Logging
                     tmp_path = LoggingTestSetup.tmp_path
                     @test read(tmp_path, String) == "This should not be visible to log capture"
                 end
-                ReTestItems.runtestitem(ti, [setup])
+                ReTestItems.runtestitem(ti)
                 logs = String(take!(setup.logstore))
                 @test isempty(logs)
             end
@@ -172,7 +172,7 @@ using ReTestItems, Distributed, Test, Logging
                     tmp_path = LoggingTestSetup.tmp_path
                     @test startswith(read(tmp_path, String), "┌ Info: This should not be visible to log capture\n└ @ ")
                 end
-                ReTestItems.runtestitem(ti, [setup])
+                ReTestItems.runtestitem(ti)
                 logs = String(take!(setup.logstore))
                 @test isempty(logs)
             end
@@ -186,7 +186,7 @@ using ReTestItems, Distributed, Test, Logging
                     end
                 end
                 ti = @testitem "setup uses with_logger" setup=[LoggingTestSetup] begin end
-                ReTestItems.runtestitem(ti, [setup])
+                ReTestItems.runtestitem(ti)
                 logs = String(take!(setup.logstore))
                 # ContextVariablesX disappears when logstate changes so multithreded log capture is broken
                 @test startswith(logs, "┌ Info: This should be visible to log capture\n└ @ ") broken=multithreaded_log_capture
@@ -197,7 +197,7 @@ using ReTestItems, Distributed, Test, Logging
                 display("display msg")
                 end
                 ti = @testitem "setup uses display" setup=[LoggingTestSetup] begin end
-                ReTestItems.runtestitem(ti, [setup])
+                ReTestItems.runtestitem(ti)
                 logs = String(take!(setup.logstore))
                 # Displays use their own reference to stdout
                 @test logs == "display msg" broken=true

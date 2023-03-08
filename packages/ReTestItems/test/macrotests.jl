@@ -64,7 +64,7 @@ end
         @test FooSetup2.Foo(1) isa FooSetup2.Foo
     end
     @test ti4.setups == [:FooSetup, :FooSetup2]
-    @test n_passed(ReTestItems.runtestitem(ti4, [ts1, ts2])) == 3
+    @test n_passed(ReTestItems.runtestitem(ti4)) == 3
 end
 
 @testset "testsetup and testitem with includes" begin
@@ -74,7 +74,7 @@ end
     ti5 = @testitem "Foo3" setup=[FooSetup3] begin
         include("_testiteminclude.jl")
     end
-    @test n_passed(ReTestItems.runtestitem(ti5, [ts])) == 2
+    @test n_passed(ReTestItems.runtestitem(ti5)) == 2
 end
 
 @testset "missing testsetup" begin

@@ -202,6 +202,9 @@ function store_test_item_setup(ti::Union{TestItem, TestSetup})
         else
             put!(ch, ti)
         end
+    elseif ti isa TestSetup
+         # we're not in a runtests context, so add the test setup to the global dict
+         GLOBAL_TEST_SETUPS_FOR_TESTING[ti.name] = ti
     end
     return ti
 end
