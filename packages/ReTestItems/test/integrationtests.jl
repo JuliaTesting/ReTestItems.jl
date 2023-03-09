@@ -74,6 +74,13 @@ end
     @test n_tests(results_test_dir) == 0
 end
 
+@testset "`@testitem` scoping rules" begin
+    results = encased_testset() do
+        runtests(joinpath(_TEST_DIR, "_scope_tests.jl"))
+    end
+    @test all_passed(results)
+end
+
 # running a project tests via Pkg also works
 @testset "single-process" verbose=true begin
     # `Pkg.test()` runs in its own process, so will either return `nothing` or an error.

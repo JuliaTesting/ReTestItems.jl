@@ -25,6 +25,26 @@ else
     const errmon = identity
 end
 
+# copyied from REPL.jl
+function softscope(@nospecialize ex)
+    if ex isa Expr
+        h = ex.head
+        if h === :toplevel
+            ex′ = Expr(h)
+            map!(softscope, resize!(ex′.args, length(ex.args)), ex.args)
+            return ex′
+        elseif h in (:meta, :import, :using, :export, :module, :error, :incomplete, :thunk)
+            return ex
+        elseif h === :global && all(x->isa(x, Symbol), ex.args)
+            return ex
+        else
+            return Expr(:block, Expr(:softscope, true), ex)
+        end
+    end
+    return ex
+end
+
+
 include("macros.jl")
 include("testcontext.jl")
 include("log_capture.jl")
@@ -571,6 +591,13 @@ function runtestitem(
         append!(body.args, ti.code.args)
         mod_expr = :(module $(gensym(name)) end)
         # replace the module body with our built up expr
+        # we're being a bit sneaky here by calling softscope on each top-level body expr
+        # which has the effect of test item body acting like you're at the REPL or
+        # inside a testset, except imports/using/etc all still work as expected
+        # more info: https://docs.julialang.org/en/v1.10-dev/manual/variables-and-scoping/#on-soft-scope
+        for i = 1:length(body.args)
+            body.args[i] = softscope(body.args[i])
+        end
         mod_expr.args[3] = body
         # eval the testitem into a temporary module, so that all results can be GC'd
         # once the test is done and sent over the wire. (However, note that anonymous modules
