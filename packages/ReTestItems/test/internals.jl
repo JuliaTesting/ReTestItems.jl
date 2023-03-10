@@ -1,112 +1,106 @@
 # Unit tests for internal helper functions
 
-@testset "walkdir" begin
-    using ReTestItems: ReTestItems, walkdir
+@testset "is_test_file" begin
+    using ReTestItems: is_test_file
+    @test !is_test_file("test/runtests.jl")
+    @test !is_test_file("test/bar.jl")
 
-    # single directory arg is same as Base.walkdir
-    @test collect(walkdir(@__DIR__)) == collect(Base.walkdir(@__DIR__))
-    @test collect(walkdir("")) == collect(Base.walkdir(""))
+    @test !is_test_file("test/runtests.csv")
+    @test !is_test_file("test/bar/qux.jlx")
 
-    # For tests below, retrieve the flat list of files in order to make comparison easier
-    _flatten(x) = mapreduce(_flatten, vcat, x; init=[])
-    _flatten((root, dirs, files)::Tuple) = map(file -> joinpath(root, file), files)
+    @test is_test_file("foo_test.jl")
+    @test is_test_file("foo_tests.jl")
+    @test is_test_file("foo-test.jl")
+    @test is_test_file("foo-tests.jl")
 
-    # walkdir can accept filenames (not just directories, unlike Base.walkdir)
-    dir = pkgdir(ReTestItems)
-    file = "$dir/test/internals.jl"
-    @assert isfile(file)
-    @test _flatten(walkdir(file)) == [file]
+    @test !is_test_file("foo.jl")
+
+    @test is_test_file("src/foo_test.jl")
+    @test is_test_file("./src/foo_test.jl")
+    @test is_test_file("../src/foo_test.jl")
+    @test is_test_file(abspath("../src/foo_test.jl"))
+    @test is_test_file("path/to/my/package/src/foo_test.jl")
+    @test is_test_file("path/to/my/package/src/foo-test.jl")
+
+    @test !is_test_file("src/foo.jl")
+    @test !is_test_file("./src/foo.jl")
+    @test !is_test_file("../src/foo.jl")
+    @test !is_test_file(abspath("../src/foo.jl"))
+    @test !is_test_file("path/to/my/package/src/foo.jl")
 end
 
-@testset "istestfile" begin
-    using ReTestItems: istestfile
-    @test !istestfile("test/runtests.jl")
-    @test !istestfile("test/bar.jl")
-
-    @test !istestfile("test/runtests.csv")
-    @test !istestfile("test/bar/qux.jlx")
-
-    @test istestfile("foo_test.jl")
-    @test istestfile("foo_tests.jl")
-
-    @test !istestfile("foo.jl")
-
-    @test istestfile("src/foo_test.jl")
-    @test istestfile("./src/foo_test.jl")
-    @test istestfile("../src/foo_test.jl")
-    @test istestfile(abspath("../src/foo_test.jl"))
-    @test istestfile("path/to/my/package/src/foo_test.jl")
-
-    @test !istestfile("src/foo.jl")
-    @test !istestfile("./src/foo.jl")
-    @test !istestfile("../src/foo.jl")
-    @test !istestfile(abspath("../src/foo.jl"))
-    @test !istestfile("path/to/my/package/src/foo.jl")
+@testset "is_testsetup_file" begin
+    using ReTestItems: is_testsetup_file
+    @test is_testsetup_file("bar_testsetup.jl")
+    @test is_testsetup_file("bar_testsetups.jl")
+    @test is_testsetup_file("bar-testsetup.jl")
+    @test is_testsetup_file("bar-testsetups.jl")
+    @test is_testsetup_file("path/to/my/package/src/bar-testsetup.jl")
 end
 
-@testset "Warn when no testfiles matched" begin
-    using ReTestItems: FilteredChannel, include_testfiles!, identify_project
+@testset "only requested testfiles included" begin
+    using ReTestItems: FilteredChannel, include_testfiles!, identify_project, is_test_file
     c = FilteredChannel(Returns(true), Channel(Inf))
 
-    @test_logs (:warn, r"/this/file/is/not/a/t-e-s-tfile.jl") begin
-        include_testfiles!(c, "/this/file/", ("/this/file/is/not/a/t-e-s-tfile.jl",))
-    end
-    @assert Base.n_avail(c.ch) == 0
+    # Requesting only non-existent files/dirs should result in no files being included
+    include_testfiles!(c, "/this/file/", ("/this/file/is/not/a/t-e-s-tfile.jl",))
+    @test Base.n_avail(c.ch) == 0
 
-    @test_logs (:warn, r"/this/file/does/not/exist/imaginary_tests.jl") begin
-        include_testfiles!(c, "/this/file/", ("/this/file/does/not/exist/imaginary_tests.jl",))
-    end
-    @assert Base.n_avail(c.ch) == 0
+    include_testfiles!(c, "/this/file/", ("/this/file/does/not/exist/imaginary_tests.jl",))
+    @test Base.n_avail(c.ch) == 0
 
-    @test_logs (:warn, r"/this/dir/does/not/exist/") begin
-        include_testfiles!(c, "/this/dir/", ("/this/dir/does/not/exist/",))
-    end
-    @assert Base.n_avail(c.ch) == 0
+    include_testfiles!(c, "/this/dir/", ("/this/dir/does/not/exist/", "/this/dir/also/not/exist/"))
+    @test Base.n_avail(c.ch) == 0
 
-    @test_logs (:warn, r"/this/dir/does/not/exist/") (:warn, r"/this/dir/also/does/not/exist/") begin
-        include_testfiles!(c, "/this/dir/", ("/this/dir/does/not/exist/", "/this/dir/also/does/not/exist/",))
-    end
-    @assert Base.n_avail(c.ch) == 0
+    # Requesting a file that's not a test-file should result in no file being included
+    pkg_file = joinpath(pkgdir(ReTestItems), "test", "packages", "NoDeps.jl", "src", "NoDeps.jl")
+    @assert isfile(pkg_file)
+    project = identify_project(pkg_file)
+    include_testfiles!(c, project, (pkg_file,))
+    @test Base.n_avail(c.ch) == 0
 
-    @test_logs (:warn, r"/this/dir/does/not/exist/") (:warn, r"/this/dir/has/imaginary_tests.jl") begin
-        include_testfiles!(c, "/this/dir/", ("/this/dir/does/not/exist/", "/this/dir/has/imaginary_tests.jl",))
-    end
-    @assert Base.n_avail(c.ch) == 0
+    # Requesting a dir that has no test-files should result in no file being included
+    pkg_src = joinpath(pkgdir(ReTestItems), "test", "packages", "NoDeps.jl", "src")
+    @assert all(!is_test_file, readdir(pkg_src))
+    project = identify_project(pkg_src)
+    include_testfiles!(c, project, (pkg_src,))
+    @test Base.n_avail(c.ch) == 0
 
+    # Requesting a test-files should result in the file being included
+    c = FilteredChannel(Returns(true), Channel(Inf))
+    pkg_file = joinpath(pkgdir(ReTestItems), "test", "packages", "TestsInSrc.jl", "src", "foo_test.jl")
+    @assert isfile(pkg_file) && is_test_file(pkg_file)
+    project = identify_project(pkg_file)
+    include_testfiles!(c, project, (pkg_file,))
+    @test Base.n_avail(c.ch) == 1
+
+    # Requesting a dir that has test-files should result in files being included
+    c = FilteredChannel(Returns(true), Channel(Inf))
     pkg = joinpath(pkgdir(ReTestItems), "test", "packages", "TestsInSrc.jl")
+    @assert any(!is_test_file, readdir(joinpath(pkg, "src")))
     project = identify_project(pkg)
+    include_testfiles!(c, project, (pkg,))
+    @test Base.n_avail(c.ch) > 0
+end
 
-    @test_nowarn include_testfiles!(c, project, (pkg,))
-    @assert Base.n_avail(c.ch) > 0
-    empty!(c.ch.data)
+@testset "testsetup files always included" begin
+    using ReTestItems: FilteredChannel, include_testfiles!, is_test_file, is_testsetup_file
+    test_dir = joinpath(pkgdir(ReTestItems), "test")
+    @assert count(is_testsetup_file, readdir(test_dir)) == 1
+    file = joinpath(test_dir, "log_capture.jl")
+    @assert isfile(file) && !is_test_file(file)
+    c = FilteredChannel(Returns(true), Channel(Inf))
+    include_testfiles!(c, test_dir, (file,))
+    @test Base.n_avail(c.ch) == 1  # just the testsetup
 
-    @test_logs (:warn, Regex(joinpath(pkg, "test"))) begin
-        include_testfiles!(c, project, (joinpath(pkg, "test"), joinpath(pkg, "src"),))
-    end
-    @assert Base.n_avail(c.ch) > 0
-    empty!(c.ch.data)
-
-    @test_logs (:warn, Regex(joinpath(pkg, "doesntexist"))) begin
-        include_testfiles!(c, project, (joinpath(pkg, "src"), joinpath(pkg, "doesntexist"),))
-    end
-    @assert Base.n_avail(c.ch) > 0
-    empty!(c.ch.data)
-
-    @test_logs (:warn, Regex(joinpath(pkg, "src", "foo.jl"))) begin
-        include_testfiles!(c, project, (joinpath(pkg, "src", "foo.jl"),  joinpath(pkg, "src", "foo_test.jl"),))
-    end
-    @assert Base.n_avail(c.ch) > 0
-    empty!(c.ch.data)
-
-    @test_logs (:warn, Regex(joinpath(pkg, "test"))) begin
-        include_testfiles!(c, project, (joinpath(pkg, "src", "foo_test.jl"),  joinpath(pkg, "test"),))
-    end
-    @assert Base.n_avail(c.ch) > 0
-    empty!(c.ch.data)
-
-    @test_nowarn include_testfiles!(c, project, (joinpath(pkg, "src", "foo_test.jl"),))
-    @assert Base.n_avail(c.ch) > 0
-    empty!(c.ch.data)
+    # even when higher up in directory tree
+    nested_dir = joinpath(pkgdir(ReTestItems), "test", "_nested")
+    @assert !any(is_testsetup_file, readdir(nested_dir))
+    file = joinpath(nested_dir, "_testitem_test.jl")
+    @assert isfile(file)
+    c = FilteredChannel(Returns(true), Channel(Inf))
+    include_testfiles!(c, test_dir, (file,))
+    @test Base.n_avail(c.ch) == 2  # the requested test file and the testsetup in dir above
 end
 
 @testset "TestSetTree" begin

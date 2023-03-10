@@ -29,6 +29,76 @@ end
     @test n_passed(results) == 1  # NoDeps has a single test
 end
 
+@testset "`runtests(path)` auto finds testsetups" begin
+    results = encased_testset() do
+        # relies on testsetup in _testitem_testsetup.jl
+        runtests(joinpath(_TEST_DIR, "_testitem_test.jl"))
+    end
+    @test n_passed(results) == 1
+
+    results = encased_testset() do
+        # relies on testsetup in _testitem_testsetup.jl in directory above
+        runtests(joinpath(_TEST_DIR, "_nested", "_testitem_test.jl"))
+    end
+    @test n_passed(results) == 1
+
+    results = encased_testset() do
+        # relies on testsetup in _testitem_testsetup.jl in directory above
+        runtests(joinpath(_TEST_DIR, "_nested"))
+    end
+    @test n_passed(results) == 1
+end
+
+@testset "Warn when not test file" begin
+    pkg = joinpath(TEST_PKG_DIR, "TestsInSrc.jl")
+
+    # warn if the path does not exist
+    dne = joinpath(pkg, "does_not_exist")
+    @test_logs (:warn, "No such path \"$dne\"") begin
+        runtests(dne)
+    end
+
+    # warn if the file is not a test file
+    file = joinpath(pkg, "src", "foo.jl")
+    @assert isfile(file)
+    @test_logs (:warn, "\"$file\" is not a test file") begin
+        runtests(file)
+    end
+
+    # Warn for each invalid path
+    @test_logs (:warn, "No such path \"$dne\"") (:warn, "\"$file\" is not a test file") begin
+        runtests(dne, file)
+    end
+
+    # No warning for valid test files
+    test_file = joinpath(pkg, "src", "foo_test.jl")
+    @assert isfile(test_file)
+    results = @test_logs begin
+        encased_testset() do
+            runtests(test_file)
+        end
+    end
+    @test n_tests(results) == 2 # foo_test.jl has 2 tests
+
+    # No warning for directories (so long as they exist)
+    dir = joinpath(pkg, "test")
+    @assert isdir(dir)
+    results = @test_logs begin
+        encased_testset() do
+            runtests(dir)
+        end
+    end
+    @test n_tests(results) == 0 # TestsInSrc.jl/test/ has no tests
+
+    # Warn for each invalid path and still run valid ones
+    results = @test_logs (:warn, "No such path \"$dne\"") (:warn, "\"$file\" is not a test file") begin
+        encased_testset() do
+            runtests(test_file, dne, file)
+        end
+    end
+    @test n_tests(results) == 2 # foo_test.jl has 2 tests
+end
+
 @testset "filter `runtests(func, x)`" begin
     pkg = joinpath(TEST_PKG_DIR, "TestsInSrc.jl")
 

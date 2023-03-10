@@ -109,9 +109,7 @@ runtests(pkg::Module; kw...) = runtests(default_shouldrun, pkg; kw...)
 function runtests(shouldrun, pkg::Module; kw...)
     dir = pkgdir(pkg)
     isnothing(dir) && error("Could not find directory for `$pkg`")
-    src = joinpath(dir, "src")
-    test = joinpath(dir, "test")
-    return runtests(shouldrun, src, test; kw...)
+    return runtests(shouldrun, dir; kw...)
 end
 
 function runtests(
@@ -122,15 +120,27 @@ function runtests(
     name::Union{Regex,AbstractString,Nothing}=nothing,
     tags::Union{Symbol,AbstractVector{Symbol},Nothing}=nothing,
 )
-    shouldrun_combined = ti -> shouldrun(ti) && _shouldrun(name, ti.name) && _shouldrun(tags, ti.tags)
-
+    paths′ = filter(paths) do p
+        if !ispath(p)
+            @warn "No such path $(repr(p))"
+            return false
+        elseif !(is_test_file(p) || is_testsetup_file(p)) && isfile(p)
+            @warn "$(repr(p)) is not a test file"
+            return false
+        else
+            return true
+        end
+    end
+    # If we were given paths but none were valid, then nothing to run.
+    !isempty(paths) && isempty(paths′) && return nothing
+    shouldrun_combined(ti) = shouldrun(ti) && _shouldrun(name, ti.name) && _shouldrun(tags, ti.tags)
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun_combined, paths, verbose, debuglvl)
+            _runtests(shouldrun_combined, paths′, verbose, debuglvl)
         end
     else
-        return _runtests(shouldrun_combined, paths, verbose, debuglvl)
+        return _runtests(shouldrun_combined, paths′, verbose, debuglvl)
     end
 end
 
@@ -357,21 +367,30 @@ function process_incoming!(incoming::Channel, testitems::Channel)
 end
 
 # Check if the file at `filepath` is a "test file"
-# i.e. if it ends with `_test.jl` or `_tests.jl`.
-istestfile(filepath) = endswith(filepath, "_test.jl") || endswith(filepath, "_tests.jl")
-
-
-# walkdir that accepts both files and directories
-walkdir(path::AbstractString) = isfile(path) ? _walkfile(path) : Base.walkdir(path)
-_walkfile(path::AbstractString) = [(dirname(path), String[], [basename(path)])]
+# i.e. if it ends with one of the identifying suffixes
+function is_test_file(filepath)
+    return (
+        endswith(filepath, "_test.jl" ) ||
+        endswith(filepath, "_tests.jl") ||
+        endswith(filepath, "-test.jl" ) ||
+        endswith(filepath, "-tests.jl")
+    )
+end
+function is_testsetup_file(filepath)
+    return (
+        endswith(filepath, "_testsetup.jl" ) ||
+        endswith(filepath, "_testsetups.jl") ||
+        endswith(filepath, "-testsetup.jl" ) ||
+        endswith(filepath, "-testsetups.jl")
+    )
+end
 
 # for each directory, kick off a recursive test-finding task
 function include_testfiles!(incoming::FilteredChannel, projectfile, paths)
     subproject_root = nothing  # don't recurse into directories with their own Project.toml.
     project_dirname = dirname(projectfile)
-    @sync for path in paths
-        has_tests = false
-        for (root, _, files) in ReTestItems.walkdir(path)
+    @sync for dir in ("test", "src")
+        for (root, _, files) in Base.walkdir(joinpath(project_dirname, dir))
             if subproject_root !== nothing && startswith(root, subproject_root)
                 @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
                 continue
@@ -383,8 +402,16 @@ function include_testfiles!(incoming::FilteredChannel, projectfile, paths)
                 # channel should only be closed if there was an error
                 isopen(incoming) || return nothing
                 filepath = joinpath(root, file)
-                istestfile(filepath) || continue
-                has_tests = true
+                # We filter here, rather than the tesitem level, to make sure we don't
+                # `include` a file that isn't supposed to be a test-file at all, e.g. its
+                # not on a path the user requested but it happens to have a test-file suffix.
+                # We always include testsetup-files so users don't need to request them,
+                # even if they're not in a requested path, e.g. they are a level up in the
+                # directory tree. The testsetup-file suffix is hopefully specific enough
+                # to ReTestItems that this doesn't lead to `include`ing unexpected files.
+                if !(is_testsetup_file(filepath) || (is_test_file(filepath) && is_requested(filepath, paths)))
+                    continue
+                end
                 @debugv 1 "Including test items from file `$filepath`"
                 @spawn try
                     task_local_storage(:__RE_TEST_RUNNING__, true) do
@@ -401,9 +428,16 @@ function include_testfiles!(incoming::FilteredChannel, projectfile, paths)
                 end
             end
         end
-        has_tests || @warn "No test file found at path $(repr(path))."
     end
     return nothing
+end
+
+# Is filepath one of the paths the user requested?
+is_requested(filepath, paths::Tuple{}) = true  # no paths means no restrictions
+function is_requested(filepath, paths::Tuple)
+    return any(paths) do p
+        startswith(filepath, abspath(p))
+    end
 end
 
 function is_running_test_runtests_jl(projectfile::String)
