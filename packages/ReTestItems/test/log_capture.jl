@@ -21,15 +21,20 @@ end
     push!(ti.testsetups, setup1)
     push!(ti.testsetups, setup2)
     ts = Test.DefaultTestSet("dummy")
+    setup1.logstore[] = open(ReTestItems.logpath(setup1), "w")
+    setup2.logstore[] = open(ReTestItems.logpath(setup2), "w")
 
     iob = IOBuffer()
-    println(ti.logstore, "The test item has logs")
+    # The test item logs are deleted after `print_errors_and_captured_logs`
+    open(io->write(io, "The test item has logs"), ReTestItems.logpath(ti), "w")
     ReTestItems.print_errors_and_captured_logs(iob, ti, ts, verbose=true)
     logs = String(take!(iob))
     @test contains(logs, " for test item \"TheTestItem\" at ")
     @test contains(logs, "The test item has logs")
 
-    println(setup1.logstore, "The setup1 also has logs")
+    open(io->write(io, "The test item has logs"), ReTestItems.logpath(ti), "w")
+    println(setup1.logstore[], "The setup1 also has logs")
+    flush(setup1.logstore[])
     ReTestItems.print_errors_and_captured_logs(iob, ti, ts, verbose=true)
     logs = String(take!(iob))
     @test contains(logs, " for test setup \"TheTestSetup1\" (dependency of \"TheTestItem\") at ")
@@ -37,7 +42,9 @@ end
     @test contains(logs, " for test item \"TheTestItem\" at ")
     @test contains(logs, "The test item has logs")
 
-    println(setup2.logstore, "Even setup2 has logs!")
+    open(io->write(io, "The test item has logs"), ReTestItems.logpath(ti), "w")
+    println(setup2.logstore[], "Even setup2 has logs!")
+    flush(setup2.logstore[])
     ReTestItems.print_errors_and_captured_logs(iob, ti, ts, verbose=true)
     logs = String(take!(iob))
     @test contains(logs, " for test setup \"TheTestSetup1\" (dependency of \"TheTestItem\") at ")

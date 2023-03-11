@@ -14,7 +14,10 @@ struct TestSetup
     file::String
     line::Int
     project_root::String
-    logstore::IOBuffer
+    # We keep the IOStream open so that log capture can span mutliple test-items depending on
+    # the test setup. This IO object is only for writing on the worker. The coordinator needs
+    # to open the file when it needs to read from it.
+    logstore::Base.RefValue{IOStream} # Populated and only safe to use on the worker
 end
 
 """
@@ -50,7 +53,7 @@ macro testsetup(mod)
     tls = task_local_storage()
     proj = haskey(tls, :__RE_TEST_PROJECT__) ? tls[:__RE_TEST_PROJECT__] : "."
     esc(quote
-        $store_test_item_setup($TestSetup($nm, $q, $(String(__source__.file)), $(__source__.line), $proj, IOBuffer()))
+        $store_test_item_setup($TestSetup($nm, $q, $(String(__source__.file)), $(__source__.line), $proj, Ref{IOStream}()))
     end)
 end
 
@@ -70,6 +73,7 @@ those test in their own module.
 Should only be created via the `@testitem` macro.
 """
 struct TestItem
+    id::Int
     name::String
     tags::Vector{Symbol}
     default_imports::Bool
@@ -79,8 +83,7 @@ struct TestItem
     project_root::String
     code::Any
     testsetups::Vector{TestSetup} # populated by runtests coordinator
-    logstore::IOBuffer
-    workerid::Ref{Int} # populated when the test item is scheduled
+    workerid::Base.RefValue{Int} # populated when the test item is scheduled
 end
 
 """
@@ -186,7 +189,7 @@ macro testitem(nm, exs...)
     proj = haskey(tls, :__RE_TEST_PROJECT__) ? tls[:__RE_TEST_PROJECT__] : "."
     esc(quote
         $store_test_item_setup(
-            $TestItem($nm, $tags, $default_imports, $setup, $(String(__source__.file)), $(__source__.line), $proj, $q, $TestSetup[], IOBuffer(), Ref{Int}())
+            $TestItem(rand(Int64), $nm, $tags, $default_imports, $setup, $(String(__source__.file)), $(__source__.line), $proj, $q, $TestSetup[], Ref{Int}())
         )
     end)
 end

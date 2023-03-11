@@ -136,7 +136,7 @@ end
 @testset "Warn on empty test set" begin
     using ReTestItems: TestItem, report_empty_testsets
     using Test: DefaultTestSet, Fail, Error
-    ti = TestItem("Dummy TestItem", [], false, [], "source/path", 42, ".", nothing, [], IOBuffer(), Ref{Int}())
+    ti = TestItem(42, "Dummy TestItem", [], false, [], "source/path", 42, ".", nothing, [], Ref{Int}())
 
     ts = DefaultTestSet("Empty testset")
     report_empty_testsets(ti, ts)

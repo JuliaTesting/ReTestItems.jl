@@ -3,37 +3,47 @@ const DEFAULT_STDERR = Ref{IO}()
 const DEFAULT_LOGSTATE = Ref{Base.CoreLogging.LogState}()
 const DEFAULT_LOGGER = Ref{Base.CoreLogging.AbstractLogger}()
 
-"""
-    _capture_logs(f, ti::Union{TestItem,TestSetup}; close_pipe::Bool=true)
+function save_current_stdio()
+    DEFAULT_STDERR[] = stderr
+    DEFAULT_STDOUT[] = stdout
+    DEFAULT_LOGSTATE[] = Base.CoreLogging._global_logstate
+    DEFAULT_LOGGER[] = Base.CoreLogging._global_logstate.logger
+end
 
-Redirects stdout and stderr to an `IOBuffer` inside of `ti`.
+function logfile_name(ti::TestItem)
+    # Replacing reserved chars https://en.wikipedia.org/wiki/Filename
+    # File name should remain unique due to the inclusion of `ti.id`.
+    safe_name = replace(ti.name, r"[/\\\?%\*\:\|\"\<\>\.\,\;\=\s\$\#\@]" => "_")
+    return string("ReTestItems_test_", first(safe_name, 150), "_", ti.id, ".log")
+end
+function logfile_name(ts::TestSetup)
+    # Test setup names should be unique to begin with, but we add hash of their location to be sure
+    string("ReTestItems_setup_", ts.name, "_", hash(ts.file, UInt(ts.line)), ".log")
+end
+logpath(ti) = joinpath(RETESTITEMS_TEMP_FOLDER, logfile_name(ti))
+
+"""
+    _capture_logs(f, ti::Union{TestItem,TestSetup})
+
+Redirects stdout and stderr to a temporary file corresponding to `ti`.
 For multithreaded test executors, this requires `_setup_multithreaded_log_capture()` to be called beforehand.
 
 The Multithreaded case won't properly capture logs if the evaluated test code modifies global
 logstate -- this would make the context variable unreachable to that part of the code.
 A workaround would be to use `ContextVariablesX.with_logger` or to switch to a distributed executor.
-
-Distritbuted executors are using the usual `Base.Pipe` object to redirect standard io --
-when capturing logs of tests items this is very simple as one can safely close the pipe
-after the test item has finished eval'ing (we assume no lingering tasks spawned by the test
-will ever attempt to print into the stdout after the test item is done), but for test setups
-we must keep the pipe object opened as the lifetime of a test setup usually spans multiple test
-items and it thus possible that it would capture logs after it was eval'd. Hence we set the
-`close_pipe` `kwarg` to false when evaluting test setups.
 """
-function _capture_logs(f, ti::Union{TestItem,TestSetup}; close_pipe::Bool=true)
-    # f might return the test setup
-    return _capture_logs(f, ti.logstore; close_pipe)
-end
-function _capture_logs(f, logstore::IOBuffer; close_pipe::Bool=true)
+_capture_logs(f, ti::TestItem) = open(io->_capture_logs(f, io), logpath(ti), "w")
+_capture_logs(f, ts::TestSetup) = _capture_logs(f, ts.logstore[])
+function _capture_logs(f, io::IO)
+    colored_io = IOContext(io, :color => get(DEFAULT_STDOUT[], :color, false))
     if !(nthreads() > 1 && nprocs() == 1)
         # Distributed or single-process & single-threaded executor case
-        redirect_logs_to_iobuffer(f, logstore; close_pipe)
+        redirect_stdio(f, stdout=colored_io, stderr=colored_io)
     else
         # Multithreaded executor case
         # invokelatest to makes sure we don't run into issues if different task changed the
         # global logger, in which case we might hit a world age issue
-        Base.invokelatest(ContextVariablesX.with_context, f, var"#CURRENT_LOGSTORE" => logstore)
+        Base.invokelatest(ContextVariablesX.with_context, f, var"#CURRENT_LOGSTORE" => colored_io)
     end
 end
 
@@ -55,8 +65,11 @@ _not_compiling() = ccall(:jl_generating_output, Cint, ()) == 0
 _on_worker() = nprocs() == 1 ? "" : " on worker $(myid())"
 _on_worker(ti::TestItem) = nprocs() == 1 ? "" : " on worker $(ti.workerid[])"
 _file_info(ti::Union{TestSetup,TestItem}) = string(relpath(ti.file, ti.project_root), ":", ti.line)
-_has_logs(ti::TestItem) = ti.logstore.size > 0 || any(_has_logs, ti.testsetups)
-_has_logs(ts::TestSetup) = ts.logstore.size > 0
+_has_logs(ts::TestSetup) = filesize(logpath(ts)) > 0
+# The path might not exist if a testsetup always throws an error and we don't get to actually
+# evaluate the test item.
+_has_logs(ti::TestItem) = (path = logpath(ti); (isfile(path) && filesize(path) > 0))
+
 
 """
     print_errors_and_captured_logs(ti::TestItem, ts::DefaultTestSet; verbose=false)
@@ -72,10 +85,10 @@ print_errors_and_captured_logs(ti::TestItem, ts::DefaultTestSet; verbose=false) 
     print_errors_and_captured_logs(DEFAULT_STDOUT[], ti, ts, verbose=verbose)
 function print_errors_and_captured_logs(io, ti::TestItem, ts::DefaultTestSet; verbose=false)
     has_errors = ts.anynonpass
-    has_logs = _has_logs(ti)
+    has_logs = _has_logs(ti) || any(_has_logs, ti.testsetups)
     if has_errors || verbose
         report_iob = IOContext(IOBuffer(), :color=>Base.get_have_color())
-        has_logs && _print_captured_logs(report_iob, ti)
+        _print_captured_logs(report_iob, ti)
         has_errors && _print_test_errors(report_iob, ts, _on_worker(ti))
         if has_errors || has_logs
             # a newline to visually separate the report for the current test item
@@ -84,6 +97,7 @@ function print_errors_and_captured_logs(io, ti::TestItem, ts::DefaultTestSet; ve
             @loglock write(io, take!(report_iob.io))
         end
     end
+    rm(logpath(ti), force=true) # cleanup
     return nothing
 end
 
@@ -94,27 +108,25 @@ function _print_captured_logs(io, setup::TestSetup, ti::Union{Nothing,TestItem}=
         print(io, " for test setup \"$(setup.name)\"$(ti_info) at ")
         printstyled(io, _file_info(setup); bold=true, color=:default)
         println(io, isnothing(ti) ? _on_worker() : _on_worker(ti))
-        # Not consuming the buffer with take! to make testing log capture easier
-        data = setup.logstore.data
-        len = setup.logstore.size
-        write(io, @view data[1:len])
+        open(logpath(setup), "r") do logstore
+            write(io, logstore)
+        end
     end
     return nothing
 end
 
 function _print_captured_logs(io, ti::TestItem)
+    for setup in ti.testsetups
+        _print_captured_logs(io, setup, ti)
+    end
     if _has_logs(ti)
-        for setup in ti.testsetups
-            _print_captured_logs(io, setup, ti)
-        end
         printstyled(io, "Captured logs"; bold=true, color=Base.info_color())
         print(io, " for test item $(repr(ti.name)) at ")
         printstyled(io, _file_info(ti); bold=true, color=:default)
         println(io, _on_worker(ti))
-        # Not consuming the buffer with take! to make testing log capture easier
-        data = ti.logstore.data
-        len = ti.logstore.size
-        write(io, @view data[1:len])
+        open(logpath(ti), "r") do logstore
+            write(io, logstore)
+        end
     end
     return nothing
 end
@@ -143,7 +155,7 @@ function log_stalled(ti::TestItem)
     println(report_iob, _on_worker(ti))
     # Let's also print any logs we might have collected for the stalled test item
     _print_captured_logs(report_iob, ti)
-    ti.logstore.size > 0 && println(report_iob)
+    filesize(logpath(ti)) > 0 && println(report_iob)
     @loglock write(DEFAULT_STDOUT[], take!(report_iob.io))
 end
 
@@ -201,18 +213,18 @@ Base.get(::ReTestItemsCapturingIO, key::Symbol, default) = key === :color ? Base
 Base.unwrapcontext(io::ReTestItemsCapturingIO) = (io, Base.unwrapcontext(DEFAULT_STDOUT[])[2])
 
 # When the #CURRENT_LOGSTORE is set, we redirect all writes that would normally go to stdout
-# to an iobuffer referenced by it. This way we achieve log capture while using multithreaded
+# to an IOStream referenced by it. This way we achieve log capture while using multithreaded
 # test executors. Sadly, context variables are not visible when logstate gets changed by the
 # tested code in which case we recommend to use distributed executors or to use
 # `ContextVariablesX.with_logger` instead.
-ContextVariablesX.@contextvar var"#CURRENT_LOGSTORE"::IOBuffer;
+ContextVariablesX.@contextvar var"#CURRENT_LOGSTORE"::IOContext{IOStream};
 for T in (UInt8, Vector{UInt8}, String, Char, AbstractChar, AbstractString, IO)
     @eval function Base.write(io::Union{ReTestItemsCapturingIO,IOContext{ReTestItemsCapturingIO}}, x::$(T))
         logstore = get(var"#CURRENT_LOGSTORE")
         if logstore === nothing
             return write(DEFAULT_STDOUT[], x)
         else
-            return write(something(logstore)::IOBuffer, x)
+            return write(something(logstore)::IOContext{IOStream}, x)
         end
     end
 
@@ -221,7 +233,7 @@ for T in (UInt8, Vector{UInt8}, String, Char, AbstractChar, AbstractString, IO)
         if logstore === nothing
             return write(DEFAULT_STDOUT[], x...)
         else
-            return write(something(logstore)::IOBuffer, x...)
+            return write(something(logstore)::IOContext{IOStream}, x...)
         end
     end
 end
@@ -231,10 +243,9 @@ end
 function _setup_multithreaded_log_capture()
     if _not_compiling()
         @debugv 1 "Redirecting standard outputs to STANDARD_IO_CONSUMER"
-        DEFAULT_STDERR[] = stderr
-        DEFAULT_STDOUT[] = stdout
-        DEFAULT_LOGSTATE[] = Base.CoreLogging._global_logstate
-        DEFAULT_LOGGER[] = Base.CoreLogging._global_logstate.logger
+        # this call is redundant as we already call it in runtests, but it is idempotent
+        # and makes the multithtreded code self contained
+        save_current_stdio()
         consumer = STANDARD_IO_CONSUMER
         logger = DEFAULT_LOGGER[]
 
@@ -266,63 +277,4 @@ function _teardown_multithreaded_log_capture()
         end
     end
     return nothing
-end
-
-### Log capture for distributed / single-threaded case #####################################
-
-# Adapted from IOCapture.jl and Suppressor.jl MIT licensed packages
-function redirect_logs_to_iobuffer(f, io; close_pipe::Bool=true)
-    if _not_compiling()
-        # Save the default output streams.
-        original_stderr = stderr
-        original_stdout = stdout
-        DEFAULT_STDERR[] = original_stderr
-        DEFAULT_STDOUT[] = original_stdout
-        DEFAULT_LOGSTATE[] = Base.CoreLogging._global_logstate
-        DEFAULT_LOGGER[] = Base.CoreLogging._global_logstate.logger
-
-        pipe = Pipe()
-        Base.link_pipe!(pipe; reader_supports_async=true, writer_supports_async=true)
-        @static if VERSION >= v"1.6.0-DEV.481" # https://github.com/JuliaLang/julia/pull/36688
-            temp_stdout = IOContext(pipe.in, :color => get(stdout, :color, false))
-            temp_stderr = IOContext(pipe.in, :color => get(stderr, :color, false))
-        else
-            temp_stdout = pipe.in
-            temp_stderr = pipe.in
-        end
-        errmon(@spawn Base.write(io, pipe))
-
-        # approach adapted from https://github.com/JuliaLang/IJulia.jl/pull/667/files
-        logstate = Base.CoreLogging._global_logstate
-        logger = logstate.logger
-        if :stream in propertynames(logger) && logger.stream == original_stderr
-            new_logstate = Base.CoreLogging.LogState(typeof(logger)(temp_stderr, logger.min_level))
-            Core.eval(Base.CoreLogging, Expr(:(=), :(_global_logstate), new_logstate))
-        end
-        flush(stderr)
-        flush(stdout)
-        redirect_stdout(temp_stdout)
-        redirect_stderr(temp_stderr)
-    end
-
-    try
-        return f()
-    finally
-        if _not_compiling()
-            flush(temp_stdout)
-            flush(temp_stderr)
-            redirect_stdout(original_stdout)
-            redirect_stderr(original_stderr)
-            # It is generally not safe to close the pipe see: https://github.com/JuliaIO/Suppressor.jl/issues/48
-            # But for testitems we assume no task that is spawned during their eval should
-            # outlive it and hold a reference to the original pipe. For test setups we don't
-            # close the pipe to allow it to accumulate logs throughout its lifetime (which
-            # could span multiple test items who depend on it).
-            close_pipe && close(pipe)
-
-            if :stream in propertynames(logger) && logger.stream == stderr
-                Core.eval(Base.CoreLogging, Expr(:(=), :(_global_logstate), logstate))
-            end
-        end
-    end
 end

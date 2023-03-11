@@ -18,6 +18,7 @@ export @testsetup, @testitem
 export TestSetup, TestItem
 
 const STALLED_LIMIT_SECONDS = 30*60
+const RETESTITEMS_TEMP_FOLDER = mkpath(joinpath(tempdir(), "ReTestItemsTempLogsDirectory"))
 
 if isdefined(Base, :errormonitor)
     const errmon = Base.errormonitor
@@ -134,6 +135,8 @@ function runtests(
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
     shouldrun_combined(ti) = shouldrun(ti) && _shouldrun(name, ti.name) && _shouldrun(tags, ti.tags)
+    mkpath(RETESTITEMS_TEMP_FOLDER) # ensure our folder wasn't removed
+    save_current_stdio()
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
@@ -244,6 +247,8 @@ function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose
         # ensures that all tasks spawned by runtests finish before it returns
         wait(include_task)
         (nthreads() > 1 && nprocs() == 1) && _teardown_multithreaded_log_capture()
+        # Cleanup test setup logs
+        foreach(rm, filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER, join=true)))
     end
     return nothing
 end
@@ -553,11 +558,12 @@ function ensure_setup!(ctx::TestContext, setup::Symbol, setups::Vector{TestSetup
         # In case the setup fails to eval, we discard its logs -- the setup will be
         # attempted to eval for each of the dependent test items and we'd for each
         # failed test item, we'd print the cumulative logs from all the previous attempts.
-        truncate(ts.logstore, 0)
+        isassigned(ts.logstore) && close(ts.logstore[])
+        ts.logstore[] = open(logpath(ts), "w")
         mod_expr = :(module $(gensym(ts.name)) end)
         # replace the module expr body with our @testsetup code
         mod_expr.args[3] = ts.code
-        newmod = _capture_logs(ts; close_pipe=false) do
+        newmod = _capture_logs(ts) do
             with_source_path(() -> Core.eval(Main, mod_expr), ts.file)
         end
         # add the new module to our TestSetupModules
@@ -649,6 +655,8 @@ function runtestitem(
             LineNumberNode(ti.line, ti.file)))
     finally
         close(timer)
+        # Make sure all test setup logs are commited to file
+        foreach(ts->isassigned(ts.logstore) && flush(ts.logstore[]), ti.testsetups)
         ts1 = Test.pop_testset()
         @assert ts1 === ts
         try
