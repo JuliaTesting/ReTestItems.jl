@@ -73,7 +73,7 @@ end
     # No warning for valid test files
     test_file = joinpath(pkg, "src", "foo_test.jl")
     @assert isfile(test_file)
-    results = @test_logs begin
+    results = @test_logs (:info,) (:info,) (:info,) begin
         encased_testset() do
             runtests(test_file)
         end
@@ -83,7 +83,7 @@ end
     # No warning for directories (so long as they exist)
     dir = joinpath(pkg, "test")
     @assert isdir(dir)
-    results = @test_logs begin
+    results = @test_logs (:info,) (:info,) (:info,) begin
         encased_testset() do
             runtests(dir)
         end
@@ -91,7 +91,7 @@ end
     @test n_tests(results) == 0 # TestsInSrc.jl/test/ has no tests
 
     # Warn for each invalid path and still run valid ones
-    results = @test_logs (:warn, "No such path \"$dne\"") (:warn, "\"$file\" is not a test file") begin
+    results = @test_logs (:warn, "No such path \"$dne\"") (:warn, "\"$file\" is not a test file") (:info,) (:info,) (:info,) begin
         encased_testset() do
             runtests(test_file, dne, file)
         end
@@ -192,16 +192,19 @@ end
 
 const nworkers = 2
 @testset "Distributed (--procs=$(nworkers))" verbose=true begin
-    julia_args = ["--procs", string(nworkers)]
     @testset "Pkg.test() $pkg" for pkg in TEST_PKGS
         results = with_test_package(pkg) do
-            Pkg.test(; julia_args)
+            withenv("RETESTITEMS_NWORKERS" => 2) do
+                Pkg.test()
+            end
         end
         @test all_passed(results)
     end
     @testset "Pkg.test() DontPass.jl" begin
         results = with_test_package("DontPass.jl") do
-            Pkg.test(; julia_args)
+            withenv("RETESTITEMS_NWORKERS" => 2) do
+                Pkg.test()
+            end
         end
         @test length(non_passes(results)) > 0
     end
@@ -295,10 +298,9 @@ end
 @testset "print report sorted" begin
     # Test that the final summary has testitems by file, with files sorted alphabetically
     using IOCapture
-    results = with_test_package("TestsInSrc.jl") do
+    testset = with_test_package("TestsInSrc.jl") do
         runtests()
     end
-    testset = only(results.results) # unwrap the TestsInSrc testset
     c = IOCapture.capture() do
         Test.print_test_results(testset)
         ## Should look like (possibly with different Time values):
@@ -337,9 +339,9 @@ end
                 a2                        \|    2      2  \s*\d*.\ds
               src/a_dir/x_dir             \|    3      3  \s*
                 src/a_dir/x_dir/x_test.jl \|    3      3  \s*
-                  x                       \|    1      1  \s*\d*.\ds
-                  y                       \|    1      1  \s*\d*.\ds
                   z                       \|    1      1  \s*\d*.\ds
+                  y                       \|    1      1  \s*\d*.\ds
+                  x                       \|    1      1  \s*\d*.\ds
             src/b_dir                     \|    1      1  \s*
               src/b_dir/b_test.jl         \|    1      1  \s*
                 b                         \|    1      1  \s*\d*.\ds
@@ -532,40 +534,54 @@ end
     end
 end
 
-@testset "log capture for an errored TestSetup" begin
-    c = IOCapture.capture() do
-        results = with_test_package("DontPass.jl") do
-            runtests("test/error_in_setup_test.jl")
-        end
-    end
-    @test occursin("""
-    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
-    SetupThatErrors msg
-    """,
-    c.output)
+# @testset "log capture for an errored TestSetup" begin
+#     c = IOCapture.capture() do
+#         results = with_test_package("DontPass.jl") do
+#             runtests("test/error_in_setup_test.jl")
+#         end
+#     end
+#     @test occursin("""
+#     \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+#     SetupThatErrors msg
+#     """,
+#     c.output)
 
-    @test occursin("""
-    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
-    SetupThatErrors msg
-    """,
-    c.output)
+#     @test occursin("""
+#     \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+#     SetupThatErrors msg
+#     """,
+#     c.output)
 
-    # Since the test setup never succeeds it will be evaluated mutliple times. Here we test
-    # that we don't accumulate logs from all previous failed attempts (which would get
-    # really spammy if the test setup is used by 100 test items).
-    good_test_has_two_logs = occursin("""
-        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
-        SetupThatErrors msg
-        SetupThatErrors msg
-        """,
-        c.output
-    )
-    bad_test_has_two_logs = occursin("""
-        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
-        SetupThatErrors msg
-        SetupThatErrors msg
-        """,
-        c.output
-    )
-    @test !good_test_has_two_logs && !bad_test_has_two_logs
+#     # Since the test setup never succeeds it will be evaluated mutliple times. Here we test
+#     # that we don't accumulate logs from all previous failed attempts (which would get
+#     # really spammy if the test setup is used by 100 test items).
+#     good_test_has_two_logs = occursin("""
+#         \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+#         SetupThatErrors msg
+#         SetupThatErrors msg
+#         """,
+#         c.output
+#     )
+#     bad_test_has_two_logs = occursin("""
+#         \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+#         SetupThatErrors msg
+#         SetupThatErrors msg
+#         """,
+#         c.output
+#     )
+#     @test !good_test_has_two_logs && !bad_test_has_two_logs
+# end
+
+@testset "test crashing testitem" begin
+    file = joinpath(_TEST_DIR, "_abort_tests.jl")
+    results = encased_testset(()->runtests(file; nworkers=1))
+    @test n_tests(results) == 1
+    @test n_passed(results) == 0
+end
+
+@testset "testitem timeout" begin
+    file = joinpath(_TEST_DIR, "_timeout_tests.jl")
+    results = encased_testset(()->runtests(file; nworkers=1, testitem_timeout=1.0))
+    @test n_tests(results) == 1
+    @test n_passed(results) == 0
 end

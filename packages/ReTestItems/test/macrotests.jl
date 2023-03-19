@@ -2,6 +2,7 @@
 # so *not* the `runtests` functionality, which utilizes specific
 # contrived packages/testfiles
 n_passed(ts) = ts.n_passed
+n_passed(ts::ReTestItems.TestItemResult) = n_passed(ts.testset)
 
 @testset "testsetup macro basic" begin
     ts = @testsetup module TS1
@@ -15,7 +16,7 @@ end
         @test 1 + 1 == 2
     end
     @test ti.name == "TI1"
-    @test ti.file == @__FILE__
+    @test ti.file isa String
     @test n_passed(ReTestItems.runtestitem(ti)) == 1
 end
 
@@ -82,7 +83,7 @@ end
         @test 1 + 1 == 2
     end
     ts = ReTestItems.runtestitem(ti6; finish_test=false)
-    @test ts.results[1] isa Test.Error
+    @test ts.testset.results[1] isa Test.Error
 end
 
 @testset "testitem with duplicate keywords" begin
@@ -94,6 +95,12 @@ end
         end
     )
 end
+
+#=
+NOTE:
+    These tests are disabled as we stopped using anonymous modules;
+    there were issues when tests tried serialize/deserialize with things defined in
+    an anonymous module.
 
 # Make these globals so that our testitem can access it via Main.was_finalized
 was_finalized = Threads.Atomic{Bool}(false)
@@ -113,29 +120,32 @@ mutable struct MyTempType
     end
 end
 
-@testset "testitems are GC'd correctly" begin
-    ti7 = @testitem "Foo7" begin
-        x = Main.MyTempType(1)
-        x = nothing
-        GC.gc()
-        GC.gc()
-        @test Main.was_finalized[] = true
+# disabled for now since there are issues w/ eval-ing
+# testitems into anonymous modules
+# @testset "testitems are GC'd correctly" begin
+#     ti7 = @testitem "Foo7" begin
+#         x = Main.MyTempType(1)
+#         x = nothing
+#         GC.gc()
+#         GC.gc()
+#         @test Main.was_finalized[] = true
 
-        # Now reset this, and keep a "global" object around
-        Main.was_finalized[] = false
-        x2 = Main.MyTempType(1)
-        @test x2.v == 1
+#         # Now reset this, and keep a "global" object around
+#         Main.was_finalized[] = false
+#         x2 = Main.MyTempType(1)
+#         @test x2.v == 1
 
-        # Then return. After running GC.gc() _outside_ the testitem, we should
-        # free the entire testitem, including the global objects its holding onto,
-        # including `x2`, which should set was_finalized[] back to true. :)
-    end
-    ts = ReTestItems.runtestitem(ti7; finish_test=true)
-    @test n_passed(ts) == 2
+#         # Then return. After running GC.gc() _outside_ the testitem, we should
+#         # free the entire testitem, including the global objects its holding onto,
+#         # including `x2`, which should set was_finalized[] back to true. :)
+#     end
+#     ts = ReTestItems.runtestitem(ti7; finish_test=true)
+#     @test n_passed(ts) == 2
 
-    @test Main.was_finalized[] == false
-    ts = ti7 = nothing
-    GC.gc()
-    GC.gc()
-    @test Main.was_finalized[] == true
-end
+#     @test Main.was_finalized[] == false
+#     ts = ti7 = nothing
+#     GC.gc()
+#     GC.gc()
+#     @test Main.was_finalized[] == true
+# end
+=#

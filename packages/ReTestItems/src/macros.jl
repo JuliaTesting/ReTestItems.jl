@@ -1,3 +1,5 @@
+gettls(k, d) = get(task_local_storage(), k, d)
+
 ###
 ### testsetup
 ###
@@ -50,16 +52,22 @@ macro testsetup(mod)
     name isa Symbol || error("`@testsetup module` expects a valid module name")
     nm = QuoteNode(name)
     q = QuoteNode(code)
-    tls = task_local_storage()
-    proj = haskey(tls, :__RE_TEST_PROJECT__) ? tls[:__RE_TEST_PROJECT__] : "."
     esc(quote
-        $store_test_item_setup($TestSetup($nm, $q, $(String(__source__.file)), $(__source__.line), $proj, Ref{IOStream}()))
+        $store_test_item_setup($TestSetup($nm, $q, $(String(__source__.file)), $(__source__.line), $gettls(:__RE_TEST_PROJECT__, "."), Ref{IOStream}()))
     end)
 end
 
 ###
 ### testitem
 ###
+const Stats = NamedTuple{(:value, :time, :bytes, :gctime, :gcstats), Tuple{Nothing, Float64, Int64, Float64, Base.GC_Diff}}
+
+mutable struct ScheduledForEvaluation
+    @atomic value::Bool
+end
+
+ScheduledForEvaluation() = ScheduledForEvaluation(false)
+
 # NOTE: TestItems are serialized across processes for
 # distributed testing, so care needs to be taken that
 # fields are serialization-appropriate and process-local
@@ -73,7 +81,7 @@ those test in their own module.
 Should only be created via the `@testitem` macro.
 """
 struct TestItem
-    id::Int
+    id::Base.RefValue{Int64} # populated by runtests coordinator once all test items are known
     name::String
     tags::Vector{Symbol}
     default_imports::Bool
@@ -84,6 +92,10 @@ struct TestItem
     code::Any
     testsetups::Vector{TestSetup} # populated by runtests coordinator
     workerid::Base.RefValue{Int} # populated when the test item is scheduled
+    testset::Base.RefValue{DefaultTestSet} # populated when the test item is finished evaluating
+    eval_number::Base.RefValue{Int} # to keep track of how many items have been evaluated so far
+    stats::Base.RefValue{Stats} # populated when the test item is finished evaluating
+    scheduled_for_evaluation::ScheduledForEvaluation # to keep track of whether the test item has been scheduled for evaluation
 end
 
 """
@@ -185,11 +197,9 @@ macro testitem(nm, exs...)
         error("expected `@testitem` to have a body")
     end
     q = QuoteNode(exs[end])
-    tls = task_local_storage()
-    proj = haskey(tls, :__RE_TEST_PROJECT__) ? tls[:__RE_TEST_PROJECT__] : "."
     esc(quote
         $store_test_item_setup(
-            $TestItem(rand(Int64), $nm, $tags, $default_imports, $setup, $(String(__source__.file)), $(__source__.line), $proj, $q, $TestSetup[], Ref{Int}())
+            $TestItem(Ref(0), $nm, $tags, $default_imports, $setup, $(String(__source__.file)), $(__source__.line), $gettls(:__RE_TEST_PROJECT__, "."), $q, $TestSetup[], Ref{Int}(0), Ref{$DefaultTestSet}(), Ref{Int}(0), Ref{$Stats}(), $ScheduledForEvaluation())
         )
     end)
 end
@@ -197,17 +207,15 @@ end
 function store_test_item_setup(ti::Union{TestItem, TestSetup})
     @debugv 2 "expanding test item/setup: `$(ti.name)`"
     tls = task_local_storage()
-    if haskey(tls, :__RE_TEST_INCOMING_CHANNEL__)
-        ch = tls[:__RE_TEST_INCOMING_CHANNEL__]
-        if ti isa TestSetup
-            # don't apply filter on test setups
-            put!(chan(ch), ti)
-        else
-            put!(ch, ti)
-        end
+    if ti isa TestItem && haskey(tls, :__RE_TEST_ITEMS__)
+        push!(tls[:__RE_TEST_ITEMS__], ti)
     elseif ti isa TestSetup
-         # we're not in a runtests context, so add the test setup to the global dict
-         GLOBAL_TEST_SETUPS_FOR_TESTING[ti.name] = ti
+        # if we're not in a runtests context, add the test setup to the global dict
+        setups = get(tls, :__RE_TEST_SETUPS__, GLOBAL_TEST_SETUPS_FOR_TESTING)
+        if haskey(setups, ti.name)
+            @warn "Encountered duplicate @testsetup with name: `$(ti.name)`. Replacing..."
+        end
+        setups[ti.name] = ti
     end
     return ti
 end

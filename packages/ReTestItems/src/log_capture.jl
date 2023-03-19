@@ -26,25 +26,12 @@ logpath(ti) = joinpath(RETESTITEMS_TEMP_FOLDER, logfile_name(ti))
     _capture_logs(f, ti::Union{TestItem,TestSetup})
 
 Redirects stdout and stderr to a temporary file corresponding to `ti`.
-For multithreaded test executors, this requires `_setup_multithreaded_log_capture()` to be called beforehand.
-
-The Multithreaded case won't properly capture logs if the evaluated test code modifies global
-logstate -- this would make the context variable unreachable to that part of the code.
-A workaround would be to use `ContextVariablesX.with_logger` or to switch to a distributed executor.
 """
 _capture_logs(f, ti::TestItem) = open(io->_capture_logs(f, io), logpath(ti), "w")
 _capture_logs(f, ts::TestSetup) = _capture_logs(f, ts.logstore[])
 function _capture_logs(f, io::IO)
     colored_io = IOContext(io, :color => get(DEFAULT_STDOUT[], :color, false))
-    if !(nthreads() > 1 && nprocs() == 1)
-        # Distributed or single-process & single-threaded executor case
-        redirect_stdio(f, stdout=colored_io, stderr=colored_io)
-    else
-        # Multithreaded executor case
-        # invokelatest to makes sure we don't run into issues if different task changed the
-        # global logger, in which case we might hit a world age issue
-        Base.invokelatest(ContextVariablesX.with_context, f, var"#CURRENT_LOGSTORE" => colored_io)
-    end
+    redirect_stdio(f, stdout=colored_io, stderr=colored_io)
 end
 
 # A lock that helps to stagger prints to DEFAULT_STDOUT, e.g. when there are log messages
@@ -88,6 +75,7 @@ function print_errors_and_captured_logs(io, ti::TestItem, ts::DefaultTestSet; ve
     has_logs = _has_logs(ti) || any(_has_logs, ti.testsetups)
     if has_errors || verbose
         report_iob = IOContext(IOBuffer(), :color=>Base.get_have_color())
+        println(report_iob)
         _print_captured_logs(report_iob, ti)
         has_errors && _print_test_errors(report_iob, ts, _on_worker(ti))
         if has_errors || has_logs
@@ -145,29 +133,69 @@ function _print_test_errors(report_iob, ts::DefaultTestSet, worker_info)
     return nothing
 end
 
-# Called from a Timer object if a tests takes longer than STALLED_LIMIT_SECONDS
-function log_stalled(ti::TestItem)
+# Marks the start of each test item
+function log_running(ti::TestItem, ntestitems=0)
     report_iob = IOContext(IOBuffer(), :color=>Base.get_have_color())
     print(report_iob, format(now(), "HH:MM:SS "))
-    printstyled(report_iob, "STALLED"; bold=true)
+    printstyled(report_iob, "RUNNING "; bold=true)
+    if ntestitems > 0
+        print(report_iob, " (", lpad(ti.eval_number[], ndigits(ntestitems)), "/", ntestitems, ")")
+    end
     print(report_iob, " test item $(repr(ti.name)) at ")
     printstyled(report_iob, _file_info(ti); bold=true, color=:default)
     println(report_iob, _on_worker(ti))
-    # Let's also print any logs we might have collected for the stalled test item
-    _print_captured_logs(report_iob, ti)
-    filesize(logpath(ti)) > 0 && println(report_iob)
     @loglock write(DEFAULT_STDOUT[], take!(report_iob.io))
 end
 
-# Marks the start of each test item
-function log_running(ti::TestItem)
-    report_iob = IOContext(IOBuffer(), :color=>Base.get_have_color())
-    print(report_iob, format(now(), "HH:MM:SS "))
-    printstyled(report_iob, "RUNNING"; bold=true)
-    print(report_iob, " test item $(repr(ti.name)) at ")
-    printstyled(report_iob, _file_info(ti); bold=true, color=:default)
-    println(report_iob, _on_worker(ti))
-    @loglock write(DEFAULT_STDOUT[], take!(report_iob.io))
+# mostly copied from timing.jl
+function log_finished(ti::TestItem, ntestitems=0)
+    stats = ti.stats[]
+    elapsedtime, bytes, gctime = stats.time, stats.bytes, stats.gctime
+    allocs=Base.gc_alloc_count(stats.gcstats)
+    compile_time=0
+    recompile_time=0
+    _lpad=true
+    timestr = Base.Ryu.writefixed(elapsedtime, 6)
+    io = IOContext(IOBuffer(), :color=>Base.get_have_color())
+    print(io, format(now(), "HH:MM:SS "))
+    printstyled(io, "FINISHED"; bold=true)
+    if ntestitems > 0
+        print(io, " (", lpad(ti.eval_number[], ndigits(ntestitems)), "/", ntestitems, ")")
+    end
+    print(io, " test item $(repr(ti.name)) ")
+    _lpad && print(io, length(timestr) < 10 ? (" "^(10 - length(timestr))) : "")
+    print(io, timestr, " seconds")
+    parens = bytes != 0 || allocs != 0 || gctime > 0 || compile_time > 0
+    parens && print(io, " (")
+    if bytes != 0 || allocs != 0
+        allocs, ma = Base.prettyprint_getunits(allocs, length(Base._cnt_units), Int64(1000))
+        if ma == 1
+            print(io, Int(allocs), Base._cnt_units[ma], allocs==1 ? " allocation: " : " allocations: ")
+        else
+            print(io, Base.Ryu.writefixed(Float64(allocs), 2), Base._cnt_units[ma], " allocations: ")
+        end
+        print(io, Base.format_bytes(bytes))
+    end
+    if gctime > 0
+        if bytes != 0 || allocs != 0
+            print(io, ", ")
+        end
+        print(io, Base.Ryu.writefixed(Float64(100*gctime/elapsedtime), 2), "% gc time")
+    end
+    if compile_time > 0
+        if bytes != 0 || allocs != 0 || gctime > 0
+            print(io, ", ")
+        end
+        print(io, Base.Ryu.writefixed(Float64(100*compile_time/elapsedtime), 2), "% compilation time")
+    end
+    if recompile_time > 0
+        perc = Float64(100 * recompile_time / compile_time)
+        # use "<1" to avoid the confusing UX of reporting 0% when it's >0%
+        print(io, ": ", perc < 1 ? "<1" : Base.Ryu.writefixed(perc, 0), "% of which was recompilation")
+    end
+    parens && print(io, ")")
+    println(io)
+    @loglock write(DEFAULT_STDOUT[], take!(io.io))
 end
 
 function report_empty_testsets(ti::TestItem, ts::DefaultTestSet)
@@ -211,70 +239,3 @@ end
 # Overloads needed to capture printed colors
 Base.get(::ReTestItemsCapturingIO, key::Symbol, default) = key === :color ? Base.get_have_color() : default
 Base.unwrapcontext(io::ReTestItemsCapturingIO) = (io, Base.unwrapcontext(DEFAULT_STDOUT[])[2])
-
-# When the #CURRENT_LOGSTORE is set, we redirect all writes that would normally go to stdout
-# to an IOStream referenced by it. This way we achieve log capture while using multithreaded
-# test executors. Sadly, context variables are not visible when logstate gets changed by the
-# tested code in which case we recommend to use distributed executors or to use
-# `ContextVariablesX.with_logger` instead.
-ContextVariablesX.@contextvar var"#CURRENT_LOGSTORE"::IOContext{IOStream};
-for T in (UInt8, Vector{UInt8}, String, Char, AbstractChar, AbstractString, IO)
-    @eval function Base.write(io::Union{ReTestItemsCapturingIO,IOContext{ReTestItemsCapturingIO}}, x::$(T))
-        logstore = get(var"#CURRENT_LOGSTORE")
-        if logstore === nothing
-            return write(DEFAULT_STDOUT[], x)
-        else
-            return write(something(logstore)::IOContext{IOStream}, x)
-        end
-    end
-
-    @eval function Base.write(io::Union{ReTestItemsCapturingIO,IOContext{ReTestItemsCapturingIO}}, x::$(T)...)
-        logstore = get(var"#CURRENT_LOGSTORE")
-        if logstore === nothing
-            return write(DEFAULT_STDOUT[], x...)
-        else
-            return write(something(logstore)::IOContext{IOStream}, x...)
-        end
-    end
-end
-
-# Note the original state pertaining to printing and logging and replace
-# stdout and stderr with our STANDARD_IO_CONSUMER
-function _setup_multithreaded_log_capture()
-    if _not_compiling()
-        @debugv 1 "Redirecting standard outputs to STANDARD_IO_CONSUMER"
-        # this call is redundant as we already call it in runtests, but it is idempotent
-        # and makes the multithtreded code self contained
-        save_current_stdio()
-        consumer = STANDARD_IO_CONSUMER
-        logger = DEFAULT_LOGGER[]
-
-        # approach adapted from https://github.com/JuliaLang/IJulia.jl/pull/667/files
-        if :stream in propertynames(logger) && logger.stream == stderr
-            new_logstate = Base.CoreLogging.LogState(typeof(logger)(consumer, logger.min_level))
-            Core.eval(Base.CoreLogging, Expr(:(=), :(_global_logstate), new_logstate))
-        end
-
-        flush(stderr)
-        flush(stdout)
-        redirect_stdout(consumer)
-        redirect_stderr(consumer)
-    end
-    return nothing
-end
-
-# Restores the original state pertaining to printing and logging
-function _teardown_multithreaded_log_capture()
-    if _not_compiling()
-        @debugv 1 "Restoring original standard outputs"
-        redirect_stdout(DEFAULT_STDOUT[])
-        redirect_stderr(DEFAULT_STDERR[])
-
-        logger = DEFAULT_LOGGER[]
-        logstate = DEFAULT_LOGSTATE[]
-        if :stream in propertynames(logger) && logger.stream == stderr
-            Core.eval(Base.CoreLogging, Expr(:(=), :(_global_logstate), logstate))
-        end
-    end
-    return nothing
-end

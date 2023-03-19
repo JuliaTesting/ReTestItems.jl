@@ -3,22 +3,19 @@ module ReTestItems
 using Base: @lock
 using Dates: format, now
 using Test: Test, DefaultTestSet, TestSetException
-using Distributed: RemoteChannel, @spawnat, nprocs, workers, channel_from_id, remoteref_id, RemoteException, myid
+using Distributed: Distributed, RemoteChannel, @spawnat, nprocs, addprocs, RemoteException, myid, remotecall_eval, ProcessExitedException
 using .Threads: @spawn, nthreads
 using Pkg: Pkg
 using TestEnv
 using Logging
 using LoggingExtras
-using ContextVariablesX
-using DataStructures: DataStructures, dequeue!, PriorityQueue
-import Distributed
 
 export runtests, runtestitem
 export @testsetup, @testitem
-export TestSetup, TestItem
+export TestSetup, TestItem, TestItemResult
 
-const STALLED_LIMIT_SECONDS = 30*60
 const RETESTITEMS_TEMP_FOLDER = mkpath(joinpath(tempdir(), "ReTestItemsTempLogsDirectory"))
+const DEFAULT_TEST_ITEM_TIMEOUT = 30*60
 
 if isdefined(Base, :errormonitor)
     const errmon = Base.errormonitor
@@ -71,6 +68,12 @@ If no arguments are passed, the current project is searched for `@testitem`s.
 If directory or file paths are passed, only those directories and files are searched.
 
 # Keywords
+- `testitem_timeout::Int`: The number of seconds to wait until a `@testitem` is marked as failed.
+  Defaults to 30 minutes. Note timeouts are currently only applied when `nworkers > 0`.
+- `nworkers::Int`: The number of workers to use for running `@testitem`s. Default 0. Can also be set
+  using the `RETESTITEMS_NWORKERS` environment variable.
+- `nworker_threads::Int`: The number of threads to use for each worker. Defaults to 2.
+  Can also be set using the `RETESTITEMS_NWORKER_THREADS` environment variable.
 - `verbose::Bool`: If `true`, print the logs from all `@testitem`s to `stdout`.
   Otherwise, logs are only printed for `@testitem`s with errors or failures.
   Defaults to `true` when Julia is running in an interactive session, otherwise `false`.
@@ -116,6 +119,9 @@ end
 function runtests(
     shouldrun,
     paths::AbstractString...;
+    nworkers::Int=parse(Int, get(ENV, "RETESTITEMS_NWORKERS", "0")),
+    nworker_threads::Int=parse(Int, get(ENV, "RETESTITEMS_NWORKER_THREADS", "2")),
+    testitem_timeout::Real=DEFAULT_TEST_ITEM_TIMEOUT,
     verbose=isinteractive(),
     debug=0,
     name::Union{Regex,AbstractString,Nothing}=nothing,
@@ -137,22 +143,22 @@ function runtests(
     shouldrun_combined(ti) = shouldrun(ti) && _shouldrun(name, ti.name) && _shouldrun(tags, ti.tags)
     mkpath(RETESTITEMS_TEMP_FOLDER) # ensure our folder wasn't removed
     save_current_stdio()
+    nworkers = max(0, nworkers)
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun_combined, paths′, verbose, debuglvl)
+            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, testitem_timeout, verbose, debuglvl)
         end
     else
-        return _runtests(shouldrun_combined, paths′, verbose, debuglvl)
+        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, testitem_timeout, verbose, debuglvl)
     end
 end
 
-function _runtests(shouldrun, paths, verbose::Bool, debug::Int)
+function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::Int, testitem_timeout::Real, verbose::Bool, debug::Int)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
     get(task_local_storage(), :__RE_TEST_RUNNING__, false) && return nothing
-
     # If passed multiple directories/files, we assume/require they share the same environment.
     dir = first(paths)
     @assert dir isa AbstractString
@@ -165,211 +171,207 @@ function _runtests(shouldrun, paths, verbose::Bool, debug::Int)
     if is_running_test_runtests_jl(proj_file)
         # Assume this is `Pkg.test`, so test env already active.
         @debugv 2 "Running in current environment `$(Base.active_project())`"
-        return _runtests_in_current_env(shouldrun, paths, proj_file, verbose, debug)
+        return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, testitem_timeout, verbose, debug)
     else
         @debugv 1 "Activating test environment for `$proj_file`"
         return Pkg.activate(proj_file) do
             TestEnv.activate() do
-                _runtests_in_current_env(shouldrun, paths, proj_file, verbose, debug)
+                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, testitem_timeout, verbose, debug)
             end
         end
     end
 end
 
-function _runtests_in_current_env(shouldrun, paths, projectfile::String, verbose::Bool, debug::Int)
+function _runtests_in_current_env(shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, testitem_timeout::Real, verbose::Bool, debug::Int)
+    start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
-    incoming = Channel{Union{TestItem, TestSetup}}(Inf)
-    testitems = RemoteChannel(() -> Channel{TestItem}(Inf))
-    results = RemoteChannel(() -> Channel{Tuple{TestItem,DefaultTestSet}}(Inf))
-    # run test file including @spawn so we can immediately
-    # start executing tests as they're put into our test channel
-    fch = FilteredChannel(shouldrun, incoming)
+    @info "Starting scan for test items in project = `$proj_name` at paths = `$paths`"
+    inc_time = time()
     @debugv 1 "Including tests in $paths"
-    include_task = @spawn begin
-        # Wrapping with the logger that was set before we eval'd any user code to
-        # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
-        with_logger(current_logger()) do
-            @debugv 2 "Begin including $paths"
-            include_testfiles!($fch, $projectfile, $paths)
-            @debugv 2 "Done including $paths"
-            close($fch)
-        end
-    end
+    testitems, _ = include_testfiles!(proj_name, projectfile, paths, shouldrun)
+    ntestitems = length(testitems.testitems)
+    @debugv 1 "Done including tests in $paths"
+    test_proj = Base.active_project()
+    @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds. Scheduling $ntestitems tests on pid = $(Libc.getpid()) with $nworkers worker processes and $nworker_threads threads per worker"
     try
-        test_proj = Base.active_project()
-        # Avoid `record` printing a summary; we want to print just one summary at the end.
-        result_task = @spawn begin
-            # Wrapping with the logger that was set before we eval'd any user code to
-            # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
-            with_logger(current_logger()) do
-                process_results!($(chan(results)), $proj_name, $(dirname(projectfile)), $verbose)
-            end
-        end
-        @debugv 1 "Starting task to process incoming test items/setups"
-        errmon(@spawn begin
-            # Wrapping with the logger that was set before we eval'd any user code to
-            # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
-            with_logger(current_logger()) do
-                process_incoming!($incoming, $(chan(testitems)))
-            end
-        end)
-        @debugv 1 "Scheduling tests on $(nprocs()) processes."
-        schedule_tasks = if nprocs() == 1
-            # This is where we disable printing for the multithreaded executor case.
+        if nworkers == 0
+            # This is where we disable printing for the serial executor case.
             Test.TESTSET_PRINT_ENABLE[] = false
-            ntasks = nthreads()
-            ntasks > 1 && _setup_multithreaded_log_capture()
-            @debugv 1 "Spawning $ntasks tasks to run testitems."
-            ctx = TestContext(proj_name)
-            # we use a single TestSetupModules for all tasks
+            ctx = TestContext(proj_name, ntestitems)
+            # we use a single TestSetupModules
             ctx.setups_evaled = TestSetupModules()
-            [@spawn schedule_testitems!($ctx, chan(testitems), chan(results), $verbose) for _ in 1:ntasks]
+            for (i, testitem) in enumerate(testitems.testitems)
+                testitem.workerid[] = myid()
+                testitem.eval_number[] = i
+                res = runtestitem(testitem, ctx; verbose=verbose)
+                ts = res.testset
+                testitem.stats[] = res.stats
+                print_errors_and_captured_logs(testitem, ts; verbose)
+                report_empty_testsets(testitem, ts)
+                testitem.testset[] = ts
+            end
         else
-            # spawn a task that broadcasts from coordinator-local setups channel to worker remote setup channels
-            # We don't schedule any testitems on worker 1 as it handles file includes and result collection
-            [
-                @spawnat(p, schedule_remote_testitems!(test_proj, proj_name, testitems, results, verbose, debug))
-                for p in workers()
-            ]
+            # spawn a task per worker to start and manage the lifetime of the worker
+            wids = zeros(Int, nworkers)
+            try
+                # get starting test items for each worker
+                starting = get_starting_testitems(testitems, nworkers)
+                @sync for i = 1:nworkers
+                    ti = starting[i]
+                    @spawn begin
+                        # Wrapping with the logger that was set before we eval'd any user code to
+                        # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
+                        with_logger(current_logger()) do
+                            wid = start_and_manage_worker($test_proj, $proj_name, $testitems, $ti, $nworker_threads, $testitem_timeout, $verbose, $debug)
+                            wids[$i] = wid
+                        end
+                    end
+                end
+            finally
+                # terminate all workers, silencing the current noisy Distributed @async exceptions
+                redirect_stdio(stdout=devnull, stderr=devnull) do
+                    @sync for wid in wids
+                        wid > 0 && @spawn terminate_worker($wid)
+                    end
+                end
+                # we've seen issues w/ Distributed using atexit to terminate workers
+                # so we remove the atexit hook that does this
+                i = findfirst(==(Distributed.terminate_all_workers), Base.atexit_hooks)
+                if i !== nothing
+                    deleteat!(Base.atexit_hooks, i)
+                end
+            end
         end
-        foreach(wait, schedule_tasks)
-        # once all test items have been run, close the results channel
-        close(results)
-        # make sure to wait on result_task to finish finalizing testitem testsets
-        testset = fetch(result_task)
         Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
-        Test.finish(testset)               # print summary of total passes/failures/errors
+        # return testitems
+        @info "Finished running $ntestitems tests in $(round(time() - start_time, digits=2)) seconds"
+        Test.finish(testitems) # print summary of total passes/failures/errors
     finally
         Test.TESTSET_PRINT_ENABLE[] = true
-        # we wouldn't expect to need to wait on include_task
-        # since schedule_testitems! shouldn't return until the test channel
-        # is closed, but in case of unexpected errors, this at least
-        # ensures that all tasks spawned by runtests finish before it returns
-        wait(include_task)
-        (nthreads() > 1 && nprocs() == 1) && _teardown_multithreaded_log_capture()
         # Cleanup test setup logs
         foreach(rm, filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER, join=true)))
     end
     return nothing
 end
 
+function terminate_worker(pid)
+    @assert myid() == 1
+    try
+        @debugv 1 "Terminating worker pid = $pid"
+        if pid in Distributed.workers() && haskey(Distributed.map_pid_wrkr, pid)
+            w = Distributed.map_pid_wrkr[pid]
+            @assert isa(w, Distributed.Worker)
+            kill(w.config.process, Base.SIGKILL)
+            sleep(0.1)
+            i = 1
+            while pid in Distributed.workers()
+                sleep(0.1)
+                i += 1
+                if i > 100
+                    @warn "Failed to kill worker after 10 seconds: $pid"
+                    break
+                end
+            end
+        end
+    catch e
+        @warn "Failed to kill worker: $pid" exception=(failed_to_kill, catch_backtrace())
+    end
+end
+
+function start_worker(test_proj, proj_name, nworker_threads, ntestitems, verbose, debug)
+    wid = only(addprocs(1; exeflags=`--threads=$nworker_threads`))
+    remotecall_eval(Main, wid, :(using ReTestItems))
+    # we create the RemoteChannel on the *worker* so that
+    # if it crashes, our take! call throws the ProcessExitedException
+    ch = RemoteChannel(() -> Channel{Any}(0), wid)
+    @spawnat wid begin
+        schedule_remote_testitems!(test_proj, proj_name, ntestitems, ch, verbose, debug)
+    end
+    return wid, ch
+end
+
+function start_and_manage_worker(test_proj, proj_name, testitems, testitem, nworker_threads, timeout, verbose, debug)
+    ntestitems = length(testitems.testitems)
+    wid, ch = start_worker(test_proj, proj_name, nworker_threads, ntestitems, verbose, debug)
+    nretries = 0
+    cond = Threads.Condition()
+    while testitem !== nothing
+        testitem.workerid[] = wid
+        # unbuffered channel will block until worker takes
+        put!(ch, testitem)
+        try
+            timer = Timer(timeout) do tm
+                close(tm)
+                ex = TimeoutException("Test item $(repr(testitem.name)) timed out after $timeout seconds")
+                @lock cond notify(cond, ex; error=true)
+            end
+            errmon(@spawn begin
+                _ch = $ch
+                try
+                    # unbuffered channel blocks until worker is done eval-ing and puts result
+                    res = take!(_ch)::TestItemResult
+                    isopen($timer) && @lock cond notify(cond, res)
+                catch e
+                    isopen($timer) && @lock cond notify(cond, e; error=true)
+                end
+            end)
+            try
+                # if we get a ProcessExitedException or TimeoutException
+                # then wait will throw here and we fall through to the outer try-catch
+                testitem_result = @lock cond wait(cond)
+                ts = testitem_result.testset
+                testitem.stats[] = testitem_result.stats
+                testitem.testset[] = ts
+                print_errors_and_captured_logs(testitem, ts; verbose)
+                report_empty_testsets(testitem, ts)
+                testitem = next_testitem(testitems, testitem.id[])
+                nretries = 0
+            finally
+                close(timer)
+            end
+        catch e
+            if e isa ProcessExitedException || e isa TimeoutException
+                _print_captured_logs(DEFAULT_STDOUT[], testitem)
+                if e isa TimeoutException
+                    @warn "Worker $(wid) timed out evaluating test item named: $(repr(testitem.name)) afer $timeout seconds, starting a new worker and retrying"
+                    terminate_worker(wid)
+                end
+                if nretries == 2
+                    @warn "Worker $(wid) is the 3rd failure evaluating test item named: $(repr(testitem.name)); recording test error"
+                    Test.TESTSET_PRINT_ENABLE[] = false
+                    ts = DefaultTestSet(testitem.name; verbose)
+                    err = ErrorException("test item named: $(repr(testitem.name)) crashed worker processes 3 times")
+                    Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
+                        Base.ExceptionStack([(exception=err, backtrace=Union{Ptr{Nothing}, Base.InterpreterIP}[])]),
+                        LineNumberNode(testitem.line, testitem.file)))
+                    try
+                        Test.finish(ts)
+                    catch e2
+                        e2 isa TestSetException || rethrow()
+                    end
+                    record_testitem!(testitems, testitem.id[], ts)
+                    testitem = next_testitem(testitems, testitem.id[])
+                    Test.TESTSET_PRINT_ENABLE[] = true
+                    nretries = 0
+                elseif e isa ProcessExitedException
+                    @warn "Worker $(wid) died evaluating test item named: $(repr(testitem.name)), starting a new worker and retrying"
+                end
+                nretries += 1
+                wid, ch = start_worker(test_proj, proj_name, nworker_threads, ntestitems, verbose, debug)
+                # now we loop back around and put testitem on our new channel
+                continue
+            end
+            # we don't expect any other kind of error, so rethrow, which will propagate
+            # back up to the main coordinator task and throw to the user
+            rethrow()
+        end
+    end
+    return wid
+end
+
 is_invalid_state(ex::Exception) = false
 is_invalid_state(ex::InvalidStateException) = true
 is_invalid_state(ex::RemoteException) = ex.captured.ex isa InvalidStateException
-
-# Struct for hierarchical testset handling. Used for structuring the final table of results.
-# Stores directory and file level testsets ordered by their depth in the directory tree.
-struct TestSetTree
-    queue::PriorityQueue{String,Int}
-    testsets::Dict{String,DefaultTestSet}
-
-    function TestSetTree()
-        return new(
-            PriorityQueue{String,Int}(Base.Order.Reverse),
-            Dict{String,DefaultTestSet}()
-        )
-    end
-end
-
-_depth(path) = length(splitpath(path))
-
-function DataStructures.dequeue!(tree::TestSetTree)
-    name = dequeue!(tree.queue)
-    return pop!(tree.testsets, name)
-end
-
-Base.isempty(tree::TestSetTree) = isempty(tree.queue)
-
-function Base.get!(f, tree::TestSetTree, key::String)
-    if haskey(tree.testsets, key)
-        return tree.testsets[key]
-    else
-        return get!(tree, key, f())
-    end
-end
-
-function Base.get!(tree::TestSetTree, key::String, value::DefaultTestSet)
-    get!(tree.queue, key, _depth(key))
-    return get!(tree.testsets, key, value)
-end
-
-
-function process_results!(results::Channel, project_name::String, project_root::String, verbose::Bool)
-    project_ts = DefaultTestSet(project_name; verbose=true)
-    testsets = TestSetTree()
-    for (ti, ts) in results
-        print_errors_and_captured_logs(ti, ts; verbose=verbose)
-        report_empty_testsets(ti, ts)
-        filename = relpath(ti.file, project_root)
-        file_ts = get!(() -> DefaultTestSet(filename; verbose=true), testsets, filename)
-        Test.record(file_ts, ts)
-    end
-    while !isempty(testsets)
-        ts = dequeue!(testsets)
-        # We want the final summary to print the directory structure alphabetically.
-        # We know `ts.results` is a vector of `DefaultTestSet`s (not `Result`s).
-        sort!(ts.results, by=(ts)->(ts.description))
-        dir_name = dirname(ts.description)
-        if isempty(dir_name)
-            # We're at the root of the project, so record to the top-most testset.
-            Test.record(project_ts, ts)
-        else
-            dir_ts = get!(() -> DefaultTestSet(dir_name; verbose=true), testsets, dir_name)
-            Test.record(dir_ts, ts)
-        end
-    end
-    sort!(project_ts.results, by=(ts)->(ts.description))
-    return project_ts
-end
-
-function process_incoming!(incoming::Channel, testitems::Channel)
-    setups = Dict{Symbol, TestSetup}()
-    waiting = Dict{Symbol, Vector{TestItem}}() # maps TestSetup.name to list of TestItems waiting for that setup
-    for ti in incoming
-        @debugv 1 "Processing test item/setup: $(repr(ti.name)) from $(ti.file):$(ti.line)"
-        if ti isa TestSetup
-            setups[ti.name] = ti
-            # check if any test items are waiting for this setup
-            if haskey(waiting, ti.name)
-                for wti in waiting[ti.name]
-                    push!(wti.testsetups, ti)
-                    if length(wti.testsetups) == length(wti.setups)
-                        # all required setups have been seen, so we can run this test item
-                        put!(testitems, wti)
-                    end
-                end
-                delete!(waiting, ti.name)
-            end
-        elseif ti isa TestItem
-            # check if we know about all the required setups
-            for s in ti.setups
-                if haskey(setups, s)
-                    push!(ti.testsetups, setups[s])
-                else
-                    push!(get!(() -> TestItem[], waiting, s), ti)
-                end
-            end
-            if length(ti.setups) == length(ti.testsetups)
-                # we have all the required setups, so we can run this test item
-                put!(testitems, ti)
-            end
-        end
-    end
-    # we know no more test items/setups are coming, so now we deal w/ any test items that are stuck waiting
-    seen = Set{String}()
-    for (_, tis) in waiting
-        for ti in tis
-            ti.name in seen && continue
-            @debugv 1 "Test item $(repr(ti.name)) from $(ti.file):$(ti.line) is stuck waiting for at least one of $(ti.setups)"
-            # by forcing evaluation, we'll get an appropriate error message when the test setup isn't found
-            put!(testitems, ti)
-            push!(seen, ti.name)
-        end
-    end
-    # close the testitems channel so schedule_testitems! knows to stop
-    close(testitems)
-    return nothing
-end
 
 # Check if the file at `filepath` is a "test file"
 # i.e. if it ends with one of the identifying suffixes
@@ -391,11 +393,19 @@ function is_testsetup_file(filepath)
 end
 
 # for each directory, kick off a recursive test-finding task
-function include_testfiles!(incoming::FilteredChannel, projectfile, paths)
+function include_testfiles!(project_name, projectfile, paths, shouldrun)
+    project_root = dirname(projectfile)
     subproject_root = nothing  # don't recurse into directories with their own Project.toml.
-    project_dirname = dirname(projectfile)
+    root_node = dir_node = DirNode(project_name; verbose=true)
+    dir_nodes = Dict{String, DirNode}()
+    # setups is populated in store_test_item_setup when we expand a @testsetup
+    # we set it below in tls as __RE_TEST_SETUPS__ for each included file
+    setups = Dict{Symbol, TestSetup}()
     @sync for dir in ("test", "src")
-        for (root, _, files) in Base.walkdir(joinpath(project_dirname, dir))
+        dir_node = DirNode(dir; verbose=true)
+        push!(root_node, dir_node)
+        dir_nodes[dir] = dir_node
+        for (root, _, files) in Base.walkdir(joinpath(project_root, dir))
             if subproject_root !== nothing && startswith(root, subproject_root)
                 @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
                 continue
@@ -403,9 +413,11 @@ function include_testfiles!(incoming::FilteredChannel, projectfile, paths)
                 subproject_root = root
                 continue
             end
+            rpath = relpath(root, project_root)
+            dir_node = DirNode(rpath; verbose=true)
+            dir_nodes[rpath] = dir_node
+            push!(get(dir_nodes, dirname(rpath), root_node), dir_node)
             for file in files
-                # channel should only be closed if there was an error
-                isopen(incoming) || return nothing
                 filepath = joinpath(root, file)
                 # We filter here, rather than the tesitem level, to make sure we don't
                 # `include` a file that isn't supposed to be a test-file at all, e.g. its
@@ -417,24 +429,40 @@ function include_testfiles!(incoming::FilteredChannel, projectfile, paths)
                 if !(is_testsetup_file(filepath) || (is_test_file(filepath) && is_requested(filepath, paths)))
                     continue
                 end
+                fpath = relpath(filepath, project_root)
+                file_node = FileNode(fpath, shouldrun; verbose=true)
+                push!(dir_node, file_node)
                 @debugv 1 "Including test items from file `$filepath`"
-                @spawn try
+                @spawn begin
                     task_local_storage(:__RE_TEST_RUNNING__, true) do
-                        task_local_storage(:__RE_TEST_INCOMING_CHANNEL__, $incoming) do
-                            task_local_storage(:__RE_TEST_PROJECT__, $(project_dirname)) do
-                                Base.include(Main, $filepath)
+                        task_local_storage(:__RE_TEST_ITEMS__, $file_node) do
+                            task_local_storage(:__RE_TEST_PROJECT__, $(project_root)) do
+                                task_local_storage(:__RE_TEST_SETUPS__, $setups) do
+                                    Base.include(Main, $filepath)
+                                end
                             end
                         end
                     end
-                catch e
-                    @error "Error including test items from file `$filepath`" exception=(e, catch_backtrace())
-                    # use the exception to close our TestItem channel so it gets propagated
-                    close($incoming, e)
                 end
             end
         end
     end
-    return nothing
+    # finished including all test files, so finalize our graph
+    # prune empty directories/files
+    prune!(root_node)
+    ti = TestItems(root_node)
+    flatten_testitems!(ti)
+    for (i, x) in enumerate(ti.testitems)
+        # set id for each testitem
+        x.id[] = i
+        # populate testsetups for each testitem
+        for s in x.setups
+            if haskey(setups, s)
+                push!(x.testsetups, setups[s])
+            end
+        end
+    end
+    return ti, setups # only returned for testing
 end
 
 # Is filepath one of the paths the user requested?
@@ -492,44 +520,36 @@ function with_source_path(f, path)
     end
 end
 
-function schedule_remote_testitems!(
-    proj::String,
-    proj_name::String,
-    testitems::RemoteChannel,
-    results::RemoteChannel,
-    verbose::Bool,
-    debug::Int,
-)
-    # activate the project for which we're running tests on the worker process
+function schedule_remote_testitems!(proj, proj_name, ntestitems, ch, verbose, debug)
     Pkg.activate(proj) do
-        # This is where we disable printing for the distributed executor case (called on each worker).
         Test.TESTSET_PRINT_ENABLE[] = false
         # on remote workers, we need a per-worker TestSetupModules
-        ctx = TestContext(proj_name)
+        ctx = TestContext(proj_name, ntestitems)
         ctx.setups_evaled = TestSetupModules()
+        @info "Starting test item evaluations for $proj_name on pid = $(Libc.getpid()), worker id = $(myid())), with $(Threads.nthreads()) threads"
         if debug > 0
             LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debug) do
-                schedule_testitems!(ctx, testitems, results, verbose)
+                schedule_testitems!(ctx, ch, verbose)
             end
         else
-            schedule_testitems!(ctx, testitems, results, verbose)
+            schedule_testitems!(ctx, ch, verbose)
         end
     end
 end
 
-function schedule_testitems!(ctx::TestContext, testitems, results, verbose::Bool)
+function schedule_testitems!(ctx::TestContext, ch, verbose::Bool)
     while true
         try
-            ti = take!(testitems)
-            ti.workerid[] = myid()
+            ti = take!(ch)
             @debugv 2 "Scheduling test item$(_on_worker()): $(repr(ti.name)) from $(ti.file):$(ti.line)"
-            runtestitem(ti, ctx, results; verbose=verbose)
-            !isopen(testitems) && !isready(testitems) && break
+            ti_result = runtestitem(ti, ctx; verbose=verbose)
+            put!(ch, ti_result)
+            !isopen(ch) && !isready(ch) && break
         catch ex
-            if !isopen(testitems) && is_invalid_state(ex)
+            if !isopen(ch) && is_invalid_state(ex)
                 break
             else
-                rethrow(ex)
+                rethrow()
             end
         end
     end
@@ -573,11 +593,11 @@ function ensure_setup!(ctx::TestContext, setup::Symbol, setups::Vector{TestSetup
 end
 
 # convenience method/globals for testing
-const GLOBAL_TEST_CONTEXT_FOR_TESTING = TestContext("ReTestItems")
+const GLOBAL_TEST_CONTEXT_FOR_TESTING = TestContext("ReTestItems", 0)
 const GLOBAL_TEST_SETUPS_FOR_TESTING = Dict{Symbol, TestSetup}()
 
 # assumes any required setups were expanded outside of a runtests context
-function runtestitem(ti::TestItem, results=nothing; kw...)
+function runtestitem(ti::TestItem; kw...)
     # make a fresh TestSetupModules for each testitem run
     GLOBAL_TEST_CONTEXT_FOR_TESTING.setups_evaled = TestSetupModules()
     empty!(ti.testsetups)
@@ -585,15 +605,18 @@ function runtestitem(ti::TestItem, results=nothing; kw...)
         ts = get(GLOBAL_TEST_SETUPS_FOR_TESTING, setup, nothing)
         ts !== nothing && push!(ti.testsetups, ts)
     end
-    runtestitem(ti, GLOBAL_TEST_CONTEXT_FOR_TESTING, results; kw...)
+    runtestitem(ti, GLOBAL_TEST_CONTEXT_FOR_TESTING; kw...)
 end
 
-function runtestitem(
-    ti::TestItem, ctx::TestContext, results::Union{Channel, RemoteChannel, Nothing};
-    verbose::Bool=false, finish_test::Bool=true
-)
+struct TimeoutException <: Exception
+    msg::String
+end
+
+function runtestitem(ti::TestItem, ctx::TestContext; verbose::Bool=false, finish_test::Bool=true)
     name = ti.name
-    log_running(ti)
+    log_running(ti, ctx.ntestitems)
+    ts = DefaultTestSet(name; verbose=verbose)
+    stats = (value=nothing, time=0.0, bytes=0, gctime=0.0, gcstats=Base.GC_Diff(0, 0, 0, 0, 0, 0, 0, 0, 0))
     # start with empty block expr and build up our @testitem module body
     body = Expr(:block)
     if ti.default_imports
@@ -603,11 +626,7 @@ function runtestitem(
             push!(body.args, :(Base.@lock Base.require_lock using $(Symbol(ctx.projectname))))
         end
     end
-    ts = DefaultTestSet(name; verbose=verbose)
     Test.push_testset(ts)
-    timer = let ti=ti
-        Timer(_->log_stalled(ti), STALLED_LIMIT_SECONDS)
-    end
     try
         for setup in ti.setups
             # TODO(nhd): Consider implementing some affinity to setups, so that we can
@@ -616,6 +635,7 @@ function runtestitem(
             # Or group them by file by default?
 
             # ensure setup has been evaled before
+            @debugv 1 "Ensuring setup for test item $(repr(name)) $(setup)$(_on_worker())."
             ts_mod = ensure_setup!(ctx, setup, ti.testsetups)
             # eval using in our @testitem module
             @debugv 1 "Importing setup for test item $(repr(name)) $(setup)$(_on_worker())."
@@ -642,10 +662,15 @@ function runtestitem(
         # eval the testitem into a temporary module, so that all results can be GC'd
         # once the test is done and sent over the wire. (However, note that anonymous modules
         # aren't always GC'd right now: https://github.com/JuliaLang/julia/issues/48711)
-        environment = Module()
-        _capture_logs(ti) do
-            with_source_path(() -> Core.eval(environment, mod_expr), ti.file)
+        @debugv 1 "Evaluating test item $(repr(name))$(_on_worker())."
+        # disabled for now since there were issues when tests tried serialize/deserialize
+        # with things defined in an anonymous module
+        # environment = Module()
+        stats = @timed _capture_logs(ti) do
+            with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
+            nothing # return nothing for stats.value
         end
+        @debugv 1 "Test item $(repr(name)) done$(_on_worker())."
     catch err
         err isa InterruptException && rethrow()
         # Handle exceptions thrown outside a `@test` in the body of the @testitem:
@@ -654,7 +679,6 @@ function runtestitem(
             (Test.Base).current_exceptions(),
             LineNumberNode(ti.line, ti.file)))
     finally
-        close(timer)
         # Make sure all test setup logs are commited to file
         foreach(ts->isassigned(ts.logstore) && flush(ts.logstore[]), ti.testsetups)
         ts1 = Test.pop_testset()
@@ -664,12 +688,11 @@ function runtestitem(
         catch e
             e isa TestSetException || rethrow()
         end
-        if results !== nothing
-            put!(results, (ti, convert_results_to_be_transferrable(ts)))
-        end
     end
     @debugv 1 "Test item $(repr(name)) done$(_on_worker())."
-    return ts
+    ti.stats[] = stats
+    log_finished(ti, ctx.ntestitems)
+    return TestItemResult(convert_results_to_be_transferrable(ts), stats)
 end
 
 # copied from XUnit.jl

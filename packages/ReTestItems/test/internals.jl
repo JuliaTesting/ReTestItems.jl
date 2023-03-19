@@ -39,104 +39,78 @@ end
 end
 
 @testset "only requested testfiles included" begin
-    using ReTestItems: FilteredChannel, include_testfiles!, identify_project, is_test_file
-    c = FilteredChannel(Returns(true), Channel(Inf))
+    using ReTestItems: ReTestItems, include_testfiles!, identify_project, is_test_file
 
     # Requesting only non-existent files/dirs should result in no files being included
-    include_testfiles!(c, "/this/file/", ("/this/file/is/not/a/t-e-s-tfile.jl",))
-    @test Base.n_avail(c.ch) == 0
+    ti, setups = include_testfiles!("proj", "/this/file/", ("/this/file/is/not/a/t-e-s-tfile.jl",), Returns(true))
+    @test isempty(ti.testitems)
+    @test isempty(setups)
 
-    include_testfiles!(c, "/this/file/", ("/this/file/does/not/exist/imaginary_tests.jl",))
-    @test Base.n_avail(c.ch) == 0
+    ti, setups = include_testfiles!("proj", "/this/file/", ("/this/file/does/not/exist/imaginary_tests.jl",), Returns(true))
+    @test isempty(ti.testitems)
+    @test isempty(setups)
 
-    include_testfiles!(c, "/this/dir/", ("/this/dir/does/not/exist/", "/this/dir/also/not/exist/"))
-    @test Base.n_avail(c.ch) == 0
+    ti, setups = include_testfiles!("proj", "/this/dir/", ("/this/dir/does/not/exist/", "/this/dir/also/not/exist/"), Returns(true))
+    @test isempty(ti.testitems)
+    @test isempty(setups)
 
     # Requesting a file that's not a test-file should result in no file being included
     pkg_file = joinpath(pkgdir(ReTestItems), "test", "packages", "NoDeps.jl", "src", "NoDeps.jl")
     @assert isfile(pkg_file)
     project = identify_project(pkg_file)
-    include_testfiles!(c, project, (pkg_file,))
-    @test Base.n_avail(c.ch) == 0
+    ti, setups = include_testfiles!("NoDeps.jl", project, (pkg_file,), Returns(true))
+    @test isempty(ti.testitems)
+    @test isempty(setups)
 
     # Requesting a dir that has no test-files should result in no file being included
     pkg_src = joinpath(pkgdir(ReTestItems), "test", "packages", "NoDeps.jl", "src")
     @assert all(!is_test_file, readdir(pkg_src))
     project = identify_project(pkg_src)
-    include_testfiles!(c, project, (pkg_src,))
-    @test Base.n_avail(c.ch) == 0
+    ti, setups = include_testfiles!("NoDeps.jl", project, (pkg_src,), Returns(true))
+    @test isempty(ti.testitems)
+    @test isempty(setups)
 
     # Requesting a test-files should result in the file being included
-    c = FilteredChannel(Returns(true), Channel(Inf))
     pkg_file = joinpath(pkgdir(ReTestItems), "test", "packages", "TestsInSrc.jl", "src", "foo_test.jl")
     @assert isfile(pkg_file) && is_test_file(pkg_file)
     project = identify_project(pkg_file)
-    include_testfiles!(c, project, (pkg_file,))
-    @test Base.n_avail(c.ch) == 1
+    ti, setups = include_testfiles!("TestsInSrc.jl", project, (pkg_file,), Returns(true))
+    @test length(ti.testitems) == 1
+    @test isempty(setups)
 
     # Requesting a dir that has test-files should result in files being included
-    c = FilteredChannel(Returns(true), Channel(Inf))
     pkg = joinpath(pkgdir(ReTestItems), "test", "packages", "TestsInSrc.jl")
     @assert any(!is_test_file, readdir(joinpath(pkg, "src")))
     project = identify_project(pkg)
-    include_testfiles!(c, project, (pkg,))
-    @test Base.n_avail(c.ch) > 0
+    ti, setups = include_testfiles!("TestsInSrc.jl", project, (pkg,), Returns(true))
+    @test map(x -> x.name, ti.testitems) == ["a1", "a2", "z", "y", "x", "b", "bar", "foo"]
+    @test isempty(setups)
 end
 
 @testset "testsetup files always included" begin
-    using ReTestItems: FilteredChannel, include_testfiles!, is_test_file, is_testsetup_file
+    using ReTestItems: include_testfiles!, is_test_file, is_testsetup_file
     test_dir = joinpath(pkgdir(ReTestItems), "test")
     @assert count(is_testsetup_file, readdir(test_dir)) == 1
     file = joinpath(test_dir, "log_capture.jl")
     @assert isfile(file) && !is_test_file(file)
-    c = FilteredChannel(Returns(true), Channel(Inf))
-    include_testfiles!(c, test_dir, (file,))
-    @test Base.n_avail(c.ch) == 1  # just the testsetup
+    ti, setups = include_testfiles!("log_capture", test_dir, (file,), Returns(true))
+    @test length(ti.testitems) == 0 # just the testsetup
+    @test haskey(setups, :FooSetup)
 
     # even when higher up in directory tree
     nested_dir = joinpath(pkgdir(ReTestItems), "test", "_nested")
     @assert !any(is_testsetup_file, readdir(nested_dir))
     file = joinpath(nested_dir, "_testitem_test.jl")
     @assert isfile(file)
-    c = FilteredChannel(Returns(true), Channel(Inf))
-    include_testfiles!(c, test_dir, (file,))
-    @test Base.n_avail(c.ch) == 2  # the requested test file and the testsetup in dir above
-end
-
-@testset "TestSetTree" begin
-    using ReTestItems: TestSetTree
-    using DataStructures: dequeue!
-    using Test: DefaultTestSet
-    files_to_depth = Dict(
-        "dir1/file1.jl" => 2,
-        "dir1/dir2/file2.jl" => 3,
-        "dir1/dir2/file3.jl" => 3,
-        "dir1/dir2/dir3/file4.jl" => 4,
-        "dir1/dir2b/file5.jl" => 3,
-    )
-    files_to_testsets = Dict(file => DefaultTestSet(file) for file in keys(files_to_depth))
-    tree = TestSetTree()
-    for (file, ts) in files_to_testsets
-        get!(tree, file, ts)
-    end
-    @test tree.queue == files_to_depth
-    @test tree.testsets == files_to_testsets
-    deepest_file = "dir1/dir2/dir3/file4.jl"
-    @test haskey(tree.testsets, deepest_file)
-    @test dequeue!(tree) == files_to_testsets[deepest_file]
-    @test !haskey(tree.testsets, deepest_file)
-    # also test `get!(func, ...) method
-    get!(tree, deepest_file) do
-        files_to_testsets[deepest_file]
-    end
-    @test haskey(tree.testsets, deepest_file)
-    @test dequeue!(tree) == files_to_testsets[deepest_file]
+    ti, setups = include_testfiles!("_nested", test_dir, (file,), Returns(true))
+    @test length(ti.testitems) == 1 # the testsetup and only one test item
+    @test haskey(setups, :FooSetup)
 end
 
 @testset "Warn on empty test set" begin
-    using ReTestItems: TestItem, report_empty_testsets
+    using ReTestItems: TestItem, report_empty_testsets, Stats, ScheduledForEvaluation
     using Test: DefaultTestSet, Fail, Error
-    ti = TestItem(42, "Dummy TestItem", [], false, [], "source/path", 42, ".", nothing, [], Ref{Int}())
+    ti = TestItem(Ref(42), "Dummy TestItem", [], false, [], "source/path", 42, ".", nothing, [], Ref{Int}(), Ref{Test.DefaultTestSet}(), Ref{Int}(0), Ref{Stats}(), ScheduledForEvaluation())
 
     ts = DefaultTestSet("Empty testset")
     report_empty_testsets(ti, ts)

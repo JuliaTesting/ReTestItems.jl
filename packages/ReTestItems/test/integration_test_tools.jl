@@ -51,7 +51,7 @@ function encased_testset(f)
     ts = @testset EncasedTestSet "encased_testset" begin
         f()
     end
-    return ts
+    return isempty(ts.results) ? ts : ts.results[end]
 end
 
 _n_passed(x::Test.Result) = 0  # already recorded in the testset
@@ -64,8 +64,8 @@ function _n_passed(xs::Vector)
     end
 end
 
-n_passed(ts::EncasedTestSet) = _n_passed(ts)
-n_tests(ts::EncasedTestSet) = _n_passed(ts) + length(non_passes(ts))
+n_passed(ts) = _n_passed(ts)
+n_tests(ts) = _n_passed(ts) + length(non_passes(ts))
 
 "extracts as flat collection of failures/errors from a (potential nested) testset"
 _extract_nonpasses(x::Test.Result) = [x]
@@ -80,11 +80,11 @@ function _extract_nonpasses(xs::Vector)
     end
 end
 
-failures(results) = filter(res -> res isa Test.Fail, results)
-errors(results) = filter(res -> res isa Test.Error, results)
+failures(results::Vector) = filter(res -> res isa Test.Fail, results)
+errors(results::Vector) = filter(res -> res isa Test.Error, results)
 
-non_passes(ts::EncasedTestSet) = _extract_nonpasses(ts)
-failures(ts::EncasedTestSet) = failures(_extract_nonpasses(ts))
-errors(ts::EncasedTestSet) = errors(_extract_nonpasses(ts))
+non_passes(ts) = _extract_nonpasses(ts)
+failures(ts) = failures(_extract_nonpasses(ts))
+errors(ts) = errors(_extract_nonpasses(ts))
 
-all_passed(ts::EncasedTestSet) = isempty(non_passes(ts))
+all_passed(ts) = isempty(non_passes(ts))
