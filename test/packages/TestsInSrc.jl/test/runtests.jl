@@ -1,3 +1,2 @@
-# using ReTestItems, TestsInSrc
-
-# runtests(TestsInSrc)
+using ReTestItems
+runtests(dirname(@__DIR__); verbose=true)
