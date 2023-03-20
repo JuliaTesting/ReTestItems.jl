@@ -1,0 +1,7 @@
+name = "B"
+uuid = "dd0d8fba-d7c4-4f8e-a2bb-3a090b3e34f2"
+manifest = "../../Manifest.toml"
+version = "0.0.0"
+
+[deps]
+ReTestItems = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"

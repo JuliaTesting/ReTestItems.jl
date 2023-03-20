@@ -1,0 +1,15 @@
+name = "C"
+uuid = "4ee78ca3-4e78-462f-a078-747ed543fa86"
+manifest = "../../Manifest.toml"
+version = "0.0.0"
+
+[deps]
+D = "bf733257-898a-45a0-b2f2-c1c188bdd870"
+ReTestItems = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[extras]
+Example = "7876af07-990d-54b4-ab0e-23690620f79a"
+
+[targets]
+test = ["Example"]
