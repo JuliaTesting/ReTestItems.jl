@@ -616,7 +616,7 @@ function runtestitem(ti::TestItem, ctx::TestContext; verbose::Bool=false, finish
     name = ti.name
     log_running(ti, ctx.ntestitems)
     ts = DefaultTestSet(name; verbose=verbose)
-    stats = (value=nothing, time=0.0, bytes=0, gctime=0.0, gcstats=Base.GC_Diff(0, 0, 0, 0, 0, 0, 0, 0, 0))
+    stats = Stats((elapsedtime=0, bytes=0, gctime=0, allocs=0, compile_time=0, recompile_time=0))
     # start with empty block expr and build up our @testitem module body
     body = Expr(:block)
     if ti.default_imports
@@ -666,9 +666,8 @@ function runtestitem(ti::TestItem, ctx::TestContext; verbose::Bool=false, finish
         # disabled for now since there were issues when tests tried serialize/deserialize
         # with things defined in an anonymous module
         # environment = Module()
-        stats = @timed _capture_logs(ti) do
+        _, stats = @timed_with_compilation _capture_logs(ti) do
             with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
-            nothing # return nothing for stats.value
         end
         @debugv 1 "Test item $(repr(name)) done$(_on_worker())."
     catch err

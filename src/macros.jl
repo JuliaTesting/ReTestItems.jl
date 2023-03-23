@@ -60,7 +60,7 @@ end
 ###
 ### testitem
 ###
-const Stats = NamedTuple{(:value, :time, :bytes, :gctime, :gcstats), Tuple{Nothing, Float64, Int64, Float64, Base.GC_Diff}}
+const Stats = @NamedTuple{elapsedtime::UInt, bytes::Int, gctime::Int, allocs::Int, compile_time::UInt, recompile_time::UInt}
 
 mutable struct ScheduledForEvaluation
     @atomic value::Bool

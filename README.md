@@ -109,7 +109,7 @@ end
 end
 ```
 
-### Summary
+### Summary
 
 1. Write tests inside of an `@testitem` block.
     - These are like an `@testset`, except that they must contain all the code they need to run;

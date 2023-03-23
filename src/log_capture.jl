@@ -10,6 +10,62 @@ function save_current_stdio()
     DEFAULT_LOGGER[] = Base.CoreLogging._global_logstate.logger
 end
 
+# Adapted from Base.@time
+macro timed_with_compilation(ex)
+    quote
+        Base.Experimental.@force_compile
+        local stats = Base.gc_num()
+        local elapsedtime = Base.time_ns()
+        Base.cumulative_compile_timing(true)
+        local compile_elapsedtimes = Base.cumulative_compile_time_ns()
+        local val = Base.@__tryfinally($(esc(ex)),
+            (elapsedtime = Base.time_ns() - elapsedtime;
+            Base.cumulative_compile_timing(false);
+            compile_elapsedtimes = Base.cumulative_compile_time_ns() .- compile_elapsedtimes)
+        )
+        local diff = Base.GC_Diff(Base.gc_num(), stats)
+        local out = (;
+            elapsedtime, bytes=diff.allocd, gctime=diff.total_time, allocs=Base.gc_alloc_count(diff),
+            compile_time=first(compile_elapsedtimes), recompile_time=last(compile_elapsedtimes)
+        )
+        val, out
+    end
+end
+
+# Adapted from Base.time_print
+function time_print(io; elapsedtime, bytes=0, gctime=0, allocs=0, compile_time=0, recompile_time=0)
+    print(io, Base.Ryu.writefixed(Float64(elapsedtime/1e9), 6), " seconds")
+    parens = bytes != 0 || allocs != 0 || gctime > 0 || compile_time > 0
+    parens && print(io, " (")
+    if bytes != 0 || allocs != 0
+        allocs, ma = Base.prettyprint_getunits(allocs, length(Base._cnt_units), Int64(1000))
+        if ma == 1
+            print(io, Int(allocs), Base._cnt_units[ma], allocs==1 ? " allocation: " : " allocations: ")
+        else
+            print(io, Base.Ryu.writefixed(Float64(allocs), 2), Base._cnt_units[ma], " allocations: ")
+        end
+        print(io, Base.format_bytes(bytes))
+    end
+    if gctime > 0
+        if bytes != 0 || allocs != 0
+            print(io, ", ")
+        end
+        print(io, Base.Ryu.writefixed(Float64(100*gctime/elapsedtime), 2), "% gc time")
+    end
+    if compile_time > 0
+        if bytes != 0 || allocs != 0 || gctime > 0
+            print(io, ", ")
+        end
+        print(io, Base.Ryu.writefixed(Float64(100*compile_time/elapsedtime), 2), "% compilation time")
+    end
+    if recompile_time > 0
+        perc = Float64(100 * recompile_time / compile_time)
+        # use "<1" to avoid the confusing UX of reporting 0% when it's >0%
+        print(io, ": ", perc < 1 ? "<1" : Base.Ryu.writefixed(perc, 0), "% of which was recompilation")
+    end
+    parens && print(io, ")")
+end
+
 function logfile_name(ti::TestItem)
     # Replacing reserved chars https://en.wikipedia.org/wiki/Filename
     # File name should remain unique due to the inclusion of `ti.id`.
@@ -149,13 +205,6 @@ end
 
 # mostly copied from timing.jl
 function log_finished(ti::TestItem, ntestitems=0)
-    stats = ti.stats[]
-    elapsedtime, bytes, gctime = stats.time, stats.bytes, stats.gctime
-    allocs=Base.gc_alloc_count(stats.gcstats)
-    compile_time=0
-    recompile_time=0
-    _lpad=true
-    timestr = Base.Ryu.writefixed(elapsedtime, 6)
     io = IOContext(IOBuffer(), :color=>Base.get_have_color())
     print(io, format(now(), "HH:MM:SS "))
     printstyled(io, "FINISHED"; bold=true)
@@ -163,37 +212,7 @@ function log_finished(ti::TestItem, ntestitems=0)
         print(io, " (", lpad(ti.eval_number[], ndigits(ntestitems)), "/", ntestitems, ")")
     end
     print(io, " test item $(repr(ti.name)) ")
-    _lpad && print(io, length(timestr) < 10 ? (" "^(10 - length(timestr))) : "")
-    print(io, timestr, " seconds")
-    parens = bytes != 0 || allocs != 0 || gctime > 0 || compile_time > 0
-    parens && print(io, " (")
-    if bytes != 0 || allocs != 0
-        allocs, ma = Base.prettyprint_getunits(allocs, length(Base._cnt_units), Int64(1000))
-        if ma == 1
-            print(io, Int(allocs), Base._cnt_units[ma], allocs==1 ? " allocation: " : " allocations: ")
-        else
-            print(io, Base.Ryu.writefixed(Float64(allocs), 2), Base._cnt_units[ma], " allocations: ")
-        end
-        print(io, Base.format_bytes(bytes))
-    end
-    if gctime > 0
-        if bytes != 0 || allocs != 0
-            print(io, ", ")
-        end
-        print(io, Base.Ryu.writefixed(Float64(100*gctime/elapsedtime), 2), "% gc time")
-    end
-    if compile_time > 0
-        if bytes != 0 || allocs != 0 || gctime > 0
-            print(io, ", ")
-        end
-        print(io, Base.Ryu.writefixed(Float64(100*compile_time/elapsedtime), 2), "% compilation time")
-    end
-    if recompile_time > 0
-        perc = Float64(100 * recompile_time / compile_time)
-        # use "<1" to avoid the confusing UX of reporting 0% when it's >0%
-        print(io, ": ", perc < 1 ? "<1" : Base.Ryu.writefixed(perc, 0), "% of which was recompilation")
-    end
-    parens && print(io, ")")
+    time_print(io; ti.stats[]...)
     println(io)
     @loglock write(DEFAULT_STDOUT[], take!(io.io))
 end
