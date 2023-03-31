@@ -14,6 +14,7 @@ TestEnv = "1e6cf692-eddd-4d53-88a5-2d735e33781b"
 
 [compat]
 LoggingExtras = "1"
+TestEnv = "1.8"
 julia = "1.8"
 
 [extras]
