@@ -11,6 +11,9 @@ Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 TestEnv = "1e6cf692-eddd-4d53-88a5-2d735e33781b"
+
+[compat]
+LoggingExtras = "1"
 julia = "1.8"
 
 [extras]
