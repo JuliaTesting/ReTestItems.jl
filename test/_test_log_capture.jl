@@ -1,13 +1,18 @@
-using ReTestItems, Distributed, Test, Logging
+using ReTestItems, Test, Logging, IOCapture
+const log_display = Symbol(ENV["LOG_DISPLAY"])
 
-@testset "log capture nthreads=$(Threads.nthreads()) nprocs=$(Distributed.nprocs())" begin
+@testset "log capture logs=$(repr(log_display))" begin
     @testset "TestItem" begin
         @testset "log capture for println" begin
             ti = @testitem "uses println" begin
                 println("println msg")
             end
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(ti), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(ti, 1), String)
+            end
             @test logs == "println msg\n"
         end
 
@@ -15,8 +20,12 @@ using ReTestItems, Distributed, Test, Logging
             ti = @testitem "uses println" begin
                 println(stderr, "println msg")
             end
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(ti), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(ti, 1), String)
+            end
             @test logs == "println msg\n"
         end
 
@@ -24,8 +33,12 @@ using ReTestItems, Distributed, Test, Logging
             ti = @testitem "uses printstyled" begin
                 printstyled("printstyled msg red", color=:red)
             end
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(ti), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(ti, 1), String)
+            end
             @test logs == "\e[31mprintstyled msg red\e[39m"
         end
 
@@ -33,8 +46,12 @@ using ReTestItems, Distributed, Test, Logging
             ti = @testitem "uses @error" begin
                 @error("@error msg")
             end
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(ti), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(ti, 1), String)
+            end
             @test startswith(logs, "\e[91m\e[1m┌ \e[22m\e[39m\e[91m\e[1mError: \e[22m\e[39m@error msg\n\e[91m\e[1m└ \e[22m\e[39m\e[90m@ ")
         end
 
@@ -44,8 +61,12 @@ using ReTestItems, Distributed, Test, Logging
                     @info "Look ma, I'm logging"
                 end
             end
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(ti), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(ti, 1), String)
+            end
             @test isempty(logs)
         end
 
@@ -55,8 +76,12 @@ using ReTestItems, Distributed, Test, Logging
                     @error "Look ma, I'm logging"
                 end
             end
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(ti), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(ti, 1), String)
+            end
             @test isempty(logs)
         end
 
@@ -70,8 +95,12 @@ using ReTestItems, Distributed, Test, Logging
                     @test read(tmp_path, String) == "This should not be visible to log capture"
                 end
             end
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(ti), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(ti, 1), String)
+            end
             @test isempty(logs)
         end
 
@@ -85,15 +114,19 @@ using ReTestItems, Distributed, Test, Logging
                     @test read(tmp_path, String) == "This should not be visible to log capture"
                 end
             end
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(ti), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(ti, 1), String)
+            end
             @test isempty(logs)
         end
 
         @testset "with_logger works within log capture (redirect to a file)" begin
             ti = @testitem "uses with_logger (redirect to a file)" begin
                 using Logging
-            mktemp() do tmp_path, tmp_io
+                mktemp() do tmp_path, tmp_io
                     logger = SimpleLogger(tmp_io)
                     with_logger(logger) do
                         @info "This should not be visible to log capture"
@@ -102,8 +135,12 @@ using ReTestItems, Distributed, Test, Logging
                     @test startswith(read(tmp_path, String), "┌ Info: This should not be visible to log capture\n└ @ ")
                 end
             end
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(ti), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(ti, 1), String)
+            end
             @test isempty(logs)
         end
 
@@ -115,8 +152,12 @@ using ReTestItems, Distributed, Test, Logging
                     @info "This should be visible to log capture"
                 end
             end
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(ti), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(ti, 1), String)
+            end
             @test startswith(logs, "┌ Info: This should be visible to log capture\n└ @ ")
         end
 
@@ -124,8 +165,12 @@ using ReTestItems, Distributed, Test, Logging
             ti = @testitem "uses display" begin
                 display("display msg")
             end
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(ti), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(ti, 1), String)
+            end
             # Displays use their own reference to stdout
             @test logs == "display msg" broken=true
         end
@@ -137,8 +182,12 @@ using ReTestItems, Distributed, Test, Logging
             end
             ti = @testitem "setup uses println" setup=[LoggingTestSetup] begin end
 
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(setup), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(setup), String)
+            end
             @test logs == "println msg\n"
         end
 
@@ -147,8 +196,12 @@ using ReTestItems, Distributed, Test, Logging
                 println(stderr, "println msg")
             end
             ti = @testitem "setup uses println" setup=[LoggingTestSetup] begin end
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(setup), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(setup), String)
+            end
             @test logs == "println msg\n"
         end
 
@@ -159,8 +212,12 @@ using ReTestItems, Distributed, Test, Logging
             end
             ti = @testitem "setup uses printstyled" setup=[LoggingTestSetup] begin end
 
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(setup), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(setup), String)
+            end
             @test logs == "\e[31mprintstyled msg red\e[39m"
         end
 
@@ -170,8 +227,12 @@ using ReTestItems, Distributed, Test, Logging
             end
             ti = @testitem "setup uses @error" setup=[LoggingTestSetup] begin end
 
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(setup), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(setup), String)
+            end
             @test startswith(logs, "\e[91m\e[1m┌ \e[22m\e[39m\e[91m\e[1mError: \e[22m\e[39m@error msg\n\e[91m\e[1m└ \e[22m\e[39m\e[90m@ ")
         end
 
@@ -188,8 +249,12 @@ using ReTestItems, Distributed, Test, Logging
                 @test read(tmp_path, String) == "This should not be visible to log capture"
             end
 
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(setup), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(setup), String)
+            end
             @test isempty(logs)
         end
 
@@ -205,8 +270,12 @@ using ReTestItems, Distributed, Test, Logging
                 tmp_path = LoggingTestSetup.tmp_path
                 @test read(tmp_path, String) == "This should not be visible to log capture"
             end
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(setup), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(setup), String)
+            end
             @test isempty(logs)
         end
 
@@ -225,8 +294,12 @@ using ReTestItems, Distributed, Test, Logging
                 @test startswith(read(tmp_path, String), "┌ Info: This should not be visible to log capture\n└ @ ")
             end
 
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(setup), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(setup), String)
+            end
             @test isempty(logs)
         end
 
@@ -240,8 +313,12 @@ using ReTestItems, Distributed, Test, Logging
             end
             ti = @testitem "setup uses with_logger" setup=[LoggingTestSetup] begin end
 
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(setup), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(setup), String)
+            end
             @test startswith(logs, "┌ Info: This should be visible to log capture\n└ @ ")
         end
 
@@ -251,8 +328,12 @@ using ReTestItems, Distributed, Test, Logging
             end
             ti = @testitem "setup uses display" setup=[LoggingTestSetup] begin end
 
-            ReTestItems.runtestitem(ti)
-            logs = read(ReTestItems.logpath(setup), String)
+            if log_display == :eager
+                logs = IOCapture.capture(()->ReTestItems.runtestitem(ti; logs=log_display), color=true).output
+            else
+                ReTestItems.runtestitem(ti; logs=log_display)
+                logs = read(ReTestItems.logpath(setup), String)
+            end
             # Displays use their own reference to stdout
             @test logs == "display msg" broken=true
         end

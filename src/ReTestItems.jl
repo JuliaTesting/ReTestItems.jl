@@ -1,9 +1,8 @@
 module ReTestItems
 
 using Base: @lock
-using Dates: format, now
+using Dates: DateTime, ISODateTimeFormat, format, now, unix2datetime
 using Test: Test, DefaultTestSet, TestSetException
-using Distributed: Distributed, RemoteChannel, @spawnat, nprocs, addprocs, RemoteException, myid, remotecall_eval, ProcessExitedException
 using .Threads: @spawn, nthreads
 using Pkg: Pkg
 using TestEnv
@@ -16,6 +15,7 @@ export TestSetup, TestItem, TestItemResult
 
 const RETESTITEMS_TEMP_FOLDER = mkpath(joinpath(tempdir(), "ReTestItemsTempLogsDirectory"))
 const DEFAULT_TEST_ITEM_TIMEOUT = 30*60
+const DEFAULT_RETRIES = 0
 
 if isdefined(Base, :errormonitor)
     const errmon = Base.errormonitor
@@ -42,8 +42,10 @@ function softscope(@nospecialize ex)
     return ex
 end
 
-
+include("workers.jl")
+using .Workers
 include("macros.jl")
+include("junit_xml.jl")
 include("testcontext.jl")
 include("log_capture.jl")
 
@@ -55,6 +57,10 @@ function __init__()
     return nothing
 end
 
+struct TimeoutException <: Exception
+    msg::String
+end
+
 """
     ReTestItems.runtests()
     ReTestItems.runtests(mod::Module)
@@ -64,30 +70,54 @@ Execute `@testitem` tests.
 
 Only files ending in `_test.jl` or `_tests.jl` will be searched for test items.
 
-If no arguments are passed, the current project is searched for `@testitem`s.
 If directory or file paths are passed, only those directories and files are searched.
+If no arguments are passed, the `src/` and `test/` directories of the current project are
+searched for `@testitem`s.
 
 # Keywords
+
+## Filtering `@testitem`s
+- `name::Union{Regex,AbstractString,Nothing}=nothing`: Used to filter `@testitem`s by their name.
+  `AbstractString` input will only keep the `@testitem` that exactly matches `name`,
+  `Regex` can be used to partially match multiple `@testitem`s. By default, no filtering is
+  applied.
+- `tags::Union{Symbol,AbstractVector{Symbol},Nothing}=nothing`: Used to filter `@testitem`s by their tags.
+  A single tag can be used to match any `@testitem` that contains it, when multiple tags
+  are provided, only `@testitem`s that contain _all_ of the tags will be run.
+  By default, no filtering is applied.
+
+`name` and `tags` filters are applied together and only those `@testitem`s that pass both filters
+will be run.
+
+## Configuring `runtests`
 - `testitem_timeout::Int`: The number of seconds to wait until a `@testitem` is marked as failed.
   Defaults to 30 minutes. Note timeouts are currently only applied when `nworkers > 0`.
+- `retries::Int=$DEFAULT_RETRIES`: The number of times to retry a `@testitem` if either tests
+  do not pass or, if running with multiple workers, the worker fails or hits the `testitem_timeout`
+  while running the tests. Can also be set using the `RETESTITEMS_RETRIES` environment variable.
+  If a `@testitem` sets its own `retries` keyword, then the maximum of these two retry numbers
+  will be used as the retry limit for that `@testitem`. When `report=true`, the report will
+  contain information for all runs of a `@testitem` that was retried.
 - `nworkers::Int`: The number of workers to use for running `@testitem`s. Default 0. Can also be set
   using the `RETESTITEMS_NWORKERS` environment variable.
 - `nworker_threads::Int`: The number of threads to use for each worker. Defaults to 2.
   Can also be set using the `RETESTITEMS_NWORKER_THREADS` environment variable.
-- `verbose::Bool`: If `true`, print the logs from all `@testitem`s to `stdout`.
-  Otherwise, logs are only printed for `@testitem`s with errors or failures.
-  Defaults to `true` when Julia is running in an interactive session, otherwise `false`.
-- `name::Union{Regex,AbstractString,Nothing}=nothing`: Used to filter `@testitem`s by their name.
-    `AbstractString` input will only keep the `@testitem` that exactly matches `name`,
-    `Regex` can be used to partially match mutilple `@testitem`s. By default, no filtering is
-    applied.
-- `tags::Union{Symbol,AbstractVector{Symbol},Nothing}=nothing`: Used to filter `@testitem`s by their tags.
-    A single tag can be used to match any `@testitem` that contains it, when multiple tags
-    are provided, only `@testitem`s that contain _all_ of the tags will be run.
-    By default, no filtering is applied.
-
-`name` and `tags` filters are applied together and only those `@testitem`s that pass both filters
-will be run.
+- `worker_init_expr::Expr`: an expression that will be evaluated on each worker before any tests are run.
+  Can be used to load packages or set up the environment. Must be a `:block` expression.
+- `report::Bool=false`: If `true`, write a JUnit-format XML file summarising the test results.
+  Can also be set using the `RETESTITEMS_REPORT` environment variable. The location at which
+  the XML report is saved can be set using the `RETESTITEMS_REPORT_LOCATION` environment variable.
+  By default the report will be written at the root of the project being tested.
+- `logs::Symbol`: Handles how and when we display messages produced during test evaluation.
+  Can be one of:
+  - `:eager`: Everything is printed to `stdout` immediately, like in a regular Julia session.
+  - `:batched`: Logs are saved to a file and then printed when the test item is finished.
+  - `:issues`: Logs are saved to a file and only printed if there were any errors or failures.
+  For interative sessions, `:eager` is the default when running with 0 or 1 workers, `:batched` otherwise.
+  For non-interactive sessions, `:issues` is used by default.
+- `verbose_results::Bool`: If `true`, the final test report will test each `@testset`, otherwise
+    the results are aggregated on the `@testitem` level. Default is `false` for non-interactive sessions
+    or when `logs=:issues`, `true` otherwise.
 """
 function runtests end
 
@@ -121,11 +151,15 @@ function runtests(
     paths::AbstractString...;
     nworkers::Int=parse(Int, get(ENV, "RETESTITEMS_NWORKERS", "0")),
     nworker_threads::Int=parse(Int, get(ENV, "RETESTITEMS_NWORKER_THREADS", "2")),
+    worker_init_expr::Expr=Expr(:block),
     testitem_timeout::Real=DEFAULT_TEST_ITEM_TIMEOUT,
-    verbose=isinteractive(),
+    retries::Int=parse(Int, get(ENV, "RETESTITEMS_RETRIES", string(DEFAULT_RETRIES))),
     debug=0,
     name::Union{Regex,AbstractString,Nothing}=nothing,
     tags::Union{Symbol,AbstractVector{Symbol},Nothing}=nothing,
+    report::Bool=parse(Bool, get(ENV, "RETESTITEMS_REPORT", "false")),
+    logs::Symbol=default_log_display_mode(report, nworkers),
+    verbose_results::Bool=logs!=:issues && isinteractive(),
 )
     paths′ = filter(paths) do p
         if !ispath(p)
@@ -138,23 +172,26 @@ function runtests(
             return true
         end
     end
+    logs in LOG_DISPLAY_MODES || throw(ArgumentError("`logs` must be one of $LOG_DISPLAY_MODES, got $(repr(logs))"))
+    report && logs == :eager && throw(ArgumentError("`report=true` is not compatible with `logs=:eager`"))
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
     shouldrun_combined(ti) = shouldrun(ti) && _shouldrun(name, ti.name) && _shouldrun(tags, ti.tags)
     mkpath(RETESTITEMS_TEMP_FOLDER) # ensure our folder wasn't removed
     save_current_stdio()
     nworkers = max(0, nworkers)
+    retries = max(0, retries)
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, testitem_timeout, verbose, debuglvl)
+            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debuglvl, report, logs)
         end
     else
-        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, testitem_timeout, verbose, debuglvl)
+        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debuglvl, report, logs)
     end
 end
 
-function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::Int, testitem_timeout::Real, verbose::Bool, debug::Int)
+function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::Int, worker_init_expr::Expr, testitem_timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -171,27 +208,29 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::Int, testit
     if is_running_test_runtests_jl(proj_file)
         # Assume this is `Pkg.test`, so test env already active.
         @debugv 2 "Running in current environment `$(Base.active_project())`"
-        return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, testitem_timeout, verbose, debug)
+        return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
     else
         @debugv 1 "Activating test environment for `$proj_file`"
         return Pkg.activate(proj_file) do
             TestEnv.activate() do
-                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, testitem_timeout, verbose, debug)
+                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
             end
         end
     end
 end
 
-function _runtests_in_current_env(shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, testitem_timeout::Real, verbose::Bool, debug::Int)
+function _runtests_in_current_env(
+    shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr,
+    testitem_timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
+)
     start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
     @info "Starting scan for test items in project = `$proj_name` at paths = `$paths`"
     inc_time = time()
     @debugv 1 "Including tests in $paths"
-    testitems, _ = include_testfiles!(proj_name, projectfile, paths, shouldrun)
+    testitems, _ = include_testfiles!(proj_name, projectfile, paths, shouldrun, report)
     ntestitems = length(testitems.testitems)
     @debugv 1 "Done including tests in $paths"
-    test_proj = Base.active_project()
     @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds. Scheduling $ntestitems tests on pid = $(Libc.getpid()) with $nworkers worker processes and $nworker_threads threads per worker"
     try
         if nworkers == 0
@@ -201,50 +240,46 @@ function _runtests_in_current_env(shouldrun, paths, projectfile::String, nworker
             # we use a single TestSetupModules
             ctx.setups_evaled = TestSetupModules()
             for (i, testitem) in enumerate(testitems.testitems)
-                testitem.workerid[] = myid()
+                testitem.workerid[] = Libc.getpid()
                 testitem.eval_number[] = i
-                res = runtestitem(testitem, ctx; verbose=verbose)
-                ts = res.testset
-                testitem.stats[] = res.stats
-                print_errors_and_captured_logs(testitem, ts; verbose)
-                report_empty_testsets(testitem, ts)
-                testitem.testset[] = ts
+                nretries = 0
+                retry_limit = max(retries, testitem.retries)
+                while nretries ≤ retry_limit
+                    res = runtestitem(testitem, ctx; verbose_results, logs)
+                    ts = res.testset
+                    print_errors_and_captured_logs(testitem, nretries + 1; logs)
+                    report_empty_testsets(testitem, ts)
+                    if ts.anynonpass && nretries < retry_limit
+                        nretries += 1
+                        @warn "Test item $(repr(testitem.name)) failed. Retrying. Retry=$nretries."
+                    else
+                        if nretries > 0
+                            @info "Test item $(repr(testitem.name)) passed on retry $nretries."
+                        end
+                        break
+                    end
+                end
             end
         else
+            isempty(testitems.testitems) && @goto DONE
             # spawn a task per worker to start and manage the lifetime of the worker
-            wids = zeros(Int, nworkers)
-            try
-                # get starting test items for each worker
-                starting = get_starting_testitems(testitems, nworkers)
-                @sync for i = 1:nworkers
-                    ti = starting[i]
-                    @spawn begin
-                        # Wrapping with the logger that was set before we eval'd any user code to
-                        # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
-                        with_logger(current_logger()) do
-                            wid = start_and_manage_worker($test_proj, $proj_name, $testitems, $ti, $nworker_threads, $testitem_timeout, $verbose, $debug)
-                            wids[$i] = wid
-                        end
+            # get starting test items for each worker
+            starting = get_starting_testitems(testitems, nworkers)
+            @sync for i = 1:nworkers
+                ti = starting[i]
+                @spawn begin
+                    # Wrapping with the logger that was set before we eval'd any user code to
+                    # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
+                    with_logger(current_logger()) do
+                        start_and_manage_worker($proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $testitem_timeout, $retries, $verbose_results, $debug, $report, $logs)
                     end
-                end
-            finally
-                # terminate all workers, silencing the current noisy Distributed @async exceptions
-                redirect_stdio(stdout=devnull, stderr=devnull) do
-                    @sync for wid in wids
-                        wid > 0 && @spawn terminate_worker($wid)
-                    end
-                end
-                # we've seen issues w/ Distributed using atexit to terminate workers
-                # so we remove the atexit hook that does this
-                i = findfirst(==(Distributed.terminate_all_workers), Base.atexit_hooks)
-                if i !== nothing
-                    deleteat!(Base.atexit_hooks, i)
                 end
             end
         end
+        @label DONE
         Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
-        # return testitems
-        @info "Finished running $ntestitems tests in $(round(time() - start_time, digits=2)) seconds"
+        record_results!(testitems)
+        report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
         Test.finish(testitems) # print summary of total passes/failures/errors
     finally
         Test.TESTSET_PRINT_ENABLE[] = true
@@ -254,51 +289,57 @@ function _runtests_in_current_env(shouldrun, paths, projectfile::String, nworker
     return nothing
 end
 
-function terminate_worker(pid)
-    @assert myid() == 1
+function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
+    w = Worker(; threads="$nworker_threads")
+    # remote_fetch here because we want to make sure the worker is all setup before starting to eval testitems
+    remote_fetch(w, quote
+        using ReTestItems, Test
+        Test.TESTSET_PRINT_ENABLE[] = false
+        const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)
+        GLOBAL_TEST_CONTEXT.setups_evaled = ReTestItems.TestSetupModules()
+        @info "Starting test item evaluations on pid = $(Libc.getpid()), with $(Threads.nthreads()) threads"
+        $(worker_init_expr.args...)
+        nothing
+    end)
+    return w
+end
+
+
+# This is only used to signal that we need to retry. We don't use Test.TestSetException as
+# that requires information that we are not going to use anyway.
+struct TestSetFailure <: Exception end
+throw_if_failed(ts) = ts.anynonpass ? throw(TestSetFailure()) : nothing
+
+function record_test_error!(testitem, ntries)
+    Test.TESTSET_PRINT_ENABLE[] = false
+    ts = DefaultTestSet(testitem.name)
+    err = ErrorException("test item $(repr(testitem.name)) didn't succeed after $ntries tries")
+    Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
+        Base.ExceptionStack([(exception=err, backtrace=Union{Ptr{Nothing}, Base.InterpreterIP}[])]),
+        LineNumberNode(testitem.line, testitem.file)))
     try
-        @debugv 1 "Terminating worker pid = $pid"
-        if pid in Distributed.workers() && haskey(Distributed.map_pid_wrkr, pid)
-            w = Distributed.map_pid_wrkr[pid]
-            @assert isa(w, Distributed.Worker)
-            kill(w.config.process, Base.SIGKILL)
-            sleep(0.1)
-            i = 1
-            while pid in Distributed.workers()
-                sleep(0.1)
-                i += 1
-                if i > 100
-                    @warn "Failed to kill worker after 10 seconds: $pid"
-                    break
-                end
-            end
-        end
-    catch e
-        @warn "Failed to kill worker: $pid" exception=(failed_to_kill, catch_backtrace())
+        Test.finish(ts)
+    catch e2
+        e2 isa TestSetException || rethrow()
     end
+    Test.TESTSET_PRINT_ENABLE[] = true
+    push!(testitem.testsets, ts)
+    push!(testitem.stats, PerfStats())  # No data since testitem didn't complete
+    return testitem
 end
 
-function start_worker(test_proj, proj_name, nworker_threads, ntestitems, verbose, debug)
-    wid = only(addprocs(1; exeflags=`--threads=$nworker_threads`))
-    remotecall_eval(Main, wid, :(using ReTestItems))
-    # we create the RemoteChannel on the *worker* so that
-    # if it crashes, our take! call throws the ProcessExitedException
-    ch = RemoteChannel(() -> Channel{Any}(0), wid)
-    @spawnat wid begin
-        schedule_remote_testitems!(test_proj, proj_name, ntestitems, ch, verbose, debug)
-    end
-    return wid, ch
-end
-
-function start_and_manage_worker(test_proj, proj_name, testitems, testitem, nworker_threads, timeout, verbose, debug)
+function start_and_manage_worker(
+    proj_name, testitems, testitem, nworker_threads, worker_init_expr,
+    timeout::Int, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
+)
     ntestitems = length(testitems.testitems)
-    wid, ch = start_worker(test_proj, proj_name, nworker_threads, ntestitems, verbose, debug)
+    worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
     nretries = 0
     cond = Threads.Condition()
     while testitem !== nothing
-        testitem.workerid[] = wid
-        # unbuffered channel will block until worker takes
-        put!(ch, testitem)
+        testitem.workerid[] = worker.pid
+        fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; verbose_results=$verbose_results, logs=$(QuoteNode(logs)))))
+        retry_limit = max(retries, testitem.retries)
         try
             timer = Timer(timeout) do tm
                 close(tm)
@@ -306,72 +347,84 @@ function start_and_manage_worker(test_proj, proj_name, testitems, testitem, nwor
                 @lock cond notify(cond, ex; error=true)
             end
             errmon(@spawn begin
-                _ch = $ch
+                _fut = $fut
                 try
-                    # unbuffered channel blocks until worker is done eval-ing and puts result
-                    res = take!(_ch)::TestItemResult
+                    # Future blocks until worker is done eval-ing and returns result
+                    res = fetch(_fut)::TestItemResult
                     isopen($timer) && @lock cond notify(cond, res)
                 catch e
                     isopen($timer) && @lock cond notify(cond, e; error=true)
                 end
             end)
             try
-                # if we get a ProcessExitedException or TimeoutException
+                # if we get a WorkerTerminatedException or TimeoutException
                 # then wait will throw here and we fall through to the outer try-catch
+                @debugv 2 "Waiting on test item result"
                 testitem_result = @lock cond wait(cond)
+                @debugv 2 "Recieved test item result"
                 ts = testitem_result.testset
-                testitem.stats[] = testitem_result.stats
-                testitem.testset[] = ts
-                print_errors_and_captured_logs(testitem, ts; verbose)
+                push!(testitem.testsets, ts)
+                push!(testitem.stats, testitem_result.stats)
+                print_errors_and_captured_logs(testitem, nretries + 1; logs)
                 report_empty_testsets(testitem, ts)
+                # if the result isn't a pass, we throw to go to the outer try-catch
+                throw_if_failed(ts)
                 testitem = next_testitem(testitems, testitem.id[])
                 nretries = 0
             finally
                 close(timer)
             end
         catch e
-            if e isa ProcessExitedException || e isa TimeoutException
-                _print_captured_logs(DEFAULT_STDOUT[], testitem)
-                if e isa TimeoutException
-                    @warn "Worker $(wid) timed out evaluating test item named: $(repr(testitem.name)) afer $timeout seconds, starting a new worker and retrying"
-                    terminate_worker(wid)
-                end
-                if nretries == 2
-                    @warn "Worker $(wid) is the 3rd failure evaluating test item named: $(repr(testitem.name)); recording test error"
-                    Test.TESTSET_PRINT_ENABLE[] = false
-                    ts = DefaultTestSet(testitem.name; verbose)
-                    err = ErrorException("test item named: $(repr(testitem.name)) crashed worker processes 3 times")
-                    Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
-                        Base.ExceptionStack([(exception=err, backtrace=Union{Ptr{Nothing}, Base.InterpreterIP}[])]),
-                        LineNumberNode(testitem.line, testitem.file)))
-                    try
-                        Test.finish(ts)
-                    catch e2
-                        e2 isa TestSetException || rethrow()
-                    end
-                    record_testitem!(testitems, testitem.id[], ts)
-                    testitem = next_testitem(testitems, testitem.id[])
-                    Test.TESTSET_PRINT_ENABLE[] = true
-                    nretries = 0
-                elseif e isa ProcessExitedException
-                    @warn "Worker $(wid) died evaluating test item named: $(repr(testitem.name)), starting a new worker and retrying"
-                end
-                nretries += 1
-                wid, ch = start_worker(test_proj, proj_name, nworker_threads, ntestitems, verbose, debug)
-                # now we loop back around and put testitem on our new channel
-                continue
+            @debugv 2 "Error" exception=e
+            if !(e isa WorkerTerminatedException || e isa TimeoutException || e isa TestSetFailure)
+                # we don't expect any other kind of error, so rethrow, which will propagate
+                # back up to the main coordinator task and throw to the user
+                rethrow()
             end
-            # we don't expect any other kind of error, so rethrow, which will propagate
-            # back up to the main coordinator task and throw to the user
-            rethrow()
+            println(DEFAULT_STDOUT[])
+            # Explicitly show captured logs or say there weren't any
+            _print_captured_logs(DEFAULT_STDOUT[], testitem, nretries + 1)
+            if e isa TimeoutException
+                terminate!(worker)
+                wait(worker)
+            end
+            if nretries == retry_limit
+                if e isa TimeoutException
+                    @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
+                        Recording test error."
+                    record_test_error!(testitem, nretries + 1)
+                elseif e isa WorkerTerminatedException
+                    @warn "$worker died evaluating test item $(repr(testitem.name)). \
+                        Recording test error."
+                    record_test_error!(testitem, nretries + 1)
+                else
+                    @assert e isa TestSetFailure
+                    # We already printed the error and recorded the testset.
+                end
+                testitem = next_testitem(testitems, testitem.id[])
+                nretries = 0
+            else
+                nretries += 1
+                if e isa TimeoutException
+                    @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
+                        Starting a new worker and retrying. Retry=$nretries."
+                    worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
+                elseif e isa WorkerTerminatedException
+                    @warn "$worker died evaluating test item $(repr(testitem.name)). \
+                        Starting a new worker and retrying. Retry=$nretries."
+                    worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
+                else
+                    @assert e isa TestSetFailure
+                    @warn "Test item $(repr(testitem.name)) failed. Retrying on $worker. Retry=$nretries."
+                end
+            end
+            # now we loop back around to reschedule the testitem
+            continue
         end
     end
-    return wid
+    close(worker)
+    return nothing
 end
-
-is_invalid_state(ex::Exception) = false
-is_invalid_state(ex::InvalidStateException) = true
-is_invalid_state(ex::RemoteException) = ex.captured.ex isa InvalidStateException
 
 # Check if the file at `filepath` is a "test file"
 # i.e. if it ends with one of the identifying suffixes
@@ -393,10 +446,10 @@ function is_testsetup_file(filepath)
 end
 
 # for each directory, kick off a recursive test-finding task
-function include_testfiles!(project_name, projectfile, paths, shouldrun)
+function include_testfiles!(project_name, projectfile, paths, shouldrun, report::Bool)
     project_root = dirname(projectfile)
     subproject_root = nothing  # don't recurse into directories with their own Project.toml.
-    root_node = dir_node = DirNode(project_name; verbose=true)
+    root_node = DirNode(project_name; report, verbose=true)
     dir_nodes = Dict{String, DirNode}()
     # setups is populated in store_test_item_setup when we expand a @testsetup
     # we set it below in tls as __RE_TEST_SETUPS__ for each included file
@@ -414,7 +467,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun)
                 continue
             end
             rpath = relpath(root, project_root)
-            dir_node = DirNode(rpath; verbose=true)
+            dir_node = DirNode(rpath; report, verbose=true)
             dir_nodes[rpath] = dir_node
             push!(get(dir_nodes, dirname(rpath), root_node), dir_node)
             for file in files
@@ -430,7 +483,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun)
                     continue
                 end
                 fpath = relpath(filepath, project_root)
-                file_node = FileNode(fpath, shouldrun; verbose=true)
+                file_node = FileNode(fpath, shouldrun; report, verbose=true)
                 push!(dir_node, file_node)
                 @debugv 1 "Including test items from file `$filepath`"
                 @spawn begin
@@ -520,43 +573,7 @@ function with_source_path(f, path)
     end
 end
 
-function schedule_remote_testitems!(proj, proj_name, ntestitems, ch, verbose, debug)
-    Pkg.activate(proj) do
-        Test.TESTSET_PRINT_ENABLE[] = false
-        # on remote workers, we need a per-worker TestSetupModules
-        ctx = TestContext(proj_name, ntestitems)
-        ctx.setups_evaled = TestSetupModules()
-        @info "Starting test item evaluations for $proj_name on pid = $(Libc.getpid()), worker id = $(myid())), with $(Threads.nthreads()) threads"
-        if debug > 0
-            LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debug) do
-                schedule_testitems!(ctx, ch, verbose)
-            end
-        else
-            schedule_testitems!(ctx, ch, verbose)
-        end
-    end
-end
-
-function schedule_testitems!(ctx::TestContext, ch, verbose::Bool)
-    while true
-        try
-            ti = take!(ch)
-            @debugv 2 "Scheduling test item$(_on_worker()): $(repr(ti.name)) from $(ti.file):$(ti.line)"
-            ti_result = runtestitem(ti, ctx; verbose=verbose)
-            put!(ch, ti_result)
-            !isopen(ch) && !isready(ch) && break
-        catch ex
-            if !isopen(ch) && is_invalid_state(ex)
-                break
-            else
-                rethrow()
-            end
-        end
-    end
-    return nothing
-end
-
-function ensure_setup!(ctx::TestContext, setup::Symbol, setups::Vector{TestSetup})
+function ensure_setup!(ctx::TestContext, setup::Symbol, setups::Vector{TestSetup}, logs::Symbol)
     mods = ctx.setups_evaled
     @lock mods.lock begin
         mod = get(mods.modules, setup, nothing)
@@ -583,7 +600,7 @@ function ensure_setup!(ctx::TestContext, setup::Symbol, setups::Vector{TestSetup
         mod_expr = :(module $(gensym(ts.name)) end)
         # replace the module expr body with our @testsetup code
         mod_expr.args[3] = ts.code
-        newmod = _capture_logs(ts) do
+        newmod = _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : ts.logstore[]) do
             with_source_path(() -> Core.eval(Main, mod_expr), ts.file)
         end
         # add the new module to our TestSetupModules
@@ -608,15 +625,11 @@ function runtestitem(ti::TestItem; kw...)
     runtestitem(ti, GLOBAL_TEST_CONTEXT_FOR_TESTING; kw...)
 end
 
-struct TimeoutException <: Exception
-    msg::String
-end
-
-function runtestitem(ti::TestItem, ctx::TestContext; verbose::Bool=false, finish_test::Bool=true)
+function runtestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=false, finish_test::Bool=true, logs::Symbol=:eager)
     name = ti.name
     log_running(ti, ctx.ntestitems)
-    ts = DefaultTestSet(name; verbose=verbose)
-    stats = (value=nothing, time=0.0, bytes=0, gctime=0.0, gcstats=Base.GC_Diff(0, 0, 0, 0, 0, 0, 0, 0, 0))
+    ts = DefaultTestSet(name; verbose=verbose_results)
+    stats = PerfStats()
     # start with empty block expr and build up our @testitem module body
     body = Expr(:block)
     if ti.default_imports
@@ -636,7 +649,7 @@ function runtestitem(ti::TestItem, ctx::TestContext; verbose::Bool=false, finish
 
             # ensure setup has been evaled before
             @debugv 1 "Ensuring setup for test item $(repr(name)) $(setup)$(_on_worker())."
-            ts_mod = ensure_setup!(ctx, setup, ti.testsetups)
+            ts_mod = ensure_setup!(ctx, setup, ti.testsetups, logs)
             # eval using in our @testitem module
             @debugv 1 "Importing setup for test item $(repr(name)) $(setup)$(_on_worker())."
             # We look up the testsetups from Main (since tests are eval'd in their own
@@ -666,9 +679,9 @@ function runtestitem(ti::TestItem, ctx::TestContext; verbose::Bool=false, finish
         # disabled for now since there were issues when tests tried serialize/deserialize
         # with things defined in an anonymous module
         # environment = Module()
-        stats = @timed _capture_logs(ti) do
+        _, stats = @timed_with_compilation _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : logpath(ti)) do
             with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
-            nothing # return nothing for stats.value
+            nothing # return nothing as the first return value of @timed_with_compilation
         end
         @debugv 1 "Test item $(repr(name)) done$(_on_worker())."
     catch err
@@ -690,8 +703,10 @@ function runtestitem(ti::TestItem, ctx::TestContext; verbose::Bool=false, finish
         end
     end
     @debugv 1 "Test item $(repr(name)) done$(_on_worker())."
-    ti.stats[] = stats
+    push!(ti.testsets, ts)
+    push!(ti.stats, stats)
     log_finished(ti, ctx.ntestitems)
+    GC.gc(true)
     return TestItemResult(convert_results_to_be_transferrable(ts), stats)
 end
 

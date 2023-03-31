@@ -2,7 +2,7 @@
 
 julia_version = "1.8.2"
 manifest_format = "2.0"
-project_hash = "31dabfddf1e36ecf2dc5cff56cdddc361b29f16f"
+project_hash = "94b07ce18ac1025b2606fb89a0790c8a17a20e02"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -11,8 +11,25 @@ version = "1.1.1"
 [[deps.Artifacts]]
 uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
 
+[[deps.B]]
+deps = ["ReTestItems"]
+path = "monorepo_packages/B"
+uuid = "dd0d8fba-d7c4-4f8e-a2bb-3a090b3e34f2"
+version = "0.0.0"
+
 [[deps.Base64]]
 uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
+
+[[deps.C]]
+deps = ["D", "ReTestItems", "Test"]
+path = "monorepo_packages/C"
+uuid = "4ee78ca3-4e78-462f-a078-747ed543fa86"
+version = "0.0.0"
+
+[[deps.D]]
+path = "monorepo_packages/D"
+uuid = "bf733257-898a-45a0-b2f2-c1c188bdd870"
+version = "0.0.0"
 
 [[deps.Dates]]
 deps = ["Printf"]

@@ -1,13 +1,30 @@
-using ReTestItems, Test, Pkg, Distributed
+using ReTestItems, Test, Pkg
 
 @testset "ReTestItems" verbose=true begin
-    include("internals.jl")
-    include("macrotests.jl")
-    include("integrationtests.jl")
-    include("log_capture.jl")
+    # track all workers every created
+    ALL_WORKERS = []
+    ReTestItems.Workers.GLOBAL_CALLBACK_PER_WORKER[] = w -> push!(ALL_WORKERS, w)
+    withenv("RETESTITEMS_RETRIES" => 0) do
+        include("workers.jl")
+        include("internals.jl")
+        include("macrotests.jl")
+        include("integrationtests.jl")
+        include("log_capture.jl")
+        include("junit_xml.jl")
+    end
 
     # After all tests have run, check we didn't leave Test printing disabled.
     @test Test.TESTSET_PRINT_ENABLE[]
-    # workers should always be cleaned up properly
-    @test Distributed.workers() == [1]
+    # After all tests have run, check we didn't leave any workers running.
+    for w in ALL_WORKERS
+        if process_running(w.process) || !w.terminated
+            @show w
+        end
+        @test !process_running(w.process)
+        @test !isopen(w.socket)
+        @test w.terminated
+        @test istaskstarted(w.messages) && istaskdone(w.messages)
+        @test istaskstarted(w.output) && istaskdone(w.output)
+        @test isempty(w.futures)
+    end
 end

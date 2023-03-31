@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites timestamp="2023-03-30T15:56:24.696" time="0.529" tests="13" skipped="3" failures="3" errors="2">
+<testsuite name="test/_junit_xml_test.jl" timestamp="2023-03-30T15:56:24.696" time="0.529" tests="13" skipped="3" failures="3" errors="2">
+	<testcase name="testitem1" timestamp="2023-03-30T15:56:24.696" time="0.05" tests="2" skipped="0" failures="1" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="3434191"></property>
+		<property name="dd_tags[perf.allocs]" value="56534"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.042508586"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		</properties>
+		<error message="Test failed at test/_junit_xml_test.jl:4">No Captured Logs for test item "testitem1" at test/_junit_xml_test.jl:2 on worker 92158
+Error in testset "testitem1" on worker 92158:
+Test Failed at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:4
+  Expression: 2 == 3
+   Evaluated: 2 == 3
+		</error>
+	</testcase>
+	<testcase name="testitem2" timestamp="2023-03-30T15:56:24.974" time="0.032" tests="3" skipped="0" failures="1" errors="1">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="3221399"></property>
+		<property name="dd_tags[perf.allocs]" value="57367"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.027637333"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		</properties>
+		<error message="Multiple errors for test item at test/_junit_xml_test.jl:8">No Captured Logs for test item "testitem2" at test/_junit_xml_test.jl:8 on worker 92158
+Error in testset "inner testset" on worker 92158:
+Test Failed at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:11
+  Expression: 4 == 5
+   Evaluated: 4 == 5
+Error in testset "inner testset" on worker 92158:
+Error During Test at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:12
+  Expression evaluated to non-Boolean
+  Expression: not a bool
+       Value: "not a bool"
+		</error>
+	</testcase>
+	<testcase name="testitem3" timestamp="2023-03-30T15:56:25.053" time="0.002" tests="2" skipped="0" failures="0" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="70286"></property>
+		<property name="dd_tags[perf.allocs]" value="1176"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="1.26e-7"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		</properties>
+	</testcase>
+	<testcase name="testitem4" timestamp="2023-03-30T15:56:25.096" time="0.432" tests="1" skipped="0" failures="0" errors="1">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="77766852"></property>
+		<property name="dd_tags[perf.allocs]" value="1446428"></property>
+		<property name="dd_tags[perf.gctime]" value="0.003837667"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.370118669"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		</properties>
+		<error message="Error during test at test/_junit_xml_test.jl:24">No Captured Logs for test item "testitem4" at test/_junit_xml_test.jl:23 on worker 92158
+Error in testset "nested testset" on worker 92158:
+Error During Test at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:24
+  Got exception outside of a @test
+  UndefVarError: x not defined
+  Stacktrace:
+    [1] macro expansion
+      @ ~/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:25 [inlined]
+    [2] macro expansion
+      @ /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Test/src/Test.jl:1363 [inlined]
+    [3] top-level scope
+      @ ~/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:25
+    [4] eval
+      @ ./boot.jl:368 [inlined]
+    [5] #77
+      @ ~/repos/raicode/packages/ReTestItems/src/ReTestItems.jl:683 [inlined]
+    [6] with_source_path(f::ReTestItems.var"#77#80"{Expr}, path::String)
+      @ ReTestItems ~/repos/raicode/packages/ReTestItems/src/ReTestItems.jl:566
+    [7] #76
+      @ ~/repos/raicode/packages/ReTestItems/src/ReTestItems.jl:683 [inlined]
+    [8] redirect_stdio(f::ReTestItems.var"#76#79"{TestItem, Expr}; stdin::Nothing, stderr::IOContext{IOStream}, stdout::IOContext{IOStream})
+      @ Base ./stream.jl:1411
+    [9] _redirect_logs(f::ReTestItems.var"#76#79"{TestItem, Expr}, target::IOStream)
+      @ ReTestItems ~/repos/raicode/packages/ReTestItems/src/log_capture.jl:86
+   [10] #25
+      @ ~/repos/raicode/packages/ReTestItems/src/log_capture.jl:82 [inlined]
+   [11] open(::ReTestItems.var"#25#26"{ReTestItems.var"#76#79"{TestItem, Expr}}, ::String, ::Vararg{String}; kwargs::Base.Pairs{Symbol, Union{}, Tuple{}, NamedTuple{(), Tuple{}}})
+      @ Base ./io.jl:384
+   [12] open
+      @ ./io.jl:381 [inlined]
+   [13] _redirect_logs
+      @ ~/repos/raicode/packages/ReTestItems/src/log_capture.jl:82 [inlined]
+   [14] macro expansion
+      @ ~/repos/raicode/packages/ReTestItems/src/macros.jl:81 [inlined]
+   [15] runtestitem(ti::TestItem, ctx::ReTestItems.TestContext; verbose_results::Bool, finish_test::Bool, logs::Symbol)
+      @ ReTestItems ~/repos/raicode/packages/ReTestItems/src/ReTestItems.jl:682
+   [16] top-level scope
+      @ none:1
+   [17] eval
+      @ ./boot.jl:368 [inlined]
+   [18] execute
+      @ ~/repos/raicode/packages/ReTestItems/src/workers.jl:295 [inlined]
+   [19] macro expansion
+      @ ~/repos/raicode/packages/ReTestItems/src/workers.jl:309 [inlined]
+   [20] (::ReTestItems.Workers.var"#20#21"{Sockets.TCPSocket, ReentrantLock, ReTestItems.Workers.Request})()
+      @ ReTestItems.Workers ./threadingconstructs.jl:258
+		</error>
+	</testcase>
+	<testcase name="testitem5" timestamp="2023-03-30T15:56:25.576" time="0.01" tests="3" skipped="2" failures="0" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="83454"></property>
+		<property name="dd_tags[perf.allocs]" value="1433"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.00678796"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		</properties>
+	</testcase>
+	<testcase name="testitem6" timestamp="2023-03-30T15:56:25.639" time="0.003" tests="2" skipped="1" failures="1" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="91886"></property>
+		<property name="dd_tags[perf.allocs]" value="1598"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="1.25e-7"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		</properties>
+		<error message="Test failed at test/_junit_xml_test.jl:41">No Captured Logs for test item "testitem6" at test/_junit_xml_test.jl:40 on worker 92158
+Error in testset "testitem6" on worker 92158:
+Test Failed at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:41
+  Expression: false
+		</error>
+	</testcase>
+</testsuite>
+</testsuites>

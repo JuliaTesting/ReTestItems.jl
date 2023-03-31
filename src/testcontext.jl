@@ -46,42 +46,34 @@ Base.getindex(x::FilteredVector, i) = x.vec[i]
 struct FileNode
     path::String
     testset::DefaultTestSet
+    junit::Union{JUnitTestSuite,Nothing}
     testitems::FilteredVector{TestItem} # sorted by line number within file
 end
 
-FileNode(path, f=default_shouldrun; verbose::Bool=false) = FileNode(path, DefaultTestSet(path; verbose), FilteredVector(f, TestItem[]))
+function FileNode(path, f=default_shouldrun; report::Bool=false, verbose::Bool=false)
+    junit = report ? JUnitTestSuite(path) : nothing
+    return FileNode(path, DefaultTestSet(path; verbose), junit, FilteredVector(f, TestItem[]))
+end
 
 Base.push!(f::FileNode, ti::TestItem) = push!(f.testitems, ti)
 
 duration(ts::DefaultTestSet) = ts.time_end - ts.time_start
-
-function Test.record(ts::DefaultTestSet, f::FileNode)
-    foreach(ti -> Test.record(f.testset, ti.testset[]), f.testitems)
-    # tot_duration = sum(duration(ti.testset[]) for ti in f.testitems; init=0.0)
-    # f.testset.time_end = f.testset.time_start + tot_duration
-    Test.record(ts, f.testset)
-    return nothing
-end
 
 walk(f, fn::FileNode) = foreach(f, fn.testitems)
 
 struct DirNode
     path::String
     testset::DefaultTestSet
+    junit::Union{JUnitTestSuites,Nothing}
     children::Vector{Union{FileNode, DirNode}} # sorted lexically by path
 end
 
-DirNode(path; verbose::Bool=false) = DirNode(path, DefaultTestSet(path; verbose), Union{FileNode, DirNode}[])
+function DirNode(path; verbose::Bool=false, report::Bool=false)
+    junit = report ? JUnitTestSuites(path) : nothing
+    return DirNode(path, DefaultTestSet(path; verbose), junit, Union{FileNode, DirNode}[])
+end
 
 Base.push!(d::DirNode, child::Union{FileNode, DirNode}) = push!(d.children, child)
-
-function Test.record(ts::DefaultTestSet, d::DirNode)
-    foreach(child -> Test.record(d.testset, child), d.children)
-    # tot_duration = sum(duration(child.testset) for child in d.children; init=0.0)
-    # d.testset.time_end = d.testset.time_start + tot_duration
-    Test.record(ts, d.testset)
-    return nothing
-end
 
 walk(f, dn::DirNode) = foreach(x -> walk(f, x), dn.children)
 
@@ -115,12 +107,47 @@ end
 
 TestItems(graph) = TestItems(graph, TestItem[], 0)
 
-function Test.finish(ti::TestItems)
-    foreach(child -> Test.record(ti.graph.testset, child), ti.graph.children)
-    # tot_duration = sum(duration(child.testset) for child in ti.graph.children; init=0.0)
-    # ti.graph.testset.time_start = time() - tot_duration
-    Test.finish(ti.graph.testset)
+###
+### record results
+###
+
+function record_results!(ti::TestItems)
+    foreach(ti.graph.children) do child
+        record_results!(ti.graph, child)
+    end
 end
+
+function record_results!(dir::DirNode, child_dir::DirNode)
+    @debugv 1 "Recording dir $(repr(child_dir.path)) to dir $(repr(dir.path))"
+    foreach(child_dir.children) do child
+        record_results!(child_dir, child)
+    end
+    Test.record(dir.testset, child_dir.testset)
+    junit_record!(dir.junit, child_dir.junit)
+end
+
+function record_results!(dir::DirNode, file::FileNode)
+    @debugv 1 "Recording file $(repr(file.path)) to dir $(repr(dir.path))"
+    foreach(file.testitems) do ti
+        record_results!(file, ti)
+    end
+    Test.record(dir.testset, file.testset)
+    junit_record!(dir.junit, file.junit)
+end
+
+function record_results!(file::FileNode, ti::TestItem)
+    @debugv 1 "Recording TestItem $(repr(ti.name)) to file $(repr(file.path))"
+    # Always record last try as the final status, so a pass-on-retry is a pass.
+    Test.record(file.testset, last(ti.testsets))
+    junit_record!(file.junit, ti)
+end
+
+# DirNode and FileNode have `junit=nothing` when no report is needed.
+junit_record!(::Nothing, ::Nothing) = nothing
+junit_record!(::Nothing, _) = nothing
+junit_record!(_, ::Nothing) = nothing
+
+Test.finish(ti::TestItems) = Test.finish(ti.graph.testset)
 
 function get_starting_testitems(ti::TestItems, n)
     # we want to select n evenly spaced test items from ti.testitems
@@ -172,5 +199,5 @@ end
 
 struct TestItemResult
     testset::DefaultTestSet
-    stats::Stats
+    stats::PerfStats
 end

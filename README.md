@@ -1,3 +1,7 @@
+[![CI](https://github.com/JuliaTesting/ReTestItems.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/JuliaTesting/ReTestItems.jl/actions/workflows/CI.yml)
+[![Coverage](https://codecov.io/gh/JuliaTesting/ReTestItems.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaTesting/ReTestItems.jl)
+[![ColPrac: Contributor's Guide on Collaborative Practices for Community Packages](https://img.shields.io/badge/ColPrac-Contributor's%20Guide-blueviolet)](https://github.com/SciML/ColPrac)
+
 # ReTestItems.jl
 
 A package for parallel tests.
@@ -54,12 +58,12 @@ julia> runtests("test/Database/"; name="issue-123")
 julia> runtests("test/Database/"; name=r"^issue")
 ```
 
-By default, logs from the tests will be printed out in the REPL.
-You can disable this by passing `verbose=false`.
-When `verbose=false`, logs from a test-item are only printed if that test-items errors or fails.
+For interactive sessions, all logs from the tests will be printed out in the REPL by default.
+You can disable this by passing `logs=:issues` in which case logs from a test-item are only printed if that test-items errors or fails.
+`logs=:issues` is also the default for non-interactive sessions.
 
 ```julia
-julia> runtests("test/Database/"; verbose=false)
+julia> runtests("test/Database/"; logs=:issues)
 ```
 
 ## Writing tests
@@ -109,7 +113,7 @@ end
 end
 ```
 
-### Summary
+### Summary
 
 1. Write tests inside of an `@testitem` block.
     - These are like an `@testset`, except that they must contain all the code they need to run;
@@ -130,7 +134,9 @@ end
     - Files without this naming convention will not run.
     - Test files can reside in either the `src/` or `test/` directory,
       so long as they are named like `src/sorted_set_tests.jl` (note the `_tests.jl` suffix).
-    - No explicit `include` of these files is required;
+    - No explicit `include` of these files is required.
+    - Files containing only `@testsetup`s can be named `*_testsetup.jl` or `*_testsetups.jl`,
+      and these files will always be included.
     - Note that `test/runtests.jl` does not meet the naming convention, and should not itself contain `@testitems`.
 4. Make sure your `test/runtests.jl` script calls `runtests`.
     - `test/runtests.jl` is the script run when you call `Pkg.test()` or `] test` at the REPL.
