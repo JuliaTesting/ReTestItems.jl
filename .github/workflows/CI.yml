@@ -10,6 +10,8 @@ concurrency:
 jobs:
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
+    env:
+      JULIA_NUM_THREADS: 2
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

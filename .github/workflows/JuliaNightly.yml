@@ -13,6 +13,8 @@ concurrency:
 jobs:
   test:
     name: ${{ matrix.os }} - ${{ matrix.arch }}
+    env:
+      JULIA_NUM_THREADS: 2
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
