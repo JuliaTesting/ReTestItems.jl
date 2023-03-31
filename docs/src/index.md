@@ -1,5 +1,0 @@
-# ReTestItems
-
-```@autodocs
-Modules = [ReTestItems]
-```
