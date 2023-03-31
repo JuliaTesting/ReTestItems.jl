@@ -60,7 +60,37 @@ end
 ###
 ### testitem
 ###
-const Stats = NamedTuple{(:value, :time, :bytes, :gctime, :gcstats), Tuple{Nothing, Float64, Int64, Float64, Base.GC_Diff}}
+
+Base.@kwdef struct PerfStats
+    elapsedtime::UInt=0
+    bytes::Int=0
+    gctime::Int=0
+    allocs::Int=0
+    compile_time::UInt=0
+    recompile_time::UInt=0
+end
+
+# Adapted from Base.@time
+macro timed_with_compilation(ex)
+    quote
+        Base.Experimental.@force_compile
+        local stats = Base.gc_num()
+        local elapsedtime = Base.time_ns()
+        Base.cumulative_compile_timing(true)
+        local compile_elapsedtimes = Base.cumulative_compile_time_ns()
+        local val = Base.@__tryfinally($(esc(ex)),
+            (elapsedtime = Base.time_ns() - elapsedtime;
+            Base.cumulative_compile_timing(false);
+            compile_elapsedtimes = Base.cumulative_compile_time_ns() .- compile_elapsedtimes)
+        )
+        local diff = Base.GC_Diff(Base.gc_num(), stats)
+        local out = PerfStats(;
+            elapsedtime, bytes=diff.allocd, gctime=diff.total_time, allocs=Base.gc_alloc_count(diff),
+            compile_time=first(compile_elapsedtimes), recompile_time=last(compile_elapsedtimes)
+        )
+        val, out
+    end
+end
 
 mutable struct ScheduledForEvaluation
     @atomic value::Bool
@@ -86,20 +116,21 @@ struct TestItem
     tags::Vector{Symbol}
     default_imports::Bool
     setups::Vector{Symbol}
+    retries::Int
     file::String
     line::Int
     project_root::String
     code::Any
     testsetups::Vector{TestSetup} # populated by runtests coordinator
     workerid::Base.RefValue{Int} # populated when the test item is scheduled
-    testset::Base.RefValue{DefaultTestSet} # populated when the test item is finished evaluating
+    testsets::Vector{DefaultTestSet} # populated when the test item is finished evaluating
     eval_number::Base.RefValue{Int} # to keep track of how many items have been evaluated so far
-    stats::Base.RefValue{Stats} # populated when the test item is finished evaluating
+    stats::Vector{PerfStats} # populated when the test item is finished evaluating
     scheduled_for_evaluation::ScheduledForEvaluation # to keep track of whether the test item has been scheduled for evaluation
 end
 
 """
-    @testitem "name" [tags=[] setup=[] default_imports=true] begin
+    @testitem "name" [tags=[] setup=[] retries=0 default_imports=true] begin
         # code that will be run as tests
     end
 
@@ -166,9 +197,18 @@ name of the test setup module with the `setup` keyword:
     @testitem "Geometry" setup=[TestIrrationals] begin
         @test area(1) ≈ PI
     end
+
+If a `@testitem` is known to be flaky, i.e. contains tests that sometimes don't pass,
+then you can set it to automatically retry by passing the `retries` keyword.
+If a `@testitem` passes on retry, then it will be recorded as passing in the test summary.
+
+    @testitem "Flaky test" retries=1 begin
+        @test rand() < 1e-4
+    end
 """
 macro testitem(nm, exs...)
     default_imports = true
+    retries = 0
     tags = Symbol[]
     setup = Any[]
     if length(exs) > 1
@@ -188,6 +228,9 @@ macro testitem(nm, exs...)
                 setup = ex.args[2]
                 @assert setup isa Expr "`setup` keyword must be passed a collection of `@testsetup` names"
                 setup = map(Symbol, setup.args)
+            elseif kw == :retries
+                retries = ex.args[2]
+                @assert retries isa Integer "`default_imports` keyword must be passed an `Integer`"
             else
                 error("unknown `@testitem` keyword arg `$(ex.args[1])`")
             end
@@ -199,7 +242,18 @@ macro testitem(nm, exs...)
     q = QuoteNode(exs[end])
     esc(quote
         $store_test_item_setup(
-            $TestItem(Ref(0), $nm, $tags, $default_imports, $setup, $(String(__source__.file)), $(__source__.line), $gettls(:__RE_TEST_PROJECT__, "."), $q, $TestSetup[], Ref{Int}(0), Ref{$DefaultTestSet}(), Ref{Int}(0), Ref{$Stats}(), $ScheduledForEvaluation())
+            $TestItem(
+                Ref(0), $nm, $tags, $default_imports, $setup, $retries,
+                $(String(__source__.file)), $(__source__.line),
+                $gettls(:__RE_TEST_PROJECT__, "."),
+                $q,
+                $TestSetup[],
+                Ref{Int}(0),
+                $DefaultTestSet[],
+                Ref{Int}(0),
+                $PerfStats[],
+                $ScheduledForEvaluation()
+            )
         )
     end)
 end

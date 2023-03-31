@@ -20,12 +20,20 @@ end
     @test n_passed(ReTestItems.runtestitem(ti)) == 1
 end
 
-@testset "testitem with tags" begin
+@testset "testitem with `tags`" begin
     ti2 = @testitem "TI2" tags=[:foo] begin
         @test true
     end
     @test ti2.tags == [:foo]
     @test n_passed(ReTestItems.runtestitem(ti2)) == 1
+end
+
+@testset "testitem with `retries`" begin
+    ti = @testitem "TI" retries=2 begin
+        @test true
+    end
+    @test ti.retries == 2
+    @test n_passed(ReTestItems.runtestitem(ti)) == 1
 end
 
 @testset "testitem with macro import" begin
@@ -45,7 +53,7 @@ end
     @test n_passed(ReTestItems.runtestitem(ti3)) == 1
 end
 
-@testset "testitem with setup" begin
+@testset "testitem with `setup`" begin
     ts1 = @testsetup module FooSetup
         x = 1
         const y = 2

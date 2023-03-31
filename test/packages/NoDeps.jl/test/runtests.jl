@@ -1,2 +1,2 @@
 using ReTestItems, NoDeps
-runtests(NoDeps; verbose=true)
+runtests(NoDeps; verbose_results=true, logs=:batched)

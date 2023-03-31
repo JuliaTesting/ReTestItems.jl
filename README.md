@@ -54,12 +54,12 @@ julia> runtests("test/Database/"; name="issue-123")
 julia> runtests("test/Database/"; name=r"^issue")
 ```
 
-By default, logs from the tests will be printed out in the REPL.
-You can disable this by passing `verbose=false`.
-When `verbose=false`, logs from a test-item are only printed if that test-items errors or fails.
+For interactive sessions, all logs from the tests will be printed out in the REPL by default.
+You can disable this by passing `logs=:issues` in which case logs from a test-item are only printed if that test-items errors or fails.
+`logs=:issues` is also the default for non-interactive sessions.
 
 ```julia
-julia> runtests("test/Database/"; verbose=false)
+julia> runtests("test/Database/"; logs=:issues)
 ```
 
 ## Writing tests

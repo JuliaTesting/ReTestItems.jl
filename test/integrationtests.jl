@@ -73,25 +73,15 @@ end
     # No warning for valid test files
     test_file = joinpath(pkg, "src", "foo_test.jl")
     @assert isfile(test_file)
-    results = @test_logs (:info,) (:info,) (:info,) begin
+    results = @test_logs (:info,) (:info,) begin
         encased_testset() do
             runtests(test_file)
         end
     end
     @test n_tests(results) == 2 # foo_test.jl has 2 tests
 
-    # No warning for directories (so long as they exist)
-    dir = joinpath(pkg, "test")
-    @assert isdir(dir)
-    results = @test_logs (:info,) (:info,) (:info,) begin
-        encased_testset() do
-            runtests(dir)
-        end
-    end
-    @test n_tests(results) == 0 # TestsInSrc.jl/test/ has no tests
-
     # Warn for each invalid path and still run valid ones
-    results = @test_logs (:warn, "No such path \"$dne\"") (:warn, "\"$file\" is not a test file") (:info,) (:info,) (:info,) begin
+    results = @test_logs (:warn, "No such path \"$dne\"") (:warn, "\"$file\" is not a test file") (:info,) (:info,) begin
         encased_testset() do
             runtests(test_file, dne, file)
         end
@@ -191,7 +181,7 @@ end
 end
 
 const nworkers = 2
-@testset "Distributed (--procs=$(nworkers))" verbose=true begin
+@testset "runtests with nworkers = $nworkers" verbose=true begin
     @testset "Pkg.test() $pkg" for pkg in TEST_PKGS
         results = with_test_package(pkg) do
             withenv("RETESTITEMS_NWORKERS" => 2) do
@@ -353,18 +343,18 @@ end
     )
 end
 
-@testset "`verbose` and `debug` keywords" begin
+@testset "`verbose_results`, `debug` and `logs` keywords" begin
     using IOCapture
     orig = ReTestItems.DEFAULT_STDOUT[]
-    for verbose in (true, false), debug in (true, false)
+    for logs in (:batched, :issues, :eager), debug in (true, false), verbose_results in (true, false)
         try
             c = IOCapture.capture() do
                 with_test_package("NoDeps.jl") do
-                    runtests(; verbose=verbose, debug=debug)
+                    runtests(; logs, debug, verbose_results)
                 end
             end
             # Test we have the expected log messages
-            if verbose
+            if logs in (:batched, :eager)
                 @test contains(c.output, "tests done")
             else
                 @test !contains(c.output, "tests done")
@@ -380,7 +370,7 @@ end
             c2 = IOCapture.capture() do
                 Test.print_test_results(testset)
             end
-            if verbose
+            if verbose_results
                 @test contains(c2.output, "inner-testset")
             else
                 @test !contains(c2.output, "inner-testset")
@@ -389,6 +379,10 @@ end
             ReTestItems.DEFAULT_STDOUT[] = orig
         end
     end
+end
+
+@testset "`report=true` is not compatible with `logs=:eager`" begin
+    @test_throws ArgumentError runtests("", report=true, logs=:eager)
 end
 
 @testset "filter `runtests(x; tags)`" begin
@@ -574,9 +568,34 @@ end
 
 @testset "test crashing testitem" begin
     file = joinpath(_TEST_DIR, "_abort_tests.jl")
-    results = encased_testset(()->runtests(file; nworkers=1))
+    results = encased_testset(()->runtests(file; nworkers=1, debug=2, retries=0))
     @test n_tests(results) == 1
     @test n_passed(results) == 0
+    err = only(non_passes(results))
+    @test err.test_type == :nontest_error
+    @test err.value == string(ErrorException("test item \"Abort\" didn't succeed after 1 tries"))
+end
+
+@testset "test retrying failing testitem" begin
+    file = joinpath(_TEST_DIR, "_retry_tests.jl")
+    results = encased_testset(()->runtests(file; nworkers=1, retries=2))
+    # Test we _ran_ each test-item the expected number of times
+    read_count(x) = parse(Int, read(x, String))
+    # Passes on second attempt, so only need to retry once.
+    @test read_count(joinpath(tempdir(), "num_runs_1")) == 2
+    # Doesn't pass til third attempt, so needs both retries.
+    @test read_count(joinpath(tempdir(), "num_runs_2")) == 3
+    # Doesn't pass ever, so need all retries. This testitem set `retries=4` which is greater
+    # than the `retries=2` that `runtests` set, so we should retry 4 times.
+    @test read_count(joinpath(tempdir(), "num_runs_3")) == 5
+    # Doesn't pass ever, so need all retries. This testitem set `retries=1` which is less
+    # than the `retries=2` that `runtests` set, so we should retry 2 times.
+    @test read_count(joinpath(tempdir(), "num_runs_4")) == 3
+
+    # Test we _report_ the expected number of test-items
+    @test n_tests(results) == 4
+    # The first two testitems pass on retry.
+    @test n_passed(results) == 2
 end
 
 @testset "testitem timeout" begin
@@ -584,4 +603,17 @@ end
     results = encased_testset(()->runtests(file; nworkers=1, testitem_timeout=1.0))
     @test n_tests(results) == 1
     @test n_passed(results) == 0
+end
+
+@testset "Error outside `@testitem`" begin
+    @test_throws Exception runtests(joinpath(_TEST_DIR, "_invalid_file1_test.jl"))
+    @test_throws Exception runtests(joinpath(_TEST_DIR, "_invalid_file2_test.jl"))
+end
+
+@testset "`runtests` finds no testitems" begin
+    file = joinpath(_TEST_DIR, "_empty_file_test.jl")
+    for nworkers in (0, 1)
+        results = encased_testset(()->runtests(file; nworkers))
+        @test n_tests(results) == 0
+    end
 end

@@ -4,19 +4,22 @@ version = "0.1.0"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
-Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 LoggingExtras = "e6f89c97-d47a-5376-807f-9c37f3926c36"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
+Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 TestEnv = "1e6cf692-eddd-4d53-88a5-2d735e33781b"
 
 [extras]
 AutoHashEquals = "15f4f7f2-30c1-5605-9d31-71845cf9641f"
+DeepDiffs = "ab62b9b5-e342-54a8-a765-a90f495de1a6"
 IOCapture = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+XMLDict = "228000da-037f-5747-90a9-8195ccbf91a5"
 
 [targets]
-test = ["AutoHashEquals", "IOCapture", "Logging", "Pkg", "Test"]
+test = ["AutoHashEquals", "DeepDiffs", "IOCapture", "Logging", "Pkg", "Test", "XMLDict"]

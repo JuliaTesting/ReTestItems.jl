@@ -1,2 +1,2 @@
 using ReTestItems, DontPass
-runtests(DontPass; verbose=true)
+runtests(DontPass; verbose_results=true, logs=:batched)

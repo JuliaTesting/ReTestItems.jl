@@ -1,2 +1,2 @@
 using ReTestItems, MonoRepo
-runtests(MonoRepo; verbose=true)
+runtests(MonoRepo; verbose_results=true, logs=:batched)
