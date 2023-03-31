@@ -113,7 +113,7 @@ end
 end
 ```
 
-### Summary
+### Summary
 
 1. Write tests inside of an `@testitem` block.
     - These are like an `@testset`, except that they must contain all the code they need to run;
@@ -134,7 +134,9 @@ end
     - Files without this naming convention will not run.
     - Test files can reside in either the `src/` or `test/` directory,
       so long as they are named like `src/sorted_set_tests.jl` (note the `_tests.jl` suffix).
-    - No explicit `include` of these files is required;
+    - No explicit `include` of these files is required.
+    - Files containing only `@testsetup`s can be named `*_testsetup.jl` or `*_testsetups.jl`,
+      and these files will always be included.
     - Note that `test/runtests.jl` does not meet the naming convention, and should not itself contain `@testitems`.
 4. Make sure your `test/runtests.jl` script calls `runtests`.
     - `test/runtests.jl` is the script run when you call `Pkg.test()` or `] test` at the REPL.
