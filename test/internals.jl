@@ -154,3 +154,14 @@ end
     push!(ts.results, Error(:test_nonbool, "\"False\"", nothing, nothing, LineNumberNode(43)));
     @test_nowarn report_empty_testsets(ti, ts)
 end
+
+@testset "JUnit _error_message" begin
+    # Test we cope with the Error/Fail not having file info
+    using ReTestItems: _error_message
+    line_info = LineNumberNode(42, nothing)
+    ti = (; project_root=pkgdir(ReTestItems))  # Don't need a full testitem here
+    err = Test.Error(:nontest_error, Expr(:tuple), ErrorException(""), Base.ExceptionStack([]), line_info)
+    @test _error_message(err, ti) == "Error during test at unknown:42"
+    fail = Test.Fail(:test, Expr(:tuple), "data", "value", line_info)
+    @test _error_message(fail, ti) == "Test failed at unknown:42"
+end
