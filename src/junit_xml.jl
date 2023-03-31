@@ -57,11 +57,11 @@ function JUnitTestCase(ti, run_number::Int)
 end
 
 function _error_message(fail::Test.Fail, ti)
-    file = relpath(String(fail.source.file), ti.project_root)
+    file = isnothing(fail.source.file) ? "unknown" : relpath(String(fail.source.file), ti.project_root)
     return string("Test failed at ", file, ":", fail.source.line)
 end
 function _error_message(err::Test.Error, ti)
-    file = relpath(String(err.source.file), ti.project_root)
+    file = isnothing(err.source.file) ? "unknown" : relpath(String(err.source.file), ti.project_root)
     return string("Error during test at ", file, ":", err.source.line)
 end
 function _error_message(ts::Test.DefaultTestSet, ti)
