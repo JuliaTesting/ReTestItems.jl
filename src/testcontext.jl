@@ -102,10 +102,18 @@ mutable struct TestItems
     # they are populated once the full graph is done by doing
     # a depth-first traversal of the graph
     testitems::Vector{TestItem} # frozen once flatten_testitems! is called
+@static if VERSION < v"1.7"
+    count::Threads.Atomic{Int}
+else
     @atomic count::Int # number of testitems that have been taken for eval so far
 end
+end
 
-TestItems(graph) = TestItems(graph, TestItem[], 0)
+@static if VERSION < v"1.7"
+    TestItems(graph) = TestItems(graph, TestItem[], Threads.Atomic{Int}(0))
+else
+    TestItems(graph) = TestItems(graph, TestItem[], 0)
+end
 
 ###
 ### record results
@@ -159,11 +167,19 @@ function get_starting_testitems(ti::TestItems, n)
         push!(testitems, ti.testitems[j])
     end
     for (i, t) in enumerate(testitems)
-        @atomic t.scheduled_for_evaluation.value = true
+        @static if VERSION < v"1.7"
+            t.scheduled_for_evaluation.value[] = true
+        else
+            @atomic t.scheduled_for_evaluation.value = true
+        end
         # mark eval_number
         t.eval_number[] = i
     end
-    @atomic ti.count += n
+    @static if VERSION < v"1.7"
+        Threads.atomic_add!(ti.count, n)
+    else
+        @atomic ti.count += n
+    end
     while length(testitems) < n
         push!(testitems, nothing)
     end
@@ -187,10 +203,20 @@ function next_testitem(ti::TestItems, i::Int)
         end
         t = ti.testitems[i]
         # try to atomically mark a test item as scheduled for evaluation
-        (; old, success) = @atomicreplace :monotonic t.scheduled_for_evaluation.value false => true
-        if success
-            t.eval_number[] = @atomic :monotonic ti.count += 1
-            return t
+        @static if VERSION < v"1.7"
+            old = Threads.atomic_xchg!(t.scheduled_for_evaluation.value, true)
+            success = old == false
+            if success
+                c_old = Threads.atomic_add!(ti.count, 1)
+                t.eval_number[] = c_old + 1
+                return t
+            end
+        else
+            (; old, success) = @atomicreplace :monotonic t.scheduled_for_evaluation.value false => true
+            if success
+                t.eval_number[] = @atomic :monotonic ti.count += 1
+                return t
+            end
         end
         n -= 1
     end

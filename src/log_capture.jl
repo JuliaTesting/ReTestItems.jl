@@ -83,7 +83,11 @@ _redirect_logs(f, path::String) = open(io->_redirect_logs(f, io), path, "w")
 function _redirect_logs(f, target::IO)
     target === DEFAULT_STDOUT[] && return f()
     colored_io = IOContext(target, :color => get(DEFAULT_STDOUT[], :color, false))
-    redirect_stdio(f, stdout=colored_io, stderr=colored_io)
+    redirect_stdout(colored_io) do
+        redirect_stderr(colored_io) do
+            f()
+        end
+    end
 end
 
 # A lock that helps to stagger prints to DEFAULT_STDOUT, e.g. when there are log messages

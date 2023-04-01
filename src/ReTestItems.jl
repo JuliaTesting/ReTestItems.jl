@@ -23,6 +23,18 @@ else
     const errmon = identity
 end
 
+if isdefined(Base, :require_lock)
+    using Base: require_lock
+else
+    const require_lock = ReentrantLock()
+end
+
+if VERSION < v"1.7"
+    # renamed: https://github.com/JuliaLang/julia/commit/9113c01bb1ae0e144dc92f9b0b3e051409f35c0a
+    current_exceptions() = Base.catch_stack()
+end
+
+
 # copyied from REPL.jl
 function softscope(@nospecialize ex)
     if ex isa Expr
@@ -390,12 +402,10 @@ function start_and_manage_worker(
             end
             if nretries == retry_limit
                 if e isa TimeoutException
-                    @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
-                        Recording test error."
+                    @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. Recording test error."
                     record_test_error!(testitem, nretries + 1)
                 elseif e isa WorkerTerminatedException
-                    @warn "$worker died evaluating test item $(repr(testitem.name)). \
-                        Recording test error."
+                    @warn "$worker died evaluating test item $(repr(testitem.name)). Recording test error."
                     record_test_error!(testitem, nretries + 1)
                 else
                     @assert e isa TestSetFailure
@@ -406,12 +416,10 @@ function start_and_manage_worker(
             else
                 nretries += 1
                 if e isa TimeoutException
-                    @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
-                        Starting a new worker and retrying. Retry=$nretries."
+                    @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. Starting a new worker and retrying. Retry=$nretries."
                     worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
                 elseif e isa WorkerTerminatedException
-                    @warn "$worker died evaluating test item $(repr(testitem.name)). \
-                        Starting a new worker and retrying. Retry=$nretries."
+                    @warn "$worker died evaluating test item $(repr(testitem.name)). Starting a new worker and retrying. Retry=$nretries."
                     worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
                 else
                     @assert e isa TestSetFailure
@@ -636,7 +644,7 @@ function runtestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=false
         push!(body.args, :(using Test))
         if !isempty(ctx.projectname)
             # this obviously assumes we're in an environment where projectname is reachable
-            push!(body.args, :(Base.@lock Base.require_lock using $(Symbol(ctx.projectname))))
+            push!(body.args, :(Base.@lock $require_lock using $(Symbol(ctx.projectname))))
         end
     end
     Test.push_testset(ts)
@@ -689,7 +697,7 @@ function runtestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=false
         # Handle exceptions thrown outside a `@test` in the body of the @testitem:
         # Copied from Test.@testset's catch block:
         Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
-            (Test.Base).current_exceptions(),
+            current_exceptions(),
             LineNumberNode(ti.line, ti.file)))
     finally
         # Make sure all test setup logs are commited to file

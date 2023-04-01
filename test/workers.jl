@@ -1,4 +1,5 @@
 using ReTestItems.Workers
+using ReTestItems.Workers: isterminated
 using Test
 
 @testset "Worker basics" begin
@@ -7,7 +8,7 @@ using Test
     # test correct connected/running states
     @test process_running(w.process)
     @test isopen(w.socket)
-    @test !w.terminated
+    @test !isterminated(w)
     @test istaskstarted(w.messages) && !istaskdone(w.messages)
     @test istaskstarted(w.output) && !istaskdone(w.output)
     @test isempty(w.futures)
@@ -15,7 +16,7 @@ using Test
     close(w)
     @test !process_running(w.process)
     @test !isopen(w.socket)
-    @test w.terminated
+    @test isterminated(w)
     @test istaskstarted(w.messages) && istaskdone(w.messages)
     @test istaskstarted(w.output) && istaskdone(w.output)
     @test isempty(w.futures)
@@ -26,7 +27,7 @@ using Test
     wait(w)
     @test !process_running(w.process)
     @test !isopen(w.socket)
-    @test w.terminated
+    @test isterminated(w)
     @test istaskstarted(w.messages) && istaskdone(w.messages)
     @test istaskstarted(w.output) && istaskdone(w.output)
     @test isempty(w.futures)
@@ -63,7 +64,7 @@ using Test
     wait(w)
     @test !process_running(w.process)
     @test !isopen(w.socket)
-    @test w.terminated
+    @test isterminated(w)
     @test istaskstarted(w.messages) && istaskdone(w.messages)
     @test istaskstarted(w.output) && istaskdone(w.output)
     @test isempty(w.futures)

@@ -20,13 +20,13 @@ JUnitCounts() = JUnitCounts(nothing, 0.0, 0, 0, 0, 0)
 function JUnitCounts(ts::Test.DefaultTestSet)
     timestamp = unix2datetime(ts.time_start)
     time = isnothing(ts.time_end) ? 0.0 : (ts.time_end - ts.time_start)
-    (; tests, failures, errors, skipped) = test_counts(ts)
-    return JUnitCounts(timestamp, time, tests, failures, errors, skipped)
+    c = test_counts(ts)
+    return JUnitCounts(timestamp, time, c.tests, c.failures, c.errors, c.skipped)
 end
 
 
 mutable struct JUnitTestCase  # TestItem run
-    const name::String
+    name::String
     counts::JUnitCounts
     stats::PerfStats
     error_message::Union{String,Nothing} # Additional message to include in `<error>`
@@ -80,14 +80,14 @@ _non_passes(x::Test.Error) = [x]
 _non_passes(ts::Test.DefaultTestSet) = mapreduce(_non_passes, vcat, ts.results; init=Test.Result[])
 
 mutable struct JUnitTestSuite  # File
-    const name::String
+    name::String
     counts::JUnitCounts
     testcases::Vector{JUnitTestCase}
 end
 JUnitTestSuite(name::String) = JUnitTestSuite(name, JUnitCounts(), JUnitTestCase[])
 
 mutable struct JUnitTestSuites
-    const name::String
+    name::String
     counts::JUnitCounts
     testsuites::Vector{JUnitTestSuite}
 end
@@ -145,7 +145,7 @@ function test_counts(ts::Test.DefaultTestSet)
             skipped += inner.skipped
         end
     end
-    return (; tests, failures, errors, skipped)
+    return (; tests=tests, failures=failures, errors=errors, skipped=skipped)
 end
 
 

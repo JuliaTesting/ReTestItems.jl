@@ -1,6 +1,8 @@
 module Workers
 
-using Sockets, Serialization
+using Base: @lock
+using Serialization
+using Sockets
 
 export Worker, remote_eval, remote_fetch, terminate!, WorkerTerminatedException
 
@@ -58,8 +60,14 @@ mutable struct Worker
     output::Task
     process_watch::Task
     futures::Dict{UInt64, Future} # Request.id -> Future
+@static if VERSION < v"1.7"
+    terminated::Threads.Atomic{Bool}
+else
     @atomic terminated::Bool
 end
+end
+
+isterminated(w::Worker) = @static VERSION < v"1.7" ? w.terminated[] : w.terminated
 
 # used to close Future.value channels when a worker terminates
 struct WorkerTerminatedException <: Exception
@@ -70,7 +78,11 @@ end
 # but does not *wait* for a final close state
 # so typically callers should call wait(w) after this
 function terminate!(w::Worker, from::Symbol=:manual)
-    already_terminated = @atomicswap :monotonic w.terminated = true
+    @static if VERSION < v"1.7"
+        already_terminated = Threads.atomic_xchg!(w.terminated, true)
+    else
+        already_terminated = @atomicswap :monotonic w.terminated = true
+    end
     if !already_terminated
         @debug "terminating worker $(w.pid) from $from"
     end
@@ -107,7 +119,7 @@ end
 # gracefully terminate a worker by sending a shutdown message
 # and waiting for the other tasks to perform worker shutdown
 function Base.close(w::Worker)
-    if !w.terminated && isopen(w.socket)
+    if !isterminated(w) && isopen(w.socket)
         req = Request(Symbol(), :(), rand(UInt64), true)
         @lock w.lock begin
             serialize(w.socket, req)
@@ -121,7 +133,7 @@ end
 # wait until our spawned tasks have all finished
 Base.wait(w::Worker) = fetch(w.process_watch) && fetch(w.messages) && fetch(w.output)
 
-Base.show(io::IO, w::Worker) = print(io, "Worker(pid=$(w.pid)", w.terminated ? ", terminated=true, termsignal=$(w.process.termsignal)" : "", ")")
+Base.show(io::IO, w::Worker) = print(io, "Worker(pid=$(w.pid)", isterminated(w) ? ", terminated=true, termsignal=$(w.process.termsignal)" : "", ")")
 
 # used in testing to ensure all created workers are
 # eventually cleaned up properly
@@ -135,7 +147,7 @@ function Worker(;
     connect_timeout::Int=60,
     worker_redirect_io::IO=stdout,
     worker_redirect_fn=(io, pid, line)->println(io, "  Worker $pid:  $line")
-    )
+)
     # below copied from Distributed.launch
     env = Dict{String, String}(env)
     pathsep = Sys.iswindows() ? ";" : ":"
@@ -169,7 +181,8 @@ function Worker(;
             return Sockets.connect(parse(Int, split(port_str, ':')[2]))
         end
         # create worker
-        w = Worker(ReentrantLock(), pid, proc, sock, Task(nothing), Task(nothing), Task(nothing), Dict{UInt64, Future}(), false)
+        terminated = @static VERSION < v"1.7" ? Threads.Atomic{Bool}(false) : false
+        w = Worker(ReentrantLock(), pid, proc, sock, Task(nothing), Task(nothing), Task(nothing), Dict{UInt64, Future}(), terminated)
         ## start a task to watch for worker process termination
         w.process_watch = Threads.@spawn watch_and_terminate!(w)
         ## start a task to redirect worker output
@@ -193,7 +206,7 @@ end
 
 function redirect_worker_output(io::IO, w::Worker, fn, proc)
     try
-        while !process_exited(proc) && !w.terminated
+        while !process_exited(proc) && !isterminated(w)
             line = readline(proc)
             if !isempty(line)
                 fn(io, w.pid, line)
@@ -212,7 +225,7 @@ function process_responses(w::Worker)
     lock = w.lock
     reqs = w.futures
     try
-        while isopen(w.socket) && !w.terminated
+        while isopen(w.socket) && !isterminated(w)
             # get the next Response from the worker
             r = deserialize(w.socket)
             @assert r isa Response "Received invalid response from worker $(w.pid): $(r)"
@@ -241,7 +254,7 @@ end
 remote_eval(w::Worker, expr) = remote_eval(w, Main, expr.head == :block ? Expr(:toplevel, expr.args...) : expr)
 
 function remote_eval(w::Worker, mod, expr)
-    w.terminated && throw(WorkerTerminatedException(w))
+    isterminated(w) && throw(WorkerTerminatedException(w))
     # we only send the Symbol module name to the worker
     req = Request(nameof(mod), expr, rand(UInt64), false)
     @lock w.lock begin

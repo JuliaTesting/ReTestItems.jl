@@ -70,7 +70,37 @@ Base.@kwdef struct PerfStats
     recompile_time::UInt=0
 end
 
+@static if VERSION < v"1.8"
+    macro __tryfinally(ex, fin)
+        Expr(:tryfinally,
+        :($(esc(ex))),
+        :($(esc(fin)))
+        )
+    end
+else
+    using Base: @__tryfinally
+end
+
 # Adapted from Base.@time
+@static if VERSION < v"1.8"
+macro timed_with_compilation(ex)
+    quote
+        while false; end # compiler heuristic: compile this block (alter this if the heuristic changes)
+        local stats = Base.gc_num()
+        local elapsedtime = time_ns()
+        local compile_elapsedtime = Base.cumulative_compile_time_ns_before()
+        local val = $(esc(ex))
+        compile_elapsedtime = Base.cumulative_compile_time_ns_after() - compile_elapsedtime
+        elapsedtime = time_ns() - elapsedtime
+        local diff = Base.GC_Diff(Base.gc_num(), stats)
+        local out = PerfStats(;
+            elapsedtime, bytes=diff.allocd, gctime=diff.total_time, allocs=Base.gc_alloc_count(diff),
+            compile_time=compile_elapsedtime, recompile_time=0 # won't show recompile_time
+        )
+        val, out
+    end
+end
+else
 macro timed_with_compilation(ex)
     quote
         Base.Experimental.@force_compile
@@ -78,7 +108,7 @@ macro timed_with_compilation(ex)
         local elapsedtime = Base.time_ns()
         Base.cumulative_compile_timing(true)
         local compile_elapsedtimes = Base.cumulative_compile_time_ns()
-        local val = Base.@__tryfinally($(esc(ex)),
+        local val = @__tryfinally($(esc(ex)),
             (elapsedtime = Base.time_ns() - elapsedtime;
             Base.cumulative_compile_timing(false);
             compile_elapsedtimes = Base.cumulative_compile_time_ns() .- compile_elapsedtimes)
@@ -91,12 +121,21 @@ macro timed_with_compilation(ex)
         val, out
     end
 end
-
-mutable struct ScheduledForEvaluation
-    @atomic value::Bool
 end
 
-ScheduledForEvaluation() = ScheduledForEvaluation(false)
+mutable struct ScheduledForEvaluation
+@static if VERSION < v"1.7"
+    value::Threads.Atomic{Bool}
+else
+    @atomic value::Bool
+end
+end
+
+@static if VERSION < v"1.7"
+    ScheduledForEvaluation() = ScheduledForEvaluation(Threads.Atomic{Bool}(false))
+else
+    ScheduledForEvaluation() = ScheduledForEvaluation(false)
+end
 
 # NOTE: TestItems are serialized across processes for
 # distributed testing, so care needs to be taken that
