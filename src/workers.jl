@@ -89,7 +89,9 @@ function terminate!(w::Worker, from::Symbol=:manual)
         sleep(0.1)
         process_exited(w.process) && break
     end
-    close(w.socket)
+    if !(w.socket.status == Base.StatusUninit || w.socket.status == Base.StatusInit || w.socket.handle === C_NULL)
+        close(w.socket)
+    end
     return
 end
 
