@@ -4,25 +4,36 @@
 
 # ReTestItems.jl
 
-A package for parallel tests.
+A package for running `@testitem`s in parallel.
 
 ## Quickstart
 
 Wrap your tests in the `@testitem` macro, place then in a file name `*_test.jl`, and use `runtests` to run them:
 
 ```julia
-# my_tests.jl
+# test/arithmetic_tests.jl
 @testitem "addition" begin
     @test 1 + 2 == 3
     @test 0 + 2 == 2
     @test -1 + 2 == 1
+end
+@testitem "multiplication" begin
+    @test 1 * 2 == 2
+    @test 0 * 2 == 0
+    @test -1 * 2 == -2
 end
 ```
 
 ```julia
 julia> using ReTestItems
 
-julia> runtests("my_tests.jl")
+julia> runtests("test/arithmetic_tests.jl")
+```
+
+Run test-items in parallel on multiple processes by passing `nworkers`:
+
+```julia
+julia> runtests("test/arithmetic_tests.jl"; nworkers=2)
 ```
 
 ## Running tests
@@ -35,7 +46,7 @@ julia> using ReTestItems
 julia> runtests()
 ```
 
-Test files must be named with the suffix `_test.jl` or `_tests.jl`.
+Test-items must be in files named with the suffix `_test.jl` or `_tests.jl`.
 ReTestItems uses these file suffixes to identify which files are "test files";
 all other files will be ignored by `runtests`.
 
