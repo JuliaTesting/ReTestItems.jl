@@ -528,43 +528,42 @@ end
     end
 end
 
-# @testset "log capture for an errored TestSetup" begin
-#     c = IOCapture.capture() do
-#         results = with_test_package("DontPass.jl") do
-#             runtests("test/error_in_setup_test.jl")
-#         end
-#     end
-#     @test occursin("""
-#     \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
-#     SetupThatErrors msg
-#     """,
-#     c.output)
+@testset "log capture for an errored TestSetup" begin
+    c = IOCapture.capture() do
+        results = with_test_package("DontPass.jl") do
+            runtests("test/error_in_setup_test.jl"; nworkers=1)
+        end
+    end
+    @test occursin("""
+    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+    SetupThatErrors msg
+    """,
+    replace(c.output, r" on worker \d+" => ""))
 
-#     @test occursin("""
-#     \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
-#     SetupThatErrors msg
-#     """,
-#     c.output)
+    @test occursin("""
+    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+    SetupThatErrors msg
+    """,
+    replace(c.output, r" on worker \d+" => ""))
 
-#     # Since the test setup never succeeds it will be evaluated mutliple times. Here we test
-#     # that we don't accumulate logs from all previous failed attempts (which would get
-#     # really spammy if the test setup is used by 100 test items).
-#     good_test_has_two_logs = occursin("""
-#         \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
-#         SetupThatErrors msg
-#         SetupThatErrors msg
-#         """,
-#         c.output
-#     )
-#     bad_test_has_two_logs = occursin("""
-#         \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
-#         SetupThatErrors msg
-#         SetupThatErrors msg
-#         """,
-#         c.output
-#     )
-#     @test !good_test_has_two_logs && !bad_test_has_two_logs
-# end
+    # Since the test setup never succeeds it will be evaluated mutliple times. Here we test
+    # that we don't accumulate logs from all previous failed attempts (which would get
+    # really spammy if the test setup is used by 100 test items).
+    @test !occursin("""
+        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+        SetupThatErrors msg
+        SetupThatErrors msg
+        """,
+        replace(c.output, r" on worker \d+" => "")
+    )
+    @test !occursin("""
+        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+        SetupThatErrors msg
+        SetupThatErrors msg
+        """,
+        replace(c.output, r" on worker \d+" => "")
+    )
+end
 
 @testset "test crashing testitem" begin
     file = joinpath(_TEST_DIR, "_abort_tests.jl")
