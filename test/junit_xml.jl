@@ -19,6 +19,9 @@ function remove_variables(str)
         r"on worker [0-9]*" => "on worker 0",
         # Remove backticks (because backticks were added to some error messages in v1.9+).
         r"`" => "",
+        # Remove blank lines in error messages (these were add in v1.9+)
+        # https://github.com/JuliaLang/julia/commit/ba1e568966f82f4732f9a906ab186b02741eccb0
+        r"\n\n" => "\n"
     )
 end
 
