@@ -9,6 +9,6 @@ See `test/integrationtests.jl`.
 
 - *DontPass.jl* - A package which has tests that fail or error in various ways.
   - NOTE: when adding new failure/error cases, you must also increment the counters in `test/integrationtests.jl`
-- *NoDeps.jl* - A package that has no dependencies, and just has some simple `@tests` in the `test/runtests.jl`
+- *NoDeps.jl* - A package that has no dependencies, and just has some simple `@test`s.
 - *TestsInSrc.jl* - A package which has all of its `@testitems` in the `src/` directory.
 - *MonoRepo.jl* - A package which depends on local, unregistered sub-packages. See `MonoRepo.jl/README.md`.
