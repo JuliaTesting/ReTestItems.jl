@@ -12,6 +12,13 @@ function save_current_stdio()
     DEFAULT_LOGGER[] = Base.CoreLogging._global_logstate.logger
 end
 
+# A lock that helps to stagger prints to DEFAULT_STDOUT, used in `print_errors_and_captured_logs`
+# which is called by multiple tasks on the coordinator
+const LogCaptureLock = ReentrantLock()
+macro loglock(expr)
+    return :(@lock LogCaptureLock $(esc(expr)))
+end
+
 function default_log_display_mode(report::Bool, nworkers::Integer, interactive::Bool=Base.isinteractive())
     @assert nworkers >= 0
     if interactive
@@ -151,7 +158,7 @@ function print_errors_and_captured_logs(io, ti::TestItem, run_number::Int; logs=
             # a newline to visually separate the report for the current test item
             println(report_iob)
             # Printing in one go to minimize chance of mixing with other concurrent prints
-            write(io, take!(report_iob.io))
+            @loglock write(io, take!(report_iob.io))
         end
     end
     # If we have errors, keep the tesitem log file for JUnit report.
@@ -207,12 +214,12 @@ function _print_test_errors(report_iob, ts::DefaultTestSet, worker_info)
 end
 
 # Marks the start of each test item
-function log_running(ti::TestItem, ntestitems=0)
+function log_testitem_start(ti::TestItem, ntestitems=0)
     io = IOContext(IOBuffer(), :color=>Base.get_have_color())
     interactive = parse(Bool, get(ENV, "RETESTITEMS_INTERACTIVE", string(Base.isinteractive())))
     print(io, format(now(), "HH:MM:SS | "))
     !interactive && print(io, _mem_watermark())
-    printstyled(io, "RUNNING "; bold=true)
+    printstyled(io, "START"; bold=true)
     if ntestitems > 0
         print(io, " (", lpad(ti.eval_number[], ndigits(ntestitems)), "/", ntestitems, ")")
     end
@@ -223,12 +230,12 @@ function log_running(ti::TestItem, ntestitems=0)
 end
 
 # mostly copied from timing.jl
-function log_finished(ti::TestItem, ntestitems=0)
+function log_testitem_done(ti::TestItem, ntestitems=0)
     io = IOContext(IOBuffer(), :color=>Base.get_have_color())
     interactive = parse(Bool, get(ENV, "RETESTITEMS_INTERACTIVE", string(Base.isinteractive())))
     print(io, format(now(), "HH:MM:SS | "))
     !interactive && print(io, _mem_watermark())
-    printstyled(io, "FINISHED"; bold=true)
+    printstyled(io, "DONE "; bold=true)
     if ntestitems > 0
         print(io, " (", lpad(ti.eval_number[], ndigits(ntestitems)), "/", ntestitems, ")")
     end

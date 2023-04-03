@@ -627,7 +627,7 @@ end
 
 function runtestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=false, finish_test::Bool=true, logs::Symbol=:eager)
     name = ti.name
-    log_running(ti, ctx.ntestitems)
+    log_testitem_start(ti, ctx.ntestitems)
     ts = DefaultTestSet(name; verbose=verbose_results)
     stats = PerfStats()
     # start with empty block expr and build up our @testitem module body
@@ -705,7 +705,7 @@ function runtestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=false
     @debugv 1 "Test item $(repr(name)) done$(_on_worker())."
     push!(ti.testsets, ts)
     push!(ti.stats, stats)
-    log_finished(ti, ctx.ntestitems)
+    log_testitem_done(ti, ctx.ntestitems)
     GC.gc(true)
     return TestItemResult(convert_results_to_be_transferrable(ts), stats)
 end
