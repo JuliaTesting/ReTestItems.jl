@@ -53,15 +53,15 @@ function time_print(io; elapsedtime, bytes=0, gctime=0, allocs=0, compile_time=0
     if  gctime > 0 || compile_time > 0
         print(io, " (")
         if compile_time > 0
-            _print_scaled_one_dec(io, 100compile_time, elapsedtime, "% compile")
+            _print_scaled_one_dec(io, 100 * compile_time, elapsedtime, "% compile")
         end
         if recompile_time > 0
             print(io, ", ")
-            _print_scaled_one_dec(io, 100recompile_time, elapsedtime, "% recompile")
+            _print_scaled_one_dec(io, 100 * recompile_time, elapsedtime, "% recompile")
         end
         if gctime > 0
             compile_time > 0 && print(io, ", ")
-            _print_scaled_one_dec(io, 100gctime, elapsedtime, "% GC")
+            _print_scaled_one_dec(io, 100 * gctime, elapsedtime, "% GC")
         end
         print(io, ")")
     end
@@ -114,9 +114,12 @@ _has_logs(ts::TestSetup) = filesize(logpath(ts)) > 0
 # The path might not exist if a testsetup always throws an error and we don't get to actually
 # evaluate the test item.
 _has_logs(ti::TestItem, i=nothing) = (path = logpath(ti, i); (isfile(path) && filesize(path) > 0))
+# Stats to help diagnose OOM issues.
 _mem_watermark() = string(
-    "maxrss ", lpad(Base.Ryu.writefixed(100Float64(Sys.maxrss()/Sys.total_memory()), 1), 4),
-    "% | mem ", lpad(Base.Ryu.writefixed(100Float64(1 - (Sys.free_memory()/Sys.total_memory())), 1), 4),
+    # Tracks the peak memory usage of a process / worker
+    "maxrss ", lpad(Base.Ryu.writefixed(100 * Float64(Sys.maxrss()/Sys.total_memory()), 1), 4),
+    # Total memory pressure on the machine
+    "% | mem ", lpad(Base.Ryu.writefixed(100 * Float64(1 - (Sys.free_memory()/Sys.total_memory())), 1), 4),
     "% | "
 )
 
