@@ -25,38 +25,56 @@ function default_log_display_mode(report::Bool, nworkers::Integer, interactive::
     end
 end
 
-# Adapted from Base.time_print
+# Adapted from timing.jl
+const _cnt_units = ["", " K", " M", " B", " T", " P"]
+const _mem_pow10_units = ["byte", "KB", "MB", "GB", "TB", "PB"]
+function _format_pow10_bytes(bytes)
+    bytes, mb = Base.prettyprint_getunits(bytes, length(_mem_pow10_units), Int64(1000))
+    if mb == 1
+        return string(Int(bytes), " ", _mem_pow10_units[mb], bytes==1 ? "" : "s")
+    else
+        return string(Base.Ryu.writefixed(Float64(bytes), 3), " ", _mem_pow10_units[mb])
+    end
+end
+function _print_scaled_one_dec(io, value, scale, label="")
+    @assert scale > 0
+    value_scaled = Float64(value/scale)
+    if 0.1 > value_scaled > 0
+        print(io, "<0.1")
+    elseif value_scaled >= 0.1
+        print(io, Base.Ryu.writefixed(value_scaled, 1))
+    else
+        print(io, "0")
+    end
+    print(io, label)
+end
 function time_print(io; elapsedtime, bytes=0, gctime=0, allocs=0, compile_time=0, recompile_time=0)
-    print(io, Base.Ryu.writefixed(Float64(elapsedtime/1e9), 6), " seconds")
-    parens = bytes != 0 || allocs != 0 || gctime > 0 || compile_time > 0
-    parens && print(io, " (")
-    if bytes != 0 || allocs != 0
-        allocs, ma = Base.prettyprint_getunits(allocs, length(Base._cnt_units), Int64(1000))
+    _print_scaled_one_dec(io, elapsedtime, 1e9, " secs")
+    if  gctime > 0 || compile_time > 0
+        print(io, " (")
+        if compile_time > 0
+            _print_scaled_one_dec(io, 100compile_time, elapsedtime, "% compile")
+        end
+        if recompile_time > 0
+            print(io, ", ")
+            _print_scaled_one_dec(io, 100recompile_time, elapsedtime, "% recompile")
+        end
+        if gctime > 0
+            compile_time > 0 && print(io, ", ")
+            _print_scaled_one_dec(io, 100gctime, elapsedtime, "% GC")
+        end
+        print(io, ")")
+    end
+    if bytes > 0
+        print(io, ", ")
+        allocs, ma = Base.prettyprint_getunits(allocs, length(_cnt_units), Int64(1000))
         if ma == 1
-            print(io, Int(allocs), Base._cnt_units[ma], allocs==1 ? " allocation: " : " allocations: ")
+            print(io, Int(allocs), _cnt_units[ma], allocs==1 ? " alloc " : " allocs ")
         else
-            print(io, Base.Ryu.writefixed(Float64(allocs), 2), Base._cnt_units[ma], " allocations: ")
+            print(io, Base.Ryu.writefixed(Float64(allocs), 2), _cnt_units[ma], " allocs ")
         end
-        print(io, Base.format_bytes(bytes))
+        print(io, "(", _format_pow10_bytes(bytes), ")")
     end
-    if gctime > 0
-        if bytes != 0 || allocs != 0
-            print(io, ", ")
-        end
-        print(io, Base.Ryu.writefixed(Float64(100*gctime/elapsedtime), 2), "% gc time")
-    end
-    if compile_time > 0
-        if bytes != 0 || allocs != 0 || gctime > 0
-            print(io, ", ")
-        end
-        print(io, Base.Ryu.writefixed(Float64(100*compile_time/elapsedtime), 2), "% compilation time")
-    end
-    if recompile_time > 0
-        perc = Float64(100 * recompile_time / compile_time)
-        # use "<1" to avoid the confusing UX of reporting 0% when it's >0%
-        print(io, ": ", perc < 1 ? "<1" : Base.Ryu.writefixed(perc, 0), "% of which was recompilation")
-    end
-    parens && print(io, ")")
 end
 
 function logfile_name(ti::TestItem, i=nothing)
@@ -86,18 +104,6 @@ function _redirect_logs(f, target::IO)
     redirect_stdio(f, stdout=colored_io, stderr=colored_io)
 end
 
-# A lock that helps to stagger prints to DEFAULT_STDOUT, e.g. when there are log messages
-# comming from distributed workers, reports for stalled tests and outputs of
-# `print_errors_and_captured_logs`.
-const LogCaptureLock = ReentrantLock()
-macro loglock(expr)
-    return :(@lock LogCaptureLock $(esc(expr)))
-end
-
-# NOTE: stderr and stdout are not safe to use during precompilation time,
-# specifically until `Base.init_stdio` has been called. This is why we store
-# the e.g. DEFAULT_STDOUT reference during __init__.
-_not_compiling() = ccall(:jl_generating_output, Cint, ()) == 0
 
 ### Logging and reporting helpers ##########################################################
 
@@ -108,6 +114,11 @@ _has_logs(ts::TestSetup) = filesize(logpath(ts)) > 0
 # The path might not exist if a testsetup always throws an error and we don't get to actually
 # evaluate the test item.
 _has_logs(ti::TestItem, i=nothing) = (path = logpath(ti, i); (isfile(path) && filesize(path) > 0))
+_mem_watermark() = string(
+    "maxrss ", lpad(Base.Ryu.writefixed(100Float64(Sys.maxrss()/Sys.total_memory()), 1), 4),
+    "% | mem ", lpad(Base.Ryu.writefixed(100Float64(1 - (Sys.free_memory()/Sys.total_memory())), 1), 4),
+    "% | "
+)
 
 """
     print_errors_and_captured_logs(ti::TestItem, run_number::Int; logs=:batched)
@@ -137,7 +148,7 @@ function print_errors_and_captured_logs(io, ti::TestItem, run_number::Int; logs=
             # a newline to visually separate the report for the current test item
             println(report_iob)
             # Printing in one go to minimize chance of mixing with other concurrent prints
-            @loglock write(io, take!(report_iob.io))
+            write(io, take!(report_iob.io))
         end
     end
     # If we have errors, keep the tesitem log file for JUnit report.
@@ -195,7 +206,9 @@ end
 # Marks the start of each test item
 function log_running(ti::TestItem, ntestitems=0)
     io = IOContext(IOBuffer(), :color=>Base.get_have_color())
-    print(io, format(now(), "HH:MM:SS "))
+    interactive = parse(Bool, get(ENV, "RETESTITEMS_INTERACTIVE", string(Base.isinteractive())))
+    print(io, format(now(), "HH:MM:SS | "))
+    !interactive && print(io, _mem_watermark())
     printstyled(io, "RUNNING "; bold=true)
     if ntestitems > 0
         print(io, " (", lpad(ti.eval_number[], ndigits(ntestitems)), "/", ntestitems, ")")
@@ -203,22 +216,24 @@ function log_running(ti::TestItem, ntestitems=0)
     print(io, " test item $(repr(ti.name)) at ")
     printstyled(io, _file_info(ti); bold=true, color=:default)
     println(io)
-    @loglock write(DEFAULT_STDOUT[], take!(io.io))
+    write(DEFAULT_STDOUT[], take!(io.io))
 end
 
 # mostly copied from timing.jl
 function log_finished(ti::TestItem, ntestitems=0)
     io = IOContext(IOBuffer(), :color=>Base.get_have_color())
-    print(io, format(now(), "HH:MM:SS "))
+    interactive = parse(Bool, get(ENV, "RETESTITEMS_INTERACTIVE", string(Base.isinteractive())))
+    print(io, format(now(), "HH:MM:SS | "))
+    !interactive && print(io, _mem_watermark())
     printstyled(io, "FINISHED"; bold=true)
     if ntestitems > 0
         print(io, " (", lpad(ti.eval_number[], ndigits(ntestitems)), "/", ntestitems, ")")
     end
     print(io, " test item $(repr(ti.name)) ")
-    x = last(ti.stats) # always stats for most recent run
+    x = last(ti.stats) # always print stats for most recent run
     time_print(io; x.elapsedtime, x.bytes, x.gctime, x.allocs, x.compile_time, x.recompile_time)
     println(io)
-    @loglock write(DEFAULT_STDOUT[], take!(io.io))
+    write(DEFAULT_STDOUT[], take!(io.io))
 end
 
 function report_empty_testsets(ti::TestItem, ts::DefaultTestSet)
