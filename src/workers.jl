@@ -152,6 +152,7 @@ function Worker(;
     if project !== nothing && get(env, "JULIA_PROJECT", nothing) === nothing
         env["JULIA_PROJECT"] = project
     end
+    env["RETESTITEMS_INTERACTIVE"] = get(env, "RETESTITEMS_INTERACTIVE", string(Base.isinteractive()))
     # end copied from Distributed.launch
     ## start the worker process
     cmd = `$(Base.julia_cmd()) $exeflags --startup-file=no -e 'using ReTestItems; ReTestItems.Workers.startworker()'`
