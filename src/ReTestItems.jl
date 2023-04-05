@@ -385,17 +385,18 @@ function start_and_manage_worker(
             # Explicitly show captured logs or say there weren't any
             _print_captured_logs(DEFAULT_STDOUT[], testitem, nretries + 1)
             if e isa TimeoutException
+                @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker"
                 terminate!(worker)
                 wait(worker)
             end
             if nretries == retry_limit
                 if e isa TimeoutException
                     @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
-                        Recording test error."
+                        Recording test error, and starting a new worker."
                     record_test_error!(testitem, nretries + 1)
                 elseif e isa WorkerTerminatedException
                     @warn "$worker died evaluating test item $(repr(testitem.name)). \
-                        Recording test error."
+                        Recording test error, and starting a new worker."
                     record_test_error!(testitem, nretries + 1)
                 else
                     @assert e isa TestSetFailure
@@ -408,15 +409,16 @@ function start_and_manage_worker(
                 if e isa TimeoutException
                     @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
                         Starting a new worker and retrying. Retry=$nretries."
-                    worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
                 elseif e isa WorkerTerminatedException
                     @warn "$worker died evaluating test item $(repr(testitem.name)). \
                         Starting a new worker and retrying. Retry=$nretries."
-                    worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
                 else
                     @assert e isa TestSetFailure
                     @warn "Test item $(repr(testitem.name)) failed. Retrying on $worker. Retry=$nretries."
                 end
+            end
+            if (e isa TimeoutException || e isa WorkerTerminatedException)
+                worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
             end
             # now we loop back around to reschedule the testitem
             continue
