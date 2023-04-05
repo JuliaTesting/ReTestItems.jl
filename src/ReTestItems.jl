@@ -330,7 +330,7 @@ end
 
 function start_and_manage_worker(
     proj_name, testitems, testitem, nworker_threads, worker_init_expr,
-    timeout::Int, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
+    timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
 )
     ntestitems = length(testitems.testitems)
     worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)

@@ -559,9 +559,14 @@ end
 
 @testset "test crashing testitem" begin
     file = joinpath(_TEST_DIR, "_abort_tests.jl")
-    results = encased_testset(()->runtests(file; nworkers=1, debug=2, retries=0))
-    @test n_tests(results) == 1
-    @test n_passed(results) == 0
+    # NOTE: this test must run with exactly 1 worker, so that we can test that the worker
+    # is replaced after the abort and subsequent testitems still run.
+    nworkers = 1
+    @assert nworkers == 1
+    results = encased_testset(()->runtests(file; nworkers, debug=2, retries=0))
+    @test n_tests(results) == 2
+    @test n_passed(results) == 1
+    # Test the error is as expected
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
     @test err.value == string(ErrorException("test item \"Abort\" didn't succeed after 1 tries"))
@@ -591,9 +596,17 @@ end
 
 @testset "testitem timeout" begin
     file = joinpath(_TEST_DIR, "_timeout_tests.jl")
-    results = encased_testset(()->runtests(file; nworkers=1, testitem_timeout=1.0))
-    @test n_tests(results) == 1
-    @test n_passed(results) == 0
+    # NOTE: this test must run with exactly 1 worker, so that we can test that the worker
+    # is replaced after the abort and subsequent testitems still run.
+    nworkers = 1
+    @assert nworkers == 1
+    results = encased_testset(()->runtests(file; nworkers, debug=1, testitem_timeout=1.0))
+    @test n_tests(results) == 2
+    @test n_passed(results) == 1
+    # Test the error is as expected
+    err = only(non_passes(results))
+    @test err.test_type == :nontest_error
+    @test err.value == string(ErrorException("test item \"Test item takes 60 seconds\" didn't succeed after 1 tries"))
 end
 
 @testset "Error outside `@testitem`" begin
