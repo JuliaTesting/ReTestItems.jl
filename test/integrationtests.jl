@@ -597,7 +597,7 @@ end
 @testset "testitem timeout" begin
     file = joinpath(_TEST_DIR, "_timeout_tests.jl")
     # NOTE: this test must run with exactly 1 worker, so that we can test that the worker
-    # is replaced after the abort and subsequent testitems still run.
+    # is replaced after the timeout and subsequent testitems still run.
     nworkers = 1
     @assert nworkers == 1
     results = encased_testset(()->runtests(file; nworkers, debug=1, testitem_timeout=1.0))
