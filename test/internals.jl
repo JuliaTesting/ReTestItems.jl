@@ -93,11 +93,12 @@ end
     using ReTestItems: include_testfiles!, is_test_file, is_testsetup_file
     shouldrun = Returns(true)
     report = false
+    proj = joinpath(pkgdir(ReTestItems), "Project.toml")
     test_dir = joinpath(pkgdir(ReTestItems), "test")
     @assert count(is_testsetup_file, readdir(test_dir)) == 1
     file = joinpath(test_dir, "log_capture.jl")
     @assert isfile(file) && !is_test_file(file)
-    ti, setups = include_testfiles!("log_capture", test_dir, (file,), shouldrun, report)
+    ti, setups = include_testfiles!("log_capture", proj, (file,), shouldrun, report)
     @test length(ti.testitems) == 0 # just the testsetup
     @test haskey(setups, :FooSetup)
 
@@ -106,7 +107,7 @@ end
     @assert !any(is_testsetup_file, readdir(nested_dir))
     file = joinpath(nested_dir, "_testitem_test.jl")
     @assert isfile(file)
-    ti, setups = include_testfiles!("_nested", test_dir, (file,), shouldrun, report)
+    ti, setups = include_testfiles!("_nested", proj, (file,), shouldrun, report)
     @test length(ti.testitems) == 1 # the testsetup and only one test item
     @test haskey(setups, :FooSetup)
 end

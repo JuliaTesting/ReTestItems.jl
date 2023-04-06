@@ -225,13 +225,15 @@ function _runtests_in_current_env(
 )
     start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
-    @info "Starting scan for test items in project = `$proj_name` at paths = `$paths`"
+    @info "Scanning for test items in project `$proj_name` at paths: $(join(paths, ", "))"
     inc_time = time()
     @debugv 1 "Including tests in $paths"
     testitems, _ = include_testfiles!(proj_name, projectfile, paths, shouldrun, report)
     ntestitems = length(testitems.testitems)
     @debugv 1 "Done including tests in $paths"
-    @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds. Scheduling $ntestitems tests on pid = $(Libc.getpid()) with $nworkers worker processes and $nworker_threads threads per worker"
+    @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds." *
+        " Scheduling $ntestitems tests on pid $(Libc.getpid())" *
+        (nworkers == 0 ? "" : " with $nworkers worker processes and $nworker_threads threads per worker.")
     try
         if nworkers == 0
             # This is where we disable printing for the serial executor case.
@@ -456,45 +458,43 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
     # setups is populated in store_test_item_setup when we expand a @testsetup
     # we set it below in tls as __RE_TEST_SETUPS__ for each included file
     setups = Dict{Symbol, TestSetup}()
-    @sync for dir in ("test", "src")
-        dir_node = DirNode(dir; verbose=true)
-        push!(root_node, dir_node)
-        dir_nodes[dir] = dir_node
-        for (root, _, files) in Base.walkdir(joinpath(project_root, dir))
-            if subproject_root !== nothing && startswith(root, subproject_root)
-                @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
-                continue
-            elseif _project_file(root) !== nothing && abspath(_project_file(root)) != projectfile
-                subproject_root = root
+    hidden_re = r"\.\w"
+    @sync for (root, d, files) in Base.walkdir(project_root)
+        if subproject_root !== nothing && startswith(root, subproject_root)
+            @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
+            continue
+        elseif _project_file(root) !== nothing && abspath(_project_file(root)) != projectfile
+            subproject_root = root
+            continue
+        end
+        rpath = relpath(root, project_root)
+        startswith(rpath, hidden_re) && continue # skip hidden directories
+        dir_node = DirNode(rpath; report, verbose=true)
+        dir_nodes[rpath] = dir_node
+        push!(get(dir_nodes, dirname(rpath), root_node), dir_node)
+        for file in files
+            startswith(file, hidden_re) && continue # skip hidden files
+            filepath = joinpath(root, file)
+            # We filter here, rather than the tesitem level, to make sure we don't
+            # `include` a file that isn't supposed to be a test-file at all, e.g. its
+            # not on a path the user requested but it happens to have a test-file suffix.
+            # We always include testsetup-files so users don't need to request them,
+            # even if they're not in a requested path, e.g. they are a level up in the
+            # directory tree. The testsetup-file suffix is hopefully specific enough
+            # to ReTestItems that this doesn't lead to `include`ing unexpected files.
+            if !(is_testsetup_file(filepath) || (is_test_file(filepath) && is_requested(filepath, paths)))
                 continue
             end
-            rpath = relpath(root, project_root)
-            dir_node = DirNode(rpath; report, verbose=true)
-            dir_nodes[rpath] = dir_node
-            push!(get(dir_nodes, dirname(rpath), root_node), dir_node)
-            for file in files
-                filepath = joinpath(root, file)
-                # We filter here, rather than the tesitem level, to make sure we don't
-                # `include` a file that isn't supposed to be a test-file at all, e.g. its
-                # not on a path the user requested but it happens to have a test-file suffix.
-                # We always include testsetup-files so users don't need to request them,
-                # even if they're not in a requested path, e.g. they are a level up in the
-                # directory tree. The testsetup-file suffix is hopefully specific enough
-                # to ReTestItems that this doesn't lead to `include`ing unexpected files.
-                if !(is_testsetup_file(filepath) || (is_test_file(filepath) && is_requested(filepath, paths)))
-                    continue
-                end
-                fpath = relpath(filepath, project_root)
-                file_node = FileNode(fpath, shouldrun; report, verbose=true)
-                push!(dir_node, file_node)
-                @debugv 1 "Including test items from file `$filepath`"
-                @spawn begin
-                    task_local_storage(:__RE_TEST_RUNNING__, true) do
-                        task_local_storage(:__RE_TEST_ITEMS__, $file_node) do
-                            task_local_storage(:__RE_TEST_PROJECT__, $(project_root)) do
-                                task_local_storage(:__RE_TEST_SETUPS__, $setups) do
-                                    Base.include(Main, $filepath)
-                                end
+            fpath = relpath(filepath, project_root)
+            file_node = FileNode(fpath, shouldrun; report, verbose=true)
+            push!(dir_node, file_node)
+            @debugv 1 "Including test items from file `$filepath`"
+            @spawn begin
+                task_local_storage(:__RE_TEST_RUNNING__, true) do
+                    task_local_storage(:__RE_TEST_ITEMS__, $file_node) do
+                        task_local_storage(:__RE_TEST_PROJECT__, $(project_root)) do
+                            task_local_storage(:__RE_TEST_SETUPS__, $setups) do
+                                Base.include(Main, $filepath)
                             end
                         end
                     end

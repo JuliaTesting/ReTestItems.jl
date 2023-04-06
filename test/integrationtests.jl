@@ -26,7 +26,15 @@ end
     results = encased_testset() do
         runtests(joinpath(TEST_PKG_DIR, "NoDeps.jl"))
     end
-    @test n_passed(results) == 1  # NoDeps has a single test
+    @test n_passed(results) == 2  # NoDeps has two test files with a test each
+end
+
+@testset "manual `runtests(file)`" begin
+    # test we can point to a file at the base of the package (not just in `src` or `test`)
+    results = encased_testset() do
+        runtests(joinpath(TEST_PKG_DIR, "NoDeps.jl", "toplevel_tests.jl"))
+    end
+    @test n_passed(results) == 1
 end
 
 @testset "`runtests(path)` auto finds testsetups" begin
@@ -357,8 +365,7 @@ end
                 @test !contains(c.output, "Debug:")
             end
             # Test we have the expected summary table
-            results = c.value
-            testset = only(results.results) # unwrap the NoDeps testset
+            testset = c.value
             c2 = IOCapture.capture() do
                 Test.print_test_results(testset)
             end
