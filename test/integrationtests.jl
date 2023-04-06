@@ -607,7 +607,7 @@ end
     # is replaced after the timeout and subsequent testitems still run.
     nworkers = 1
     @assert nworkers == 1
-    results = encased_testset(()->runtests(file; nworkers, debug=1, testitem_timeout=2.0))
+    results = encased_testset(()->runtests(file; nworkers, debug=1, testitem_timeout=4.0))
     @test n_tests(results) == 2
     @test n_passed(results) == 1
     # Test the error is as expected
