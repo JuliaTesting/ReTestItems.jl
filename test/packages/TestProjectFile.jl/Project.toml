@@ -1,0 +1,6 @@
+name = "TestProjectFile"
+uuid = "7770ce14-60c1-53a9-8c5b-16f535851c88"
+version = "0.0.0"
+
+[deps]
+Example = "7876af07-990d-54b4-ab0e-23690620f79a"

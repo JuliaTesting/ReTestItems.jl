@@ -1,0 +1,7 @@
+[deps]
+InlineStrings = "842dd82b-1e85-43dc-bf29-5d0ee9dffc48"
+ReTestItems = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[compat]
+InlineStrings = "=1.0.0"

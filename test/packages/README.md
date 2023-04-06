@@ -11,4 +11,5 @@ See `test/integrationtests.jl`.
   - NOTE: when adding new failure/error cases, you must also increment the counters in `test/integrationtests.jl`
 - *NoDeps.jl* - A package that has no dependencies, and just has some simple `@test`s.
 - *TestsInSrc.jl* - A package which has all of its `@testitems` in the `src/` directory.
+- *TestProjectFile.jl* - A package which has test-only dependencies declared in a `test/Project.toml`.
 - *MonoRepo.jl* - A package which depends on local, unregistered sub-packages. See `MonoRepo.jl/README.md`.
