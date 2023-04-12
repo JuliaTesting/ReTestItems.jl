@@ -151,6 +151,7 @@ Test.finish(ti::TestItems) = Test.finish(ti.graph.testset)
 
 function get_starting_testitems(ti::TestItems, n)
     # we want to select n evenly spaced test items from ti.testitems
+    step = round(Int, length(ti.testitems) / n)
     testitems = ti.testitems[1:step:end]
     for (i, t) in enumerate(testitems)
         @atomic t.scheduled_for_evaluation.value = true
