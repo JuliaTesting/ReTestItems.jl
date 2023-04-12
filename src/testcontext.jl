@@ -151,23 +151,14 @@ Test.finish(ti::TestItems) = Test.finish(ti.graph.testset)
 
 function get_starting_testitems(ti::TestItems, n)
     # we want to select n evenly spaced test items from ti.testitems
-    testitems = Union{TestItem, Nothing}[ti.testitems[1]]
-    len = length(ti.testitems)
-    step = round(Int, len / n)
-    for i in 2:(min(len, n))
-        j = 1 + (i - 1) * step
-        push!(testitems, ti.testitems[j])
-    end
+    testitems = ti.testitems[1:step:end]
     for (i, t) in enumerate(testitems)
         @atomic t.scheduled_for_evaluation.value = true
         # mark eval_number
         t.eval_number[] = i
     end
     @atomic ti.count += n
-    while length(testitems) < n
-        push!(testitems, nothing)
-    end
-    return testitems
+    return [testitems; fill(nothing, n - length(testitems))]
 end
 
 function flatten_testitems!(ti::TestItems)
