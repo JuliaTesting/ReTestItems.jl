@@ -5,23 +5,18 @@ using Sockets, Serialization
 export Worker, remote_eval, remote_fetch, terminate!, WorkerTerminatedException
 
 function try_with_timeout(f, timeout)
-    cond = Threads.Condition()
-    timer = Timer(timeout) do tm
-        close(tm)
-        ex = ErrorException("timed out after $timeout seconds")
-        @lock cond notify(cond, ex; error=true)
-    end
+    ch = Channel(0)
+    timer = Timer(tm -> close(ch, ErrorException("timed out")), timeout)
     Threads.@spawn begin
         try
-            ret = $f()
-            isopen(timer) && @lock cond notify(cond, ret)
+            put!(ch, $f())
         catch e
-            isopen(timer) && @lock cond notify(cond, CapturedException(e, catch_backtrace()); error=true)
+            close(ch, CapturedException(e, catch_backtrace()))
         finally
             close(timer)
         end
     end
-    return @lock cond wait(cond) # will throw if we timeout
+    return take!(ch)
 end
 
 # RPC framework
@@ -57,6 +52,8 @@ mutable struct Worker
     messages::Task
     output::Task
     process_watch::Task
+    worksubmission::Task
+    workqueue::Channel{Tuple{Request, Future}}
     futures::Dict{UInt64, Future} # Request.id -> Future
     @atomic terminated::Bool
 end
@@ -170,13 +167,15 @@ function Worker(;
             return Sockets.connect(parse(Int, split(port_str, ':')[2]))
         end
         # create worker
-        w = Worker(ReentrantLock(), pid, proc, sock, Task(nothing), Task(nothing), Task(nothing), Dict{UInt64, Future}(), false)
+        w = Worker(ReentrantLock(), pid, proc, sock, Task(nothing), Task(nothing), Task(nothing), Task(nothing), Channel{Tuple{Request, Future}}(), Dict{UInt64, Future}(), false)
         ## start a task to watch for worker process termination
         w.process_watch = Threads.@spawn watch_and_terminate!(w)
         ## start a task to redirect worker output
         w.output = Threads.@spawn redirect_worker_output(worker_redirect_io, w, worker_redirect_fn, proc)
         ## start a task to listen for worker messages
         w.messages = Threads.@spawn process_responses(w)
+        ## start a task to process eval requests and send to worker
+        w.worksubmission = Threads.@spawn process_work(w)
         # add a finalizer
         finalizer(x -> terminate!(x, :finalizer), w)
         if isassigned(GLOBAL_CALLBACK_PER_WORKER)
@@ -239,19 +238,26 @@ function process_responses(w::Worker)
     true
 end
 
+function process_work(w::Worker)
+    for (req, fut) in w.workqueue
+        # println("Sending request $(req) to worker $(w.pid)")
+        serialize(w.socket, req)
+        flush(w.socket)
+        @lock w.lock begin
+            w.futures[req.id] = fut
+        end
+    end
+end
+
 remote_eval(w::Worker, expr) = remote_eval(w, Main, expr.head == :block ? Expr(:toplevel, expr.args...) : expr)
 
 function remote_eval(w::Worker, mod, expr)
     w.terminated && throw(WorkerTerminatedException(w))
     # we only send the Symbol module name to the worker
     req = Request(nameof(mod), expr, rand(UInt64), false)
-    @lock w.lock begin
-        serialize(w.socket, req)
-        flush(w.socket)
-        fut = Future(req.id, Channel(1))
-        w.futures[req.id] = fut
-        return fut
-    end
+    fut = Future(req.id, Channel(1))
+    put!(w.workqueue, (req, fut))
+    return fut
 end
 
 # convenience call to eval and fetch in one step
