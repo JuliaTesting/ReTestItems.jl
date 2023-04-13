@@ -449,6 +449,20 @@ function is_testsetup_file(filepath)
     )
 end
 
+# is `dir` the root of a subproject inside the current project?
+function _is_subproject(dir, current_projectfile)
+    projectfile = _project_file(dir)
+    isnothing(projectfile) && return false
+
+    projectfile = abspath(projectfile)
+    projectfile == current_projectfile && return false
+    # a `test/Project.toml` is special and doesn't indicate a subproject
+    current_project_dir = dirname(current_projectfile)
+    rel_projectfile = relpath(projectfile, current_project_dir)
+    rel_projectfile == joinpath("test", "Project.toml") && return false
+    return true
+end
+
 # for each directory, kick off a recursive test-finding task
 function include_testfiles!(project_name, projectfile, paths, shouldrun, report::Bool)
     project_root = dirname(projectfile)
@@ -463,7 +477,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
         if subproject_root !== nothing && startswith(root, subproject_root)
             @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
             continue
-        elseif _project_file(root) !== nothing && abspath(_project_file(root)) != projectfile
+        elseif _is_subproject(root, projectfile)
             subproject_root = root
             continue
         end

@@ -38,6 +38,32 @@ end
     @test is_testsetup_file("path/to/my/package/src/bar-testsetup.jl")
 end
 
+@testset "_is_subproject" begin
+    using ReTestItems: _is_subproject
+    test_pkg_dir = joinpath(pkgdir(ReTestItems), "test", "packages")
+    # Test subpackages in MonoRepo identified as subprojects
+    monorepo = joinpath(test_pkg_dir, "MonoRepo.jl")
+    monorepo_proj = joinpath(monorepo, "Project.toml")
+    @assert isfile(monorepo_proj)
+    for pkg in ("B", "C", "D")
+        path = joinpath(monorepo, "monorepo_packages", pkg)
+        @test _is_subproject(path, monorepo_proj)
+    end
+    for dir in ("src", "test")
+        path = joinpath(monorepo, dir)
+        @test !_is_subproject(path, monorepo_proj)
+    end
+    # Test "test/Project.toml" does cause "test/" to be subproject
+    tpf = joinpath(test_pkg_dir, "TestProjectFile.jl")
+    tpf_proj = joinpath(tpf, "Project.toml")
+    @assert isfile(tpf_proj)
+    @assert isfile(joinpath(tpf, "test", "Project.toml"))
+    for dir in ("src", "test")
+        path = joinpath(tpf, dir)
+        @test !_is_subproject(path, tpf_proj)
+    end
+end
+
 @testset "only requested testfiles included" begin
     using ReTestItems: ReTestItems, include_testfiles!, identify_project, is_test_file
     shouldrun = Returns(true)
