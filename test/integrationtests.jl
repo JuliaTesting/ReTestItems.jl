@@ -565,12 +565,18 @@ end
 end
 
 @testset "test crashing testitem" begin
+    using IOCapture
     file = joinpath(_TEST_DIR, "_abort_tests.jl")
     # NOTE: this test must run with exactly 1 worker, so that we can test that the worker
     # is replaced after the abort and subsequent testitems still run.
     nworkers = 1
     @assert nworkers == 1
-    results = encased_testset(()->runtests(file; nworkers, debug=2, retries=0))
+    # avoid crash logs escaping to stdout, as it confuses PkgEval
+    # https://github.com/JuliaTesting/ReTestItems.jl/issues/38
+    c = IOCapture.capture() do
+        encased_testset(()->runtests(file; nworkers, debug=2, retries=0))
+    end
+    results = c.value
     @test n_tests(results) == 2
     @test n_passed(results) == 1
     # Test the error is as expected

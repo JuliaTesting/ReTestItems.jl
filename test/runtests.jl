@@ -16,7 +16,7 @@ using ReTestItems, Test, Pkg
     # After all tests have run, check we didn't leave Test printing disabled.
     @test Test.TESTSET_PRINT_ENABLE[]
     # After all tests have run, check we didn't leave any workers running.
-    for w in ALL_WORKERS
+    @testset "tests removed $w" for w in ALL_WORKERS
         if process_running(w.process) || !w.terminated
             @show w
         end
