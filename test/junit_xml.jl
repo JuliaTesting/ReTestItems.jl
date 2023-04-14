@@ -24,8 +24,8 @@ function remove_variables(str)
         # Stacktraces are version specific.
         r" Stacktrace:[\s\S]*(?=\n\s*</error)" => " Stacktrace:\n [omitted]",
         # Ignore the full path the test file.
-        r" at .*/test/_junit_xml_test" => " at path/to/test/_junit_xml_test",
-        r" at .*/test/_retry_tests" => " at path/to/test/_retry_tests",
+        r" at .*/testfiles/_junit_xml_test" => " at path/to/testfiles/_junit_xml_test",
+        r" at .*/testfiles/_retry_tests" => " at path/to/testfiles/_retry_tests",
         # Ignore worker pid
         r"on worker [0-9]*" => "on worker 0",
         # Remove backticks (because backticks were added to some error messages in v1.9+).
