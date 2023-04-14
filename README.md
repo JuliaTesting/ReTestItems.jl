@@ -157,3 +157,12 @@ end
       using ReTestItems, MyPackage
       runtests(MyPackage)
       ```
+
+---
+
+### Contributing
+
+Issues and pull requests are welcome!
+New contributors should make sure to read the [ColPrac Contributor Guide](https://github.com/SciML/ColPrac).
+For significant changes please open an issues for discussion before opening a PR.
+Information on adding tests in the [test/README.md](test/README.md).

@@ -1,3 +1,4 @@
+# This file defines tests that are run (under various configurations) by `test/log_capture.jl`.
 using ReTestItems, Test, Logging, IOCapture
 const log_display = Symbol(ENV["LOG_DISPLAY"])
 

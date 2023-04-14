@@ -1,8 +1,10 @@
-# this file specifically tests *unit* tests for ReTestItems
+# this file specifically tests *unit* tests for the macros: `@testitem` and `@testsetup`
 # so *not* the `runtests` functionality, which utilizes specific
 # contrived packages/testfiles
 n_passed(ts) = ts.n_passed
 n_passed(ts::ReTestItems.TestItemResult) = n_passed(ts.testset)
+
+@testset "macros.jl" verbose=true begin
 
 @testset "testsetup macro basic" begin
     ts = @testsetup module TS1
@@ -157,3 +159,5 @@ end
 #     @test Main.was_finalized[] == true
 # end
 =#
+
+end # macros.jl testset

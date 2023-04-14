@@ -1,3 +1,14 @@
+# Tests for the functionality defined in `src/junit_xml.jl` for writing JUnit XML files.
+# For tests the output XML files are expected, we rely on reference XML files in `test/references/`.
+# This file needs to be run from the base of the `test/` directory.
+
+using Test
+using ReTestItems
+
+###
+### Helpers
+###
+
 using DeepDiffs: deepdiff
 
 # remove things that vary on each run: timestamps, run times, line numbers, repo locations
@@ -52,13 +63,19 @@ function test_reference(reference, comparison)
     @test :reference == :comparison
 end
 
+###
+### Tests
+###
+
+@testset "junit_xml.jl" verbose=true begin
+
 @testset "JUnit reference tests" begin
     REF_DIR = joinpath(pkgdir(ReTestItems), "test", "references")
     @testset "retries=0, nworkers=$nworkers" for nworkers in (0, 1)
         mktempdir() do dir
             withenv("RETESTITEMS_REPORT_LOCATION" => dir, "RETESTITEMS_NWORKERS" => nworkers) do
                 try # Ignore the fact that the `_junit_xml_test.jl` testset has failures/errors.
-                    run(`$(Base.julia_cmd()) --project -e 'using ReTestItems; runtests("_junit_xml_test.jl"; report=true, retries=0)'`)
+                    run(`$(Base.julia_cmd()) --project -e 'using ReTestItems; runtests("testfiles/_junit_xml_test.jl"; report=true, retries=0)'`)
                 catch
                 end
                 report = only(filter(endswith("xml"), readdir(dir, join=true)))
@@ -70,7 +87,7 @@ end
         mktempdir() do dir
             withenv("RETESTITEMS_REPORT_LOCATION" => dir, "RETESTITEMS_NWORKERS" => nworkers) do
                 try # Ignore the fact that the `_junit_xml_test.jl` testset has failures/errors.
-                    run(`$(Base.julia_cmd()) --project -e 'using ReTestItems; runtests("_junit_xml_test.jl"; report=true, retries=1)'`)
+                    run(`$(Base.julia_cmd()) --project -e 'using ReTestItems; runtests("testfiles/_junit_xml_test.jl"; report=true, retries=1)'`)
                 catch
                 end
                 report = only(filter(endswith("xml"), readdir(dir, join=true)))
@@ -83,7 +100,7 @@ end
         mktempdir() do dir
             withenv("RETESTITEMS_REPORT_LOCATION" => dir, "RETESTITEMS_NWORKERS" => nworkers) do
                 try # Ignore the fact that the `_retry_tests.jl` testset has failures/errors.
-                    run(`$(Base.julia_cmd()) --project -e 'using ReTestItems; runtests("_retry_tests.jl"; report=true, retries=2)'`)
+                    run(`$(Base.julia_cmd()) --project -e 'using ReTestItems; runtests("testfiles/_retry_tests.jl"; report=true, retries=2)'`)
                 catch
                 end
                 report = only(filter(endswith("xml"), readdir(dir, join=true)))
@@ -101,7 +118,7 @@ end
         """)
     mktempdir() do dir
         withenv("RETESTITEMS_REPORT_LOCATION" => dir) do
-            runtests("_empty_file_test.jl"; report=true)
+            runtests("testfiles/_empty_file_test.jl"; report=true)
         end
         report = read(only(filter(endswith("xml"), readdir(dir, join=true))), String)
         @test report == empty_report
@@ -112,7 +129,7 @@ end
     for report in (true, false)
         mktempdir() do dir
             withenv("RETESTITEMS_REPORT" => report, "RETESTITEMS_REPORT_LOCATION" => dir) do
-                runtests("_empty_file_test.jl")
+                runtests("testfiles/_empty_file_test.jl")
             end
             n_reports = length(filter(endswith("xml"), readdir(dir, join=true)))
             if report
@@ -129,7 +146,7 @@ end
     mktempdir() do dir
         withenv("RETESTITEMS_REPORT_LOCATION" => dir) do
             try # Ignore the fact that the `_junit_error_message_test.jl` testset has failures/errors.
-                run(`$(Base.julia_cmd()) --project -e 'using ReTestItems; runtests("_junit_error_message_test.jl"; report=true, retries=0)'`)
+                run(`$(Base.julia_cmd()) --project -e 'using ReTestItems; runtests("testfiles/_junit_error_message_test.jl"; report=true, retries=0)'`)
             catch
             end
         end
@@ -180,3 +197,5 @@ end
     @test contains(props[5][:name], "recompile_time")
     @test props[5][:value] == "0.002"
 end
+
+end # junit_xml.jl testset
