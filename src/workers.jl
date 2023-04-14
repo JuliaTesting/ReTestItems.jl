@@ -155,7 +155,8 @@ function Worker(;
     env["RETESTITEMS_INTERACTIVE"] = get(env, "RETESTITEMS_INTERACTIVE", string(Base.isinteractive()))
     # end copied from Distributed.launch
     ## start the worker process
-    cmd = `$(Base.julia_cmd()) $exeflags --startup-file=no -e 'using ReTestItems; ReTestItems.Workers.startworker()'`
+    color = get(worker_redirect_io, :color, false) ? "yes" : "no" # respect color of target io
+    cmd = `$(Base.julia_cmd()) $exeflags --startup-file=no --color=$color -e 'using ReTestItems; ReTestItems.Workers.startworker()'`
     proc = open(detach(setenv(addenv(cmd, env), dir=dir)), "r+")
     pid = Libc.getpid(proc)
 
