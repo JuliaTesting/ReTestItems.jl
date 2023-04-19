@@ -179,7 +179,7 @@ function Worker(;
         ## start a task to listen for worker messages
         w.messages = Threads.@spawn process_responses(w)
         # add a finalizer
-        finalizer(x -> terminate!(x, :finalizer), w)
+        finalizer(x -> @async(terminate!(x, :finalizer)), w) # @async to allow a task switch
         if isassigned(GLOBAL_CALLBACK_PER_WORKER)
             GLOBAL_CALLBACK_PER_WORKER[](w)
         end
