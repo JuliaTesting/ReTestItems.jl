@@ -12,6 +12,19 @@ using ReTestItems, Test
     end
 end
 
+@testset "Workers print in color" begin
+    project_path = pkgdir(ReTestItems)
+    code = """
+    using ReTestItems.Workers
+    remote_fetch(Worker(), :(printstyled("this better ber red\n", color=:red)))
+    """
+    # Need to run in a separate process to force --color=yes in CI.
+    logs = IOCapture.capture(color=true) do
+        run(`$(Base.julia_cmd()) --project=$project_path --color=yes -e $code`)
+    end
+    @test endswith(logs.output,  "\e[31mthis better ber red\e[39m\n")
+end
+
 @testset "log capture -- reporting" begin
     setup1 = @testsetup module TheTestSetup1 end
     setup2 = @testsetup module TheTestSetup2 end
