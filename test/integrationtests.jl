@@ -1,13 +1,29 @@
+# This file is *integration* tests for `runtests`
+# i.e. these tests exercise the full end-to-end public user interface.
+# It relies on either
+# - "test files" (in `test/testfiles/`) that use ReTestItems
+#   - i.e. files using `@testitem` and `@testsetup` to define tests
+#   - and which are run like `runtests("testfiles/foo_test.jl")
+# - "packages" (in `test/packages/`) that use ReTestItems
+#   - i.e. whole packages that have source code (dependencies, etc.) and which have tests
+#     that use ReTestItems
+#   - and which are run like `runtests("test/package/Foo.jl")`
+#   - or with the `with_test_package` helper like `with_test_package(runtests, "Foo.jl")`
 using ReTestItems, Pkg, Test
 
+###
+### Helpers
+###
+
 const _TEST_DIR = joinpath(pkgdir(ReTestItems), "test")
+const TEST_FILES_DIR = joinpath(_TEST_DIR, "testfiles")
 const TEST_PKG_DIR = joinpath(_TEST_DIR, "packages")
 
 # Note "DontPass.jl" is handled specifically below, as it's the package which doesn't have
 # passing tests. Other packages should pass tests and be added here:
 const TEST_PKGS = ("NoDeps.jl", "TestsInSrc.jl", "TestProjectFile.jl")
 
-include(joinpath(_TEST_DIR, "integration_test_tools.jl"))
+include(joinpath(_TEST_DIR, "_integration_test_tools.jl"))
 
 # Run `f` in the given package's environment and inside a `testset` which doesn't let
 # the package's test failures/errors cause ReTestItems' tests to fail/error.
@@ -20,6 +36,12 @@ function with_test_package(f, name)
         end
     end
 end
+
+###
+### Tests
+###
+
+@testset "integrationtests.jl" verbose=true begin
 
 # test we can call runtests manually w/ directory
 @testset "manual `runtests(dir)`" begin
@@ -40,19 +62,19 @@ end
 @testset "`runtests(path)` auto finds testsetups" begin
     results = encased_testset() do
         # relies on testsetup in _testitem_testsetup.jl
-        runtests(joinpath(_TEST_DIR, "_testitem_test.jl"))
+        runtests(joinpath(TEST_FILES_DIR, "_testitem_test.jl"))
     end
     @test n_passed(results) == 1
 
     results = encased_testset() do
         # relies on testsetup in _testitem_testsetup.jl in directory above
-        runtests(joinpath(_TEST_DIR, "_nested", "_testitem_test.jl"))
+        runtests(joinpath(TEST_FILES_DIR, "_nested", "_testitem_test.jl"))
     end
     @test n_passed(results) == 1
 
     results = encased_testset() do
         # relies on testsetup in _testitem_testsetup.jl in directory above
-        runtests(joinpath(_TEST_DIR, "_nested"))
+        runtests(joinpath(TEST_FILES_DIR, "_nested"))
     end
     @test n_passed(results) == 1
 end
@@ -136,7 +158,7 @@ end
 
 @testset "`@testitem` scoping rules" begin
     results = encased_testset() do
-        runtests(joinpath(_TEST_DIR, "_scope_tests.jl"))
+        runtests(joinpath(TEST_FILES_DIR, "_scope_tests.jl"))
     end
     @test all_passed(results)
 end
@@ -180,11 +202,11 @@ end
     end
 end
 
-const nworkers = 2
+nworkers = 2
 @testset "runtests with nworkers = $nworkers" verbose=true begin
     @testset "Pkg.test() $pkg" for pkg in TEST_PKGS
         results = with_test_package(pkg) do
-            withenv("RETESTITEMS_NWORKERS" => 2) do
+            withenv("RETESTITEMS_NWORKERS" => nworkers) do
                 Pkg.test()
             end
         end
@@ -385,7 +407,7 @@ end
 end
 
 @testset "filter `runtests(x; tags)`" begin
-    file = joinpath(_TEST_DIR, "_filter_tests.jl")
+    file = joinpath(TEST_FILES_DIR, "_filter_tests.jl")
     # These testitems are expected in the file
     # @testitem "Test item no tags"
     # @testitem "Test item tag1"      tags=[:tag1]
@@ -421,7 +443,7 @@ end
 end
 
 @testset "filter `runtests(x; name)`" begin
-    file = joinpath(_TEST_DIR, "_filter_tests.jl")
+    file = joinpath(TEST_FILES_DIR, "_filter_tests.jl")
     # These testitems are expected in the file
     # @testitem "Test item no tags"
     # @testitem "Test item tag1"      tags=[:tag1]
@@ -452,7 +474,7 @@ end
 end
 
 @testset "filter `runtests(x; name, tags)`" begin
-    file = joinpath(_TEST_DIR, "_filter_tests.jl")
+    file = joinpath(TEST_FILES_DIR, "_filter_tests.jl")
     # These testitems are expected in the file
     # @testitem "Test item no tags"
     # @testitem "Test item tag1"      tags=[:tag1]
@@ -484,7 +506,7 @@ end
 end
 
 @testset "filter `runtests(func, x; name, tags)`" begin
-    file = joinpath(_TEST_DIR, "_filter_tests.jl")
+    file = joinpath(TEST_FILES_DIR, "_filter_tests.jl")
     # These testitems are expected in the file
     # @testitem "Test item no tags"
     # @testitem "Test item tag1"      tags=[:tag1]
@@ -519,11 +541,11 @@ end
 
 @testset "Warn on empty test set -- integration test" begin
     @test_logs (:warn, """
-    Test item "Warn on empty test set -- integration test" at test/_empty_testsets_tests.jl:4 contains test sets without tests:
+    Test item "Warn on empty test set -- integration test" at test/testfiles/_empty_testsets_tests.jl:4 contains test sets without tests:
     "Empty testset"
     "Inner empty testset"
     """) match_mode=:any begin
-        ReTestItems.runtests(joinpath(_TEST_DIR, "_empty_testsets_tests.jl"))
+        ReTestItems.runtests(joinpath(TEST_FILES_DIR, "_empty_testsets_tests.jl"))
     end
 end
 
@@ -566,7 +588,7 @@ end
 
 @testset "test crashing testitem" begin
     using IOCapture
-    file = joinpath(_TEST_DIR, "_abort_tests.jl")
+    file = joinpath(TEST_FILES_DIR, "_abort_tests.jl")
     # NOTE: this test must run with exactly 1 worker, so that we can test that the worker
     # is replaced after the abort and subsequent testitems still run.
     nworkers = 1
@@ -586,7 +608,7 @@ end
 end
 
 @testset "test retrying failing testitem" begin
-    file = joinpath(_TEST_DIR, "_retry_tests.jl")
+    file = joinpath(TEST_FILES_DIR, "_retry_tests.jl")
     results = encased_testset(()->runtests(file; nworkers=1, retries=2))
     # Test we _ran_ each test-item the expected number of times
     read_count(x) = parse(Int, read(x, String))
@@ -608,7 +630,7 @@ end
 end
 
 @testset "testitem timeout" begin
-    file = joinpath(_TEST_DIR, "_timeout_tests.jl")
+    file = joinpath(TEST_FILES_DIR, "_timeout_tests.jl")
     # NOTE: this test must run with exactly 1 worker, so that we can test that the worker
     # is replaced after the timeout and subsequent testitems still run.
     nworkers = 1
@@ -623,14 +645,16 @@ end
 end
 
 @testset "Error outside `@testitem`" begin
-    @test_throws Exception runtests(joinpath(_TEST_DIR, "_invalid_file1_test.jl"))
-    @test_throws Exception runtests(joinpath(_TEST_DIR, "_invalid_file2_test.jl"))
+    @test_throws Exception runtests(joinpath(TEST_FILES_DIR, "_invalid_file1_test.jl"))
+    @test_throws Exception runtests(joinpath(TEST_FILES_DIR, "_invalid_file2_test.jl"))
 end
 
 @testset "`runtests` finds no testitems" begin
-    file = joinpath(_TEST_DIR, "_empty_file_test.jl")
+    file = joinpath(TEST_FILES_DIR, "_empty_file_test.jl")
     for nworkers in (0, 1)
         results = encased_testset(()->runtests(file; nworkers))
         @test n_tests(results) == 0
     end
 end
+
+end # integrationtests.jl testset

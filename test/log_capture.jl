@@ -1,4 +1,9 @@
-using ReTestItems, Test
+# Unit tests for log capturing functionality in `src/log_capture.jl`
+using ReTestItems
+using Test
+
+@testset "log_capture.jl" verbose=true begin
+
 @testset "log capture" begin
     PROJECT_PATH = pkgdir(ReTestItems)
     LOG_CAPTURE_TESTS_PATH = joinpath(pkgdir(ReTestItems), "test", "_test_log_capture.jl")
@@ -157,3 +162,5 @@ end
     ReTestItems.time_print(io, elapsedtime=1e9, compile_time=1e9, recompile_time=1e9, gctime=1e9, allocs=9_001_000_000, bytes=1024_000_000_000_000)
     @test String(take!(io)) == "1.0 secs (100.0% compile, 100.0% recompile, 100.0% GC), 9.00 B allocs (1.024 PB)"
 end
+
+end # log_capture.jl testset

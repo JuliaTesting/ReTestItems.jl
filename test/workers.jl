@@ -1,7 +1,8 @@
+# Unit tests for `ReTestItems.Workers` module
 using ReTestItems.Workers
 using Test
 
-@testset "Worker basics" verbose=true begin
+@testset "workers.jl" verbose=true begin
 
     w = Worker()
     @testset "correct connected/running states ($w)" begin
@@ -92,4 +93,5 @@ using Test
         @test fetch(fut) isa Test.Pass
         close(w)
     end
-end
+
+end # workers.jl testset
