@@ -722,7 +722,9 @@ function runtestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=false
     push!(ti.testsets, ts)
     push!(ti.stats, stats)
     log_testitem_done(ti, ctx.ntestitems)
+    # It takes 2 GCs to do a full mark+sweep (the first one is a partial mark, full sweep, the next one is a full mark)
     GC.gc(true)
+    GC.gc(false)
     return TestItemResult(convert_results_to_be_transferrable(ts), stats)
 end
 
