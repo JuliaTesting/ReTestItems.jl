@@ -1,3 +1,4 @@
+# Defines helper functionality for `test/integrationtests.jl`.
 # Adapted from https://github.com/JuliaDiff/ChainRulesTestUtils.jl/blob/main/test/meta_testing_tools.jl
 # Useful for testing that tests which are expected not to pass do indeed not pass.
 # i.e. we want to run the tests for packages that purposely have tests fail/error, and

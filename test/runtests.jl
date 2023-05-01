@@ -7,7 +7,7 @@ using ReTestItems, Test, Pkg
     withenv("RETESTITEMS_RETRIES" => 0) do
         include("workers.jl")
         include("internals.jl")
-        include("macrotests.jl")
+        include("macros.jl")
         include("integrationtests.jl")
         include("log_capture.jl")
         include("junit_xml.jl")
@@ -16,15 +16,17 @@ using ReTestItems, Test, Pkg
     # After all tests have run, check we didn't leave Test printing disabled.
     @test Test.TESTSET_PRINT_ENABLE[]
     # After all tests have run, check we didn't leave any workers running.
-    @testset "tests removed $w" for w in ALL_WORKERS
-        if process_running(w.process) || !w.terminated
-            @show w
+    @testset "tests removed workers" begin
+        @testset "$w" for w in ALL_WORKERS
+            if process_running(w.process) || !w.terminated
+                @show w
+            end
+            @test !process_running(w.process)
+            @test !isopen(w.socket)
+            @test w.terminated
+            @test istaskstarted(w.messages) && istaskdone(w.messages)
+            @test istaskstarted(w.output) && istaskdone(w.output)
+            @test isempty(w.futures)
         end
-        @test !process_running(w.process)
-        @test !isopen(w.socket)
-        @test w.terminated
-        @test istaskstarted(w.messages) && istaskdone(w.messages)
-        @test istaskstarted(w.output) && istaskdone(w.output)
-        @test isempty(w.futures)
     end
 end

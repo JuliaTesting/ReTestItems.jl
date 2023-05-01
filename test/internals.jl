@@ -1,4 +1,8 @@
 # Unit tests for internal helper functions
+using Test
+using ReTestItems
+
+@testset "internals.jl" verbose=true begin
 
 @testset "get_starting_testitems for 8 items across 5 workers" begin
     using ReTestItems: get_starting_testitems, TestItems, @testitem
@@ -81,6 +85,8 @@ end
     end
 end
 
+@testset "include_testfiles!" begin
+
 @testset "only requested testfiles included" begin
     using ReTestItems: ReTestItems, include_testfiles!, identify_project, is_test_file
     shouldrun = Returns(true)
@@ -137,16 +143,17 @@ end
     shouldrun = Returns(true)
     report = false
     proj = joinpath(pkgdir(ReTestItems), "Project.toml")
-    test_dir = joinpath(pkgdir(ReTestItems), "test")
+
+    test_dir = joinpath(pkgdir(ReTestItems), "test", "testfiles")
     @assert count(is_testsetup_file, readdir(test_dir)) == 1
-    file = joinpath(test_dir, "log_capture.jl")
+    file = joinpath(test_dir, "_empty_file.jl")
     @assert isfile(file) && !is_test_file(file)
-    ti, setups = include_testfiles!("log_capture", proj, (file,), shouldrun, report)
+    ti, setups = include_testfiles!("empty_file", proj, (file,), shouldrun, report)
     @test length(ti.testitems) == 0 # just the testsetup
     @test haskey(setups, :FooSetup)
 
     # even when higher up in directory tree
-    nested_dir = joinpath(pkgdir(ReTestItems), "test", "_nested")
+    nested_dir = joinpath(pkgdir(ReTestItems), "test", "testfiles", "_nested")
     @assert !any(is_testsetup_file, readdir(nested_dir))
     file = joinpath(nested_dir, "_testitem_test.jl")
     @assert isfile(file)
@@ -155,7 +162,9 @@ end
     @test haskey(setups, :FooSetup)
 end
 
-@testset "Warn on empty test set" begin
+end # `include_testfiles!` testset
+
+@testset "report_empty_testsets" begin
     using ReTestItems: TestItem, report_empty_testsets, PerfStats, ScheduledForEvaluation
     using Test: DefaultTestSet, Fail, Error
     ti = TestItem(Ref(42), "Dummy TestItem", [], false, [], 0, "source/path", 42, ".", nothing, [], Ref{Int}(), Test.DefaultTestSet[], Ref{Int}(0), PerfStats[], ScheduledForEvaluation())
@@ -209,3 +218,5 @@ end
     fail = Test.Fail(:test, Expr(:tuple), "data", "value", line_info)
     @test _error_message(fail, ti) == "Test failed at unknown:42"
 end
+
+end # internals.jl testset

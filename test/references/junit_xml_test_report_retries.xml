@@ -1,221 +1,289 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites timestamp="2023-03-30T15:57:27.313" time="0.538" tests="21" skipped="4" failures="6" errors="4">
-<testsuite name="test/_junit_xml_test.jl" timestamp="2023-03-30T15:57:27.313" time="0.538" tests="21" skipped="4" failures="6" errors="4">
-	<testcase name="testitem1" timestamp="2023-03-30T15:57:27.313" time="0.051" tests="2" skipped="0" failures="1" errors="0">
+<testsuites timestamp="2023-04-14T10:55:58.998" time="0.617" tests="21" skipped="4" failures="6" errors="4">
+<testsuite name="test/testfiles/_junit_xml_test.jl" timestamp="2023-04-14T10:55:58.998" time="0.617" tests="21" skipped="4" failures="6" errors="4">
+	<testcase name="testitem1" timestamp="2023-04-14T10:55:58.998" time="0.059" tests="2" skipped="0" failures="1" errors="0">
 		<properties>
-		<property name="dd_tags[perf.bytes]" value="3434191"></property>
-		<property name="dd_tags[perf.allocs]" value="56534"></property>
+		<property name="dd_tags[perf.bytes]" value="4331408"></property>
+		<property name="dd_tags[perf.allocs]" value="74125"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="0.042971586"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.050207128"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
 		</properties>
-		<error message="Test failed at test/_junit_xml_test.jl:4">No Captured Logs for test item "testitem1" at test/_junit_xml_test.jl:2 on worker 93048
-Error in testset "testitem1" on worker 93048:
-Test Failed at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:4
+		<error message="Test failed at test/testfiles/_junit_xml_test.jl:4">No Captured Logs for test item "testitem1" at test/testfiles/_junit_xml_test.jl:2 on worker 96175
+Error in testset "testitem1" on worker 96175:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:4
   Expression: 2 == 3
    Evaluated: 2 == 3
 		</error>
 	</testcase>
-	<testcase name="testitem1" timestamp="2023-03-30T15:57:27.604" time="0.003" tests="2" skipped="0" failures="1" errors="0">
+	<testcase name="testitem1" timestamp="2023-04-14T10:55:59.205" time="0.003" tests="2" skipped="0" failures="1" errors="0">
 		<properties>
 		<property name="dd_tags[perf.bytes]" value="74086"></property>
 		<property name="dd_tags[perf.allocs]" value="1257"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="1.67e-7"></property>
+		<property name="dd_tags[perf.compile_time]" value="2.09e-7"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
 		</properties>
-		<error message="Test failed at test/_junit_xml_test.jl:4">No Captured Logs for test item "testitem1" at test/_junit_xml_test.jl:2 on worker 93048
-Error in testset "testitem1" on worker 93048:
-Test Failed at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:4
+		<error message="Test failed at test/testfiles/_junit_xml_test.jl:4">No Captured Logs for test item "testitem1" at test/testfiles/_junit_xml_test.jl:2 on worker 96175
+Error in testset "testitem1" on worker 96175:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:4
   Expression: 2 == 3
    Evaluated: 2 == 3
 		</error>
 	</testcase>
-	<testcase name="testitem2" timestamp="2023-03-30T15:57:27.65" time="0.032" tests="3" skipped="0" failures="1" errors="1">
+	<testcase name="testitem2" timestamp="2023-04-14T10:55:59.263" time="0.04" tests="3" skipped="0" failures="1" errors="1">
 		<properties>
-		<property name="dd_tags[perf.bytes]" value="3221399"></property>
-		<property name="dd_tags[perf.allocs]" value="57367"></property>
+		<property name="dd_tags[perf.bytes]" value="3213927"></property>
+		<property name="dd_tags[perf.allocs]" value="57359"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="0.028118627"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.035184875"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
 		</properties>
-		<error message="Multiple errors for test item at test/_junit_xml_test.jl:8">No Captured Logs for test item "testitem2" at test/_junit_xml_test.jl:8 on worker 93048
-Error in testset "inner testset" on worker 93048:
-Test Failed at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:11
+		<error message="Multiple errors for test item at test/testfiles/_junit_xml_test.jl:8">No Captured Logs for test item "testitem2" at test/testfiles/_junit_xml_test.jl:8 on worker 96175
+Error in testset "inner testset" on worker 96175:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:11
   Expression: 4 == 5
    Evaluated: 4 == 5
-Error in testset "inner testset" on worker 93048:
-Error During Test at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:12
+Error in testset "inner testset" on worker 96175:
+Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:12
   Expression evaluated to non-Boolean
   Expression: not a bool
        Value: "not a bool"
 		</error>
 	</testcase>
-	<testcase name="testitem2" timestamp="2023-03-30T15:57:27.733" time="0.004" tests="3" skipped="0" failures="1" errors="1">
+	<testcase name="testitem2" timestamp="2023-04-14T10:55:59.36" time="0.004" tests="3" skipped="0" failures="1" errors="1">
 		<properties>
 		<property name="dd_tags[perf.bytes]" value="110342"></property>
 		<property name="dd_tags[perf.allocs]" value="1963"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="1.67e-7"></property>
+		<property name="dd_tags[perf.compile_time]" value="1.66e-7"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
 		</properties>
-		<error message="Multiple errors for test item at test/_junit_xml_test.jl:8">No Captured Logs for test item "testitem2" at test/_junit_xml_test.jl:8 on worker 93048
-Error in testset "inner testset" on worker 93048:
-Test Failed at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:11
+		<error message="Multiple errors for test item at test/testfiles/_junit_xml_test.jl:8">No Captured Logs for test item "testitem2" at test/testfiles/_junit_xml_test.jl:8 on worker 96175
+Error in testset "inner testset" on worker 96175:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:11
   Expression: 4 == 5
    Evaluated: 4 == 5
-Error in testset "inner testset" on worker 93048:
-Error During Test at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:12
+Error in testset "inner testset" on worker 96175:
+Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:12
   Expression evaluated to non-Boolean
   Expression: not a bool
        Value: "not a bool"
 		</error>
 	</testcase>
-	<testcase name="testitem3" timestamp="2023-03-30T15:57:27.777" time="0.002" tests="2" skipped="0" failures="0" errors="0">
+	<testcase name="testitem3" timestamp="2023-04-14T10:55:59.413" time="0.003" tests="2" skipped="0" failures="0" errors="0">
 		<properties>
 		<property name="dd_tags[perf.bytes]" value="70286"></property>
 		<property name="dd_tags[perf.allocs]" value="1176"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="8.4e-8"></property>
+		<property name="dd_tags[perf.compile_time]" value="8.2e-8"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
 		</properties>
 	</testcase>
-	<testcase name="testitem4" timestamp="2023-03-30T15:57:27.819" time="0.425" tests="1" skipped="0" failures="0" errors="1">
+	<testcase name="testitem4" timestamp="2023-04-14T10:55:59.468" time="0.487" tests="1" skipped="0" failures="0" errors="1">
 		<properties>
-		<property name="dd_tags[perf.bytes]" value="77766756"></property>
-		<property name="dd_tags[perf.allocs]" value="1446425"></property>
-		<property name="dd_tags[perf.gctime]" value="0.00373425"></property>
-		<property name="dd_tags[perf.compile_time]" value="0.364610958"></property>
+		<property name="dd_tags[perf.bytes]" value="78704922"></property>
+		<property name="dd_tags[perf.allocs]" value="1461919"></property>
+		<property name="dd_tags[perf.gctime]" value="0.005671542"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.411256708"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
 		</properties>
-		<error message="Error during test at test/_junit_xml_test.jl:24">No Captured Logs for test item "testitem4" at test/_junit_xml_test.jl:23 on worker 93048
-Error in testset "nested testset" on worker 93048:
-Error During Test at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:24
+		<error message="Error during test at test/testfiles/_junit_xml_test.jl:24">No Captured Logs for test item "testitem4" at test/testfiles/_junit_xml_test.jl:23 on worker 96175
+Error in testset "nested testset" on worker 96175:
+Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:24
   Got exception outside of a @test
   UndefVarError: x not defined
   Stacktrace:
     [1] macro expansion
-      @ ~/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:25 [inlined]
+      @ /repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:25 [inlined]
     [2] macro expansion
       @ /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Test/src/Test.jl:1363 [inlined]
     [3] top-level scope
-      @ ~/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:25
+      @ /repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:25
     [4] eval
       @ ./boot.jl:368 [inlined]
     [5] #77
-      @ ~/repos/raicode/packages/ReTestItems/src/ReTestItems.jl:683 [inlined]
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:699 [inlined]
     [6] with_source_path(f::ReTestItems.var"#77#80"{Expr}, path::String)
-      @ ReTestItems ~/repos/raicode/packages/ReTestItems/src/ReTestItems.jl:566
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:582
     [7] #76
-      @ ~/repos/raicode/packages/ReTestItems/src/ReTestItems.jl:683 [inlined]
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:699 [inlined]
     [8] redirect_stdio(f::ReTestItems.var"#76#79"{TestItem, Expr}; stdin::Nothing, stderr::IOContext{IOStream}, stdout::IOContext{IOStream})
       @ Base ./stream.jl:1411
     [9] _redirect_logs(f::ReTestItems.var"#76#79"{TestItem, Expr}, target::IOStream)
-      @ ReTestItems ~/repos/raicode/packages/ReTestItems/src/log_capture.jl:86
+      @ ReTestItems /repos/ReTestItems.jl/src/log_capture.jl:111
    [10] #25
-      @ ~/repos/raicode/packages/ReTestItems/src/log_capture.jl:82 [inlined]
+      @ /repos/ReTestItems.jl/src/log_capture.jl:107 [inlined]
    [11] open(::ReTestItems.var"#25#26"{ReTestItems.var"#76#79"{TestItem, Expr}}, ::String, ::Vararg{String}; kwargs::Base.Pairs{Symbol, Union{}, Tuple{}, NamedTuple{(), Tuple{}}})
       @ Base ./io.jl:384
    [12] open
       @ ./io.jl:381 [inlined]
    [13] _redirect_logs
-      @ ~/repos/raicode/packages/ReTestItems/src/log_capture.jl:82 [inlined]
+      @ /repos/ReTestItems.jl/src/log_capture.jl:107 [inlined]
    [14] macro expansion
-      @ ~/repos/raicode/packages/ReTestItems/src/macros.jl:81 [inlined]
+      @ /repos/ReTestItems.jl/src/macros.jl:81 [inlined]
    [15] runtestitem(ti::TestItem, ctx::ReTestItems.TestContext; verbose_results::Bool, finish_test::Bool, logs::Symbol)
-      @ ReTestItems ~/repos/raicode/packages/ReTestItems/src/ReTestItems.jl:682
-   [16] top-level scope
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:698
+   [16] _runtests_in_current_env(shouldrun::Function, paths::Tuple{String}, projectfile::String, nworkers::Int64, nworker_threads::Int64, worker_init_expr::Expr, testitem_timeout::Int64, retries::Int64, verbose_results::Bool, debug::Int64, report::Bool, logs::Symbol)
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:250
+   [17] #45
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:216 [inlined]
+   [18] (::TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}})()
+      @ TestEnv /.julia/packages/TestEnv/bSUAo/src/activate_do.jl:19
+   [19] withenv(::TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, ::Pair{String, String}, ::Vararg{Pair{String}})
+      @ Base ./env.jl:172
+   [20] (::Pkg.Operations.var"#107#112"{String, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.PackageSpec})()
+      @ Pkg.Operations /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1619
+   [21] with_temp_env(fn::Pkg.Operations.var"#107#112"{String, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.PackageSpec}, temp_env::String)
+      @ Pkg.Operations /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1493
+   [22] (::Pkg.Operations.var"#105#110"{Nothing, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.Context, Pkg.Types.PackageSpec, String, Pkg.Types.Project, String})(tmp::String)
+      @ Pkg.Operations /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1582
+   [23] mktempdir(fn::Pkg.Operations.var"#105#110"{Nothing, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.Context, Pkg.Types.PackageSpec, String, Pkg.Types.Project, String}, parent::String; prefix::String)
+      @ Base.Filesystem ./file.jl:764
+   [24] mktempdir(fn::Function, parent::String) (repeats 2 times)
+      @ Base.Filesystem ./file.jl:760
+   [25] sandbox(fn::Function, ctx::Pkg.Types.Context, target::Pkg.Types.PackageSpec, target_path::String, sandbox_path::String, sandbox_project_override::Pkg.Types.Project; preferences::Nothing, force_latest_compatible_version::Bool, allow_earlier_backwards_compatible_versions::Bool, allow_reresolve::Bool)
+      @ Pkg.Operations /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1540
+   [26] sandbox
+      @ /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1531 [inlined]
+   [27] activate(f::ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}, pkg::String)
+      @ TestEnv /.julia/packages/TestEnv/bSUAo/src/activate_do.jl:17
+   [28] activate(f::Function)
+      @ TestEnv /.julia/packages/TestEnv/bSUAo/src/activate_do.jl:13
+   [29] #44
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:215 [inlined]
+   [30] activate(f::ReTestItems.var"#44#46"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}, new_project::String)
+      @ Pkg.API /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/API.jl:1707
+   [31] _runtests(shouldrun::Function, paths::Tuple{String}, nworkers::Int64, nworker_threads::Int64, worker_init_expr::Expr, testitem_timeout::Int64, retries::Int64, verbose_results::Bool, debug::Int64, report::Bool, logs::Symbol)
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:214
+   [32] runtests(shouldrun::typeof(ReTestItems.default_shouldrun), paths::String; nworkers::Int64, nworker_threads::Int64, worker_init_expr::Expr, testitem_timeout::Int64, retries::Int64, debug::Int64, name::Nothing, tags::Nothing, report::Bool, logs::Symbol, verbose_results::Bool)
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:190
+   [33] #runtests#35
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:140 [inlined]
+   [34] top-level scope
       @ none:1
-   [17] eval
+   [35] eval
       @ ./boot.jl:368 [inlined]
-   [18] execute
-      @ ~/repos/raicode/packages/ReTestItems/src/workers.jl:295 [inlined]
-   [19] macro expansion
-      @ ~/repos/raicode/packages/ReTestItems/src/workers.jl:309 [inlined]
-   [20] (::ReTestItems.Workers.var"#20#21"{Sockets.TCPSocket, ReentrantLock, ReTestItems.Workers.Request})()
-      @ ReTestItems.Workers ./threadingconstructs.jl:258
+   [36] exec_options(opts::Base.JLOptions)
+      @ Base ./client.jl:276
+   [37] _start()
+      @ Base ./client.jl:522
 		</error>
 	</testcase>
-	<testcase name="testitem4" timestamp="2023-03-30T15:57:28.294" time="0.005" tests="1" skipped="0" failures="0" errors="1">
+	<testcase name="testitem4" timestamp="2023-04-14T10:56:00.011" time="0.007" tests="1" skipped="0" failures="0" errors="1">
 		<properties>
-		<property name="dd_tags[perf.bytes]" value="537406"></property>
-		<property name="dd_tags[perf.allocs]" value="5900"></property>
+		<property name="dd_tags[perf.bytes]" value="1101558"></property>
+		<property name="dd_tags[perf.allocs]" value="14339"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="2.5e-7"></property>
+		<property name="dd_tags[perf.compile_time]" value="1.66e-7"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
 		</properties>
-		<error message="Error during test at test/_junit_xml_test.jl:24">No Captured Logs for test item "testitem4" at test/_junit_xml_test.jl:23 on worker 93048
-Error in testset "nested testset" on worker 93048:
-Error During Test at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:24
+		<error message="Error during test at test/testfiles/_junit_xml_test.jl:24">No Captured Logs for test item "testitem4" at test/testfiles/_junit_xml_test.jl:23 on worker 96175
+Error in testset "nested testset" on worker 96175:
+Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:24
   Got exception outside of a @test
   UndefVarError: x not defined
   Stacktrace:
     [1] macro expansion
-      @ ~/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:25 [inlined]
+      @ /repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:25 [inlined]
     [2] macro expansion
       @ /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Test/src/Test.jl:1363 [inlined]
     [3] top-level scope
-      @ ~/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:25
+      @ /repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:25
     [4] eval
       @ ./boot.jl:368 [inlined]
     [5] #77
-      @ ~/repos/raicode/packages/ReTestItems/src/ReTestItems.jl:683 [inlined]
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:699 [inlined]
     [6] with_source_path(f::ReTestItems.var"#77#80"{Expr}, path::String)
-      @ ReTestItems ~/repos/raicode/packages/ReTestItems/src/ReTestItems.jl:566
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:582
     [7] #76
-      @ ~/repos/raicode/packages/ReTestItems/src/ReTestItems.jl:683 [inlined]
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:699 [inlined]
     [8] redirect_stdio(f::ReTestItems.var"#76#79"{TestItem, Expr}; stdin::Nothing, stderr::IOContext{IOStream}, stdout::IOContext{IOStream})
       @ Base ./stream.jl:1411
     [9] _redirect_logs(f::ReTestItems.var"#76#79"{TestItem, Expr}, target::IOStream)
-      @ ReTestItems ~/repos/raicode/packages/ReTestItems/src/log_capture.jl:86
+      @ ReTestItems /repos/ReTestItems.jl/src/log_capture.jl:111
    [10] #25
-      @ ~/repos/raicode/packages/ReTestItems/src/log_capture.jl:82 [inlined]
+      @ /repos/ReTestItems.jl/src/log_capture.jl:107 [inlined]
    [11] open(::ReTestItems.var"#25#26"{ReTestItems.var"#76#79"{TestItem, Expr}}, ::String, ::Vararg{String}; kwargs::Base.Pairs{Symbol, Union{}, Tuple{}, NamedTuple{(), Tuple{}}})
       @ Base ./io.jl:384
    [12] open
       @ ./io.jl:381 [inlined]
    [13] _redirect_logs
-      @ ~/repos/raicode/packages/ReTestItems/src/log_capture.jl:82 [inlined]
+      @ /repos/ReTestItems.jl/src/log_capture.jl:107 [inlined]
    [14] macro expansion
-      @ ~/repos/raicode/packages/ReTestItems/src/macros.jl:81 [inlined]
+      @ /repos/ReTestItems.jl/src/macros.jl:81 [inlined]
    [15] runtestitem(ti::TestItem, ctx::ReTestItems.TestContext; verbose_results::Bool, finish_test::Bool, logs::Symbol)
-      @ ReTestItems ~/repos/raicode/packages/ReTestItems/src/ReTestItems.jl:682
-   [16] top-level scope
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:698
+   [16] _runtests_in_current_env(shouldrun::Function, paths::Tuple{String}, projectfile::String, nworkers::Int64, nworker_threads::Int64, worker_init_expr::Expr, testitem_timeout::Int64, retries::Int64, verbose_results::Bool, debug::Int64, report::Bool, logs::Symbol)
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:250
+   [17] #45
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:216 [inlined]
+   [18] (::TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}})()
+      @ TestEnv /.julia/packages/TestEnv/bSUAo/src/activate_do.jl:19
+   [19] withenv(::TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, ::Pair{String, String}, ::Vararg{Pair{String}})
+      @ Base ./env.jl:172
+   [20] (::Pkg.Operations.var"#107#112"{String, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.PackageSpec})()
+      @ Pkg.Operations /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1619
+   [21] with_temp_env(fn::Pkg.Operations.var"#107#112"{String, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.PackageSpec}, temp_env::String)
+      @ Pkg.Operations /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1493
+   [22] (::Pkg.Operations.var"#105#110"{Nothing, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.Context, Pkg.Types.PackageSpec, String, Pkg.Types.Project, String})(tmp::String)
+      @ Pkg.Operations /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1582
+   [23] mktempdir(fn::Pkg.Operations.var"#105#110"{Nothing, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.Context, Pkg.Types.PackageSpec, String, Pkg.Types.Project, String}, parent::String; prefix::String)
+      @ Base.Filesystem ./file.jl:764
+   [24] mktempdir(fn::Function, parent::String) (repeats 2 times)
+      @ Base.Filesystem ./file.jl:760
+   [25] sandbox(fn::Function, ctx::Pkg.Types.Context, target::Pkg.Types.PackageSpec, target_path::String, sandbox_path::String, sandbox_project_override::Pkg.Types.Project; preferences::Nothing, force_latest_compatible_version::Bool, allow_earlier_backwards_compatible_versions::Bool, allow_reresolve::Bool)
+      @ Pkg.Operations /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1540
+   [26] sandbox
+      @ /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1531 [inlined]
+   [27] activate(f::ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}, pkg::String)
+      @ TestEnv /.julia/packages/TestEnv/bSUAo/src/activate_do.jl:17
+   [28] activate(f::Function)
+      @ TestEnv /.julia/packages/TestEnv/bSUAo/src/activate_do.jl:13
+   [29] #44
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:215 [inlined]
+   [30] activate(f::ReTestItems.var"#44#46"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}, new_project::String)
+      @ Pkg.API /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/API.jl:1707
+   [31] _runtests(shouldrun::Function, paths::Tuple{String}, nworkers::Int64, nworker_threads::Int64, worker_init_expr::Expr, testitem_timeout::Int64, retries::Int64, verbose_results::Bool, debug::Int64, report::Bool, logs::Symbol)
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:214
+   [32] runtests(shouldrun::typeof(ReTestItems.default_shouldrun), paths::String; nworkers::Int64, nworker_threads::Int64, worker_init_expr::Expr, testitem_timeout::Int64, retries::Int64, debug::Int64, name::Nothing, tags::Nothing, report::Bool, logs::Symbol, verbose_results::Bool)
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:190
+   [33] #runtests#35
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:140 [inlined]
+   [34] top-level scope
       @ none:1
-   [17] eval
+   [35] eval
       @ ./boot.jl:368 [inlined]
-   [18] execute
-      @ ~/repos/raicode/packages/ReTestItems/src/workers.jl:295 [inlined]
-   [19] macro expansion
-      @ ~/repos/raicode/packages/ReTestItems/src/workers.jl:309 [inlined]
-   [20] (::ReTestItems.Workers.var"#20#21"{Sockets.TCPSocket, ReentrantLock, ReTestItems.Workers.Request})()
-      @ ReTestItems.Workers ./threadingconstructs.jl:258
+   [36] exec_options(opts::Base.JLOptions)
+      @ Base ./client.jl:276
+   [37] _start()
+      @ Base ./client.jl:522
 		</error>
 	</testcase>
-	<testcase name="testitem5" timestamp="2023-03-30T15:57:28.341" time="0.01" tests="3" skipped="2" failures="0" errors="0">
+	<testcase name="testitem5" timestamp="2023-04-14T10:56:00.069" time="0.009" tests="3" skipped="2" failures="0" errors="0">
 		<properties>
 		<property name="dd_tags[perf.bytes]" value="83422"></property>
 		<property name="dd_tags[perf.allocs]" value="1432"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="0.007406667"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.007064708"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
 		</properties>
 	</testcase>
-	<testcase name="testitem6" timestamp="2023-03-30T15:57:28.403" time="0.003" tests="2" skipped="1" failures="1" errors="0">
+	<testcase name="testitem6" timestamp="2023-04-14T10:56:00.13" time="0.003" tests="2" skipped="1" failures="1" errors="0">
 		<properties>
 		<property name="dd_tags[perf.bytes]" value="91886"></property>
 		<property name="dd_tags[perf.allocs]" value="1598"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="1.65e-7"></property>
+		<property name="dd_tags[perf.compile_time]" value="1.68e-7"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
 		</properties>
-		<error message="Test failed at test/_junit_xml_test.jl:41">No Captured Logs for test item "testitem6" at test/_junit_xml_test.jl:40 on worker 93048
-Error in testset "testitem6" on worker 93048:
-Test Failed at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:41
+		<error message="Test failed at test/testfiles/_junit_xml_test.jl:41">No Captured Logs for test item "testitem6" at test/testfiles/_junit_xml_test.jl:40 on worker 96175
+Error in testset "testitem6" on worker 96175:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:41
   Expression: false
 		</error>
 	</testcase>
-	<testcase name="testitem6" timestamp="2023-03-30T15:57:28.461" time="0.003" tests="2" skipped="1" failures="1" errors="0">
+	<testcase name="testitem6" timestamp="2023-04-14T10:56:00.182" time="0.003" tests="2" skipped="1" failures="1" errors="0">
 		<properties>
 		<property name="dd_tags[perf.bytes]" value="91886"></property>
 		<property name="dd_tags[perf.allocs]" value="1598"></property>
@@ -223,9 +291,9 @@ Test Failed at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_t
 		<property name="dd_tags[perf.compile_time]" value="1.25e-7"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
 		</properties>
-		<error message="Test failed at test/_junit_xml_test.jl:41">No Captured Logs for test item "testitem6" at test/_junit_xml_test.jl:40 on worker 93048
-Error in testset "testitem6" on worker 93048:
-Test Failed at /Users/nickr/repos/raicode/packages/ReTestItems/test/_junit_xml_test.jl:41
+		<error message="Test failed at test/testfiles/_junit_xml_test.jl:41">No Captured Logs for test item "testitem6" at test/testfiles/_junit_xml_test.jl:40 on worker 96175
+Error in testset "testitem6" on worker 96175:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:41
   Expression: false
 		</error>
 	</testcase>

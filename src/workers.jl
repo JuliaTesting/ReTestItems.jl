@@ -155,7 +155,8 @@ function Worker(;
     env["RETESTITEMS_INTERACTIVE"] = get(env, "RETESTITEMS_INTERACTIVE", string(Base.isinteractive()))
     # end copied from Distributed.launch
     ## start the worker process
-    cmd = `$(Base.julia_cmd()) $exeflags --startup-file=no -e 'using ReTestItems; ReTestItems.Workers.startworker()'`
+    color = get(worker_redirect_io, :color, false) ? "yes" : "no" # respect color of target io
+    cmd = `$(Base.julia_cmd()) $exeflags --startup-file=no --color=$color -e 'using ReTestItems; ReTestItems.Workers.startworker()'`
     proc = open(detach(setenv(addenv(cmd, env), dir=dir)), "r+")
     pid = Libc.getpid(proc)
 
@@ -178,7 +179,7 @@ function Worker(;
         ## start a task to listen for worker messages
         w.messages = Threads.@spawn process_responses(w)
         # add a finalizer
-        finalizer(x -> terminate!(x, :finalizer), w)
+        finalizer(x -> @async(terminate!(x, :finalizer)), w) # @async to allow a task switch
         if isassigned(GLOBAL_CALLBACK_PER_WORKER)
             GLOBAL_CALLBACK_PER_WORKER[](w)
         end

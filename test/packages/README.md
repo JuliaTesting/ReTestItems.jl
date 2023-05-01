@@ -1,4 +1,4 @@
-# test/packages/
+## test/packages/
 
 This directory contains fake packages which act as integration tests for ReTestItems.jl functionality.
 These packages should have tests that all pass when run either via `ReTestItems.runtests` or via `Pkg.test`,
