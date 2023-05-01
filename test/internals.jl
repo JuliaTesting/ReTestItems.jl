@@ -4,7 +4,7 @@ using ReTestItems
 
 @testset "internals.jl" verbose=true begin
 
-@testset "get_starting_testitems for 8 items across 5 workers" begin
+@testset "get_starting_testitems" begin
     using ReTestItems: get_starting_testitems, TestItems, @testitem
     graph = ReTestItems.FileNode("")  # we don't use the graph info for this test
     # we previously saw `BoundsError` with 8 testitems, 5 workers.
