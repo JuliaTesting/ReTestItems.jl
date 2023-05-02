@@ -205,15 +205,19 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::Int, worker
     proj_file = identify_project(dir)
     proj_file == "" && error("Could not find project directory for `$(dir)`")
     @debugv 1 "Running tests in `$paths` for project at `$proj_file`"
-    if is_running_test_runtests_jl(proj_file)
-        # Assume this is `Pkg.test`, so test env already active.
-        @debugv 2 "Running in current environment `$(Base.active_project())`"
-        return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
-    else
-        @debugv 1 "Activating test environment for `$proj_file`"
-        return Pkg.activate(proj_file) do
-            TestEnv.activate() do
-                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
+    # Wrapping with the logger that was set before eval'ing any user code to
+    # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
+    with_logger(current_logger()) do
+        if is_running_test_runtests_jl(proj_file)
+            # Assume this is `Pkg.test`, so test env already active.
+            @debugv 2 "Running in current environment `$(Base.active_project())`"
+            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
+        else
+            @debugv 1 "Activating test environment for `$proj_file`"
+            return Pkg.activate(proj_file) do
+                TestEnv.activate() do
+                    _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
+                end
             end
         end
     end
