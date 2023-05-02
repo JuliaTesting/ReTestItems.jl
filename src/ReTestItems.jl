@@ -262,8 +262,7 @@ function _runtests_in_current_env(
                     end
                 end
             end
-        else
-            isempty(testitems.testitems) && @goto DONE
+        elseif !isempty(testitems.testitems)
             # spawn a task per worker to start and manage the lifetime of the worker
             # get starting test items for each worker
             starting = get_starting_testitems(testitems, nworkers)
@@ -278,7 +277,6 @@ function _runtests_in_current_env(
                 end
             end
         end
-        @label DONE
         Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
         record_results!(testitems)
         report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
