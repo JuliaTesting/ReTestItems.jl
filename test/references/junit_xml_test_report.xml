@@ -1,60 +1,64 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites timestamp="2023-04-14T10:55:29.586" time="0.567" tests="13" skipped="3" failures="3" errors="2">
-<testsuite name="test/testfiles/_junit_xml_test.jl" timestamp="2023-04-14T10:55:29.586" time="0.567" tests="13" skipped="3" failures="3" errors="2">
-	<testcase name="testitem1" timestamp="2023-04-14T10:55:29.586" time="0.057" tests="2" skipped="0" failures="1" errors="0">
+<testsuites timestamp="2023-05-04T15:10:34.201" time="0.547" tests="13" skipped="3" failures="3" errors="2">
+<testsuite name="test/testfiles/_junit_xml_test.jl" timestamp="2023-05-04T15:10:34.201" time="0.547" tests="13" skipped="3" failures="3" errors="2">
+	<testcase name="testitem1" timestamp="2023-05-04T15:10:34.201" time="0.055" tests="2" skipped="0" failures="1" errors="0">
 		<properties>
 		<property name="dd_tags[perf.bytes]" value="4331408"></property>
 		<property name="dd_tags[perf.allocs]" value="74125"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="0.047217499"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.045606086"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.run_time]" value="0.005336247000000002"></property>
 		</properties>
-		<error message="Test failed at test/testfiles/_junit_xml_test.jl:4">No Captured Logs for test item "testitem1" at test/testfiles/_junit_xml_test.jl:2 on worker 95729
-Error in testset "testitem1" on worker 95729:
+		<error message="Test failed at test/testfiles/_junit_xml_test.jl:4">No Captured Logs for test item "testitem1" at test/testfiles/_junit_xml_test.jl:2 on worker 68484
+Error in testset "testitem1" on worker 68484:
 Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:4
   Expression: 2 == 3
    Evaluated: 2 == 3
 		</error>
 	</testcase>
-	<testcase name="testitem2" timestamp="2023-04-14T10:55:29.781" time="0.032" tests="3" skipped="0" failures="1" errors="1">
+	<testcase name="testitem2" timestamp="2023-05-04T15:10:34.403" time="0.031" tests="3" skipped="0" failures="1" errors="1">
 		<properties>
 		<property name="dd_tags[perf.bytes]" value="3213927"></property>
 		<property name="dd_tags[perf.allocs]" value="57359"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="0.027965045"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.027250125"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.run_time]" value="0.004181707999999999"></property>
 		</properties>
-		<error message="Multiple errors for test item at test/testfiles/_junit_xml_test.jl:8">No Captured Logs for test item "testitem2" at test/testfiles/_junit_xml_test.jl:8 on worker 95729
-Error in testset "inner testset" on worker 95729:
+		<error message="Multiple errors for test item at test/testfiles/_junit_xml_test.jl:8">No Captured Logs for test item "testitem2" at test/testfiles/_junit_xml_test.jl:8 on worker 68484
+Error in testset "inner testset" on worker 68484:
 Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:11
   Expression: 4 == 5
    Evaluated: 4 == 5
-Error in testset "inner testset" on worker 95729:
+Error in testset "inner testset" on worker 68484:
 Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:12
   Expression evaluated to non-Boolean
   Expression: not a bool
        Value: "not a bool"
 		</error>
 	</testcase>
-	<testcase name="testitem3" timestamp="2023-04-14T10:55:29.867" time="0.002" tests="2" skipped="0" failures="0" errors="0">
+	<testcase name="testitem3" timestamp="2023-05-04T15:10:34.488" time="0.002" tests="2" skipped="0" failures="0" errors="0">
 		<properties>
 		<property name="dd_tags[perf.bytes]" value="70286"></property>
 		<property name="dd_tags[perf.allocs]" value="1176"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="4.1e-8"></property>
+		<property name="dd_tags[perf.compile_time]" value="1.67e-7"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.run_time]" value="0.002297166"></property>
 		</properties>
 	</testcase>
-	<testcase name="testitem4" timestamp="2023-04-14T10:55:29.918" time="0.463" tests="1" skipped="0" failures="0" errors="1">
+	<testcase name="testitem4" timestamp="2023-05-04T15:10:34.538" time="0.446" tests="1" skipped="0" failures="0" errors="1">
 		<properties>
-		<property name="dd_tags[perf.bytes]" value="78705018"></property>
-		<property name="dd_tags[perf.allocs]" value="1461922"></property>
-		<property name="dd_tags[perf.gctime]" value="0.004821625"></property>
-		<property name="dd_tags[perf.compile_time]" value="0.381134665"></property>
+		<property name="dd_tags[perf.bytes]" value="78752010"></property>
+		<property name="dd_tags[perf.allocs]" value="1462662"></property>
+		<property name="dd_tags[perf.gctime]" value="0.004908167"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.373312916"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.run_time]" value="0.06759633399999998"></property>
 		</properties>
-		<error message="Error during test at test/testfiles/_junit_xml_test.jl:24">No Captured Logs for test item "testitem4" at test/testfiles/_junit_xml_test.jl:23 on worker 95729
-Error in testset "nested testset" on worker 95729:
+		<error message="Error during test at test/testfiles/_junit_xml_test.jl:24">No Captured Logs for test item "testitem4" at test/testfiles/_junit_xml_test.jl:23 on worker 68484
+Error in testset "nested testset" on worker 68484:
 Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:24
   Got exception outside of a @test
   UndefVarError: x not defined
@@ -67,19 +71,19 @@ Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml
       @ /repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:25
     [4] eval
       @ ./boot.jl:368 [inlined]
-    [5] #77
-      @ /repos/ReTestItems.jl/src/ReTestItems.jl:699 [inlined]
-    [6] with_source_path(f::ReTestItems.var"#77#80"{Expr}, path::String)
-      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:582
-    [7] #76
-      @ /repos/ReTestItems.jl/src/ReTestItems.jl:699 [inlined]
-    [8] redirect_stdio(f::ReTestItems.var"#76#79"{TestItem, Expr}; stdin::Nothing, stderr::IOContext{IOStream}, stdout::IOContext{IOStream})
+    [5] #81
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:701 [inlined]
+    [6] with_source_path(f::ReTestItems.var"#81#84"{Expr}, path::String)
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:584
+    [7] #80
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:701 [inlined]
+    [8] redirect_stdio(f::ReTestItems.var"#80#83"{TestItem, Expr}; stdin::Nothing, stderr::IOContext{IOStream}, stdout::IOContext{IOStream})
       @ Base ./stream.jl:1411
-    [9] _redirect_logs(f::ReTestItems.var"#76#79"{TestItem, Expr}, target::IOStream)
+    [9] _redirect_logs(f::ReTestItems.var"#80#83"{TestItem, Expr}, target::IOStream)
       @ ReTestItems /repos/ReTestItems.jl/src/log_capture.jl:111
-   [10] #25
+   [10] #27
       @ /repos/ReTestItems.jl/src/log_capture.jl:107 [inlined]
-   [11] open(::ReTestItems.var"#25#26"{ReTestItems.var"#76#79"{TestItem, Expr}}, ::String, ::Vararg{String}; kwargs::Base.Pairs{Symbol, Union{}, Tuple{}, NamedTuple{(), Tuple{}}})
+   [11] open(::ReTestItems.var"#27#28"{ReTestItems.var"#80#83"{TestItem, Expr}}, ::String, ::Vararg{String}; kwargs::Base.Pairs{Symbol, Union{}, Tuple{}, NamedTuple{(), Tuple{}}})
       @ Base ./io.jl:384
    [12] open
       @ ./io.jl:381 [inlined]
@@ -88,22 +92,22 @@ Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml
    [14] macro expansion
       @ /repos/ReTestItems.jl/src/macros.jl:81 [inlined]
    [15] runtestitem(ti::TestItem, ctx::ReTestItems.TestContext; verbose_results::Bool, finish_test::Bool, logs::Symbol)
-      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:698
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:700
    [16] _runtests_in_current_env(shouldrun::Function, paths::Tuple{String}, projectfile::String, nworkers::Int64, nworker_threads::Int64, worker_init_expr::Expr, testitem_timeout::Int64, retries::Int64, verbose_results::Bool, debug::Int64, report::Bool, logs::Symbol)
-      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:250
-   [17] #45
-      @ /repos/ReTestItems.jl/src/ReTestItems.jl:216 [inlined]
-   [18] (::TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}})()
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:254
+   [17] #48
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:219 [inlined]
+   [18] (::TestEnv.var"#2#3"{ReTestItems.var"#48#51"{ReTestItems.var"#shouldrun_combined#44"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}})()
       @ TestEnv /.julia/packages/TestEnv/bSUAo/src/activate_do.jl:19
-   [19] withenv(::TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, ::Pair{String, String}, ::Vararg{Pair{String}})
+   [19] withenv(::TestEnv.var"#2#3"{ReTestItems.var"#48#51"{ReTestItems.var"#shouldrun_combined#44"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, ::Pair{String, String}, ::Vararg{Pair{String}})
       @ Base ./env.jl:172
-   [20] (::Pkg.Operations.var"#107#112"{String, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.PackageSpec})()
+   [20] (::Pkg.Operations.var"#107#112"{String, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#48#51"{ReTestItems.var"#shouldrun_combined#44"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.PackageSpec})()
       @ Pkg.Operations /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1619
-   [21] with_temp_env(fn::Pkg.Operations.var"#107#112"{String, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.PackageSpec}, temp_env::String)
+   [21] with_temp_env(fn::Pkg.Operations.var"#107#112"{String, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#48#51"{ReTestItems.var"#shouldrun_combined#44"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.PackageSpec}, temp_env::String)
       @ Pkg.Operations /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1493
-   [22] (::Pkg.Operations.var"#105#110"{Nothing, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.Context, Pkg.Types.PackageSpec, String, Pkg.Types.Project, String})(tmp::String)
+   [22] (::Pkg.Operations.var"#105#110"{Nothing, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#48#51"{ReTestItems.var"#shouldrun_combined#44"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.Context, Pkg.Types.PackageSpec, String, Pkg.Types.Project, String})(tmp::String)
       @ Pkg.Operations /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1582
-   [23] mktempdir(fn::Pkg.Operations.var"#105#110"{Nothing, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.Context, Pkg.Types.PackageSpec, String, Pkg.Types.Project, String}, parent::String; prefix::String)
+   [23] mktempdir(fn::Pkg.Operations.var"#105#110"{Nothing, Bool, Bool, Bool, TestEnv.var"#2#3"{ReTestItems.var"#48#51"{ReTestItems.var"#shouldrun_combined#44"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}}, Pkg.Types.Context, Pkg.Types.PackageSpec, String, Pkg.Types.Project, String}, parent::String; prefix::String)
       @ Base.Filesystem ./file.jl:764
    [24] mktempdir(fn::Function, parent::String) (repeats 2 times)
       @ Base.Filesystem ./file.jl:760
@@ -111,49 +115,57 @@ Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml
       @ Pkg.Operations /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1540
    [26] sandbox
       @ /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/Operations.jl:1531 [inlined]
-   [27] activate(f::ReTestItems.var"#45#47"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}, pkg::String)
+   [27] activate(f::ReTestItems.var"#48#51"{ReTestItems.var"#shouldrun_combined#44"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}, pkg::String)
       @ TestEnv /.julia/packages/TestEnv/bSUAo/src/activate_do.jl:17
    [28] activate(f::Function)
       @ TestEnv /.julia/packages/TestEnv/bSUAo/src/activate_do.jl:13
-   [29] #44
-      @ /repos/ReTestItems.jl/src/ReTestItems.jl:215 [inlined]
-   [30] activate(f::ReTestItems.var"#44#46"{ReTestItems.var"#shouldrun_combined#42"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}, new_project::String)
+   [29] #47
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:218 [inlined]
+   [30] activate(f::ReTestItems.var"#47#50"{ReTestItems.var"#shouldrun_combined#44"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String}, new_project::String)
       @ Pkg.API /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Pkg/src/API.jl:1707
-   [31] _runtests(shouldrun::Function, paths::Tuple{String}, nworkers::Int64, nworker_threads::Int64, worker_init_expr::Expr, testitem_timeout::Int64, retries::Int64, verbose_results::Bool, debug::Int64, report::Bool, logs::Symbol)
-      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:214
-   [32] runtests(shouldrun::typeof(ReTestItems.default_shouldrun), paths::String; nworkers::Int64, nworker_threads::Int64, worker_init_expr::Expr, testitem_timeout::Int64, retries::Int64, debug::Int64, name::Nothing, tags::Nothing, report::Bool, logs::Symbol, verbose_results::Bool)
+   [31] (::ReTestItems.var"#46#49"{ReTestItems.var"#shouldrun_combined#44"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, Int64, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String})()
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:217
+   [32] with_logstate(f::Function, logstate::Any)
+      @ Base.CoreLogging ./logging.jl:511
+   [33] with_logger
+      @ ./logging.jl:623 [inlined]
+   [34] _runtests(shouldrun::Function, paths::Tuple{String}, nworkers::Int64, nworker_threads::Int64, worker_init_expr::Expr, testitem_timeout::Int64, retries::Int64, verbose_results::Bool, debug::Int64, report::Bool, logs::Symbol)
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:210
+   [35] runtests(shouldrun::typeof(ReTestItems.default_shouldrun), paths::String; nworkers::Int64, nworker_threads::Int64, worker_init_expr::Expr, testitem_timeout::Int64, retries::Int64, debug::Int64, name::Nothing, tags::Nothing, report::Bool, logs::Symbol, verbose_results::Bool)
       @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:190
-   [33] #runtests#35
+   [36] #runtests#37
       @ /repos/ReTestItems.jl/src/ReTestItems.jl:140 [inlined]
-   [34] top-level scope
+   [37] top-level scope
       @ none:1
-   [35] eval
+   [38] eval
       @ ./boot.jl:368 [inlined]
-   [36] exec_options(opts::Base.JLOptions)
+   [39] exec_options(opts::Base.JLOptions)
       @ Base ./client.jl:276
-   [37] _start()
+   [40] _start()
       @ Base ./client.jl:522
 		</error>
 	</testcase>
-	<testcase name="testitem5" timestamp="2023-04-14T10:55:30.438" time="0.009" tests="3" skipped="2" failures="0" errors="0">
+	<testcase name="testitem5" timestamp="2023-05-04T15:10:35.038" time="0.009" tests="3" skipped="2" failures="0" errors="0">
 		<properties>
 		<property name="dd_tags[perf.bytes]" value="83454"></property>
 		<property name="dd_tags[perf.allocs]" value="1433"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="0.006677753"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.006873415"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.run_time]" value="0.0025895430000000006"></property>
 		</properties>
 	</testcase>
-	<testcase name="testitem6" timestamp="2023-04-14T10:55:30.499" time="0.003" tests="2" skipped="1" failures="1" errors="0">
+	<testcase name="testitem6" timestamp="2023-05-04T15:10:35.097" time="0.003" tests="2" skipped="1" failures="1" errors="0">
 		<properties>
 		<property name="dd_tags[perf.bytes]" value="91886"></property>
 		<property name="dd_tags[perf.allocs]" value="1598"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="2.08e-7"></property>
+		<property name="dd_tags[perf.compile_time]" value="1.26e-7"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.run_time]" value="0.003191583"></property>
 		</properties>
-		<error message="Test failed at test/testfiles/_junit_xml_test.jl:41">No Captured Logs for test item "testitem6" at test/testfiles/_junit_xml_test.jl:40 on worker 95729
-Error in testset "testitem6" on worker 95729:
+		<error message="Test failed at test/testfiles/_junit_xml_test.jl:41">No Captured Logs for test item "testitem6" at test/testfiles/_junit_xml_test.jl:40 on worker 68484
+Error in testset "testitem6" on worker 68484:
 Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:41
   Expression: false
 		</error>
