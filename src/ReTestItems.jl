@@ -385,9 +385,14 @@ function start_and_manage_worker(
                 # back up to the main coordinator task and throw to the user
                 rethrow()
             end
-            println(DEFAULT_STDOUT[])
-            # Explicitly show captured logs or say there weren't any
-            _print_captured_logs(DEFAULT_STDOUT[], testitem, nretries + 1)
+
+            if !(e isa TestSetFailure)
+                println(DEFAULT_STDOUT[])
+                # Explicitly show captured logs or say there weren't any in case we're about
+                # to terminte the worker
+                _print_captured_logs(DEFAULT_STDOUT[], testitem, nretries + 1)
+            end
+
             if e isa TimeoutException
                 @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker"
                 terminate!(worker)
