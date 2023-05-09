@@ -218,14 +218,14 @@ function write_dd_tags(io, x::PerfStats)
     gctime = x.gctime / 1e9
     compile_time = x.compile_time / 1e9
     recompile_time = x.recompile_time / 1e9
-    run_time = (x.elapsedtime / 1e9) - gctime - compile_time  # compile_time includes recompile_time
+    eval_time = (x.elapsedtime / 1e9) - gctime - compile_time  # compile_time includes recompile_time
     write(io, "\n\t\t<properties>")
     write(io, "\n\t\t<property name=\"dd_tags[perf.bytes]\" value=\"$(x.bytes)\"></property>")
     write(io, "\n\t\t<property name=\"dd_tags[perf.allocs]\" value=\"$(x.allocs)\"></property>")
     write(io, "\n\t\t<property name=\"dd_tags[perf.gctime]\" value=\"$(gctime)\"></property>")
     write(io, "\n\t\t<property name=\"dd_tags[perf.compile_time]\" value=\"$(compile_time)\"></property>")
     write(io, "\n\t\t<property name=\"dd_tags[perf.recompile_time]\" value=\"$(recompile_time)\"></property>")
-    write(io, "\n\t\t<property name=\"dd_tags[perf.run_time]\" value=\"$(run_time)\"></property>")
+    write(io, "\n\t\t<property name=\"dd_tags[perf.eval_time]\" value=\"$(eval_time)\"></property>")
     write(io, "\n\t\t</properties>")
     return nothing
 end
