@@ -657,4 +657,15 @@ end
     end
 end
 
+# https://github.com/JuliaTesting/ReTestItems.jl/issues/49
+@testset "Worker log capture on a failing test is not reported twice" begin
+    test_file_path = joinpath(TEST_FILES_DIR, "_failing_test.jl")
+
+    captured = IOCapture.capture(rethrow=Union{}) do
+        encased_testset(()->runtests(test_file_path, nworkers=1, logs=:issues))
+    end
+
+    @test count("No Captured Logs", captured.output) == 1
+end
+
 end # integrationtests.jl testset
