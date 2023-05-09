@@ -19,7 +19,7 @@ function remove_variables(str)
         r" time=\\\"[0-9]*.[0-9]*\\\"" => " time=\"0\"",
         # Replace tag `value` in a <property> with "0"
         # e.g. "<property name=\"dd_tags[perf.gctime]\" value=\"1.23e-6\"></property>"
-        r" value=\"[\d]*[.]?[\d]*?[e]?[-]?[\d]?\"(?=></property>)" => " value=\"0\"",
+        r" value=\"[-]?[\d]*[.]?[\d]*?[e]?[-]?[\d]?\"(?=></property>)" => " value=\"0\"",
         # Omit stacktrace info between "Stacktrace" and the line containing "</error>".
         # Stacktraces are version specific.
         r" Stacktrace:[\s\S]*(?=\n\s*</error)" => " Stacktrace:\n [omitted]",
