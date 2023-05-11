@@ -659,7 +659,7 @@ function runtestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=false
         push!(body.args, :(using Test))
         if !isempty(ctx.projectname)
             # this obviously assumes we're in an environment where projectname is reachable
-            push!(body.args, :(Base.@lock Base.require_lock using $(Symbol(ctx.projectname))))
+            push!(body.args, :(using $(Symbol(ctx.projectname))))
         end
     end
     Test.push_testset(ts)
