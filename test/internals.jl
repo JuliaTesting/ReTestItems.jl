@@ -4,6 +4,23 @@ using ReTestItems
 
 @testset "internals.jl" verbose=true begin
 
+@testset "get_starting_testitems" begin
+    using ReTestItems: get_starting_testitems, TestItems, @testitem
+    graph = ReTestItems.FileNode("")  # we don't use the graph info for this test
+    # we previously saw `BoundsError` with 8 testitems, 5 workers.
+    # let's test this exhaustively for 1-10 testitems across 1-10 workers.
+    for nworkers in 1:10
+        for nitems in 1:10
+            testitems = [@testitem "ti-$i" begin; end; for i in 1:nitems]
+            starts = get_starting_testitems(TestItems(graph, testitems, 0), nworkers)
+            startitems = [x for x in starts if !isnothing(x)]
+            @test length(starts) == nworkers
+            @test length(startitems) == min(nworkers, nitems)
+            @test allunique(ti.name for ti in startitems)
+        end
+    end
+end
+
 @testset "is_test_file" begin
     using ReTestItems: is_test_file
     @test !is_test_file("test/runtests.jl")

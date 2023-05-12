@@ -205,15 +205,19 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::Int, worker
     proj_file = identify_project(dir)
     proj_file == "" && error("Could not find project directory for `$(dir)`")
     @debugv 1 "Running tests in `$paths` for project at `$proj_file`"
-    if is_running_test_runtests_jl(proj_file)
-        # Assume this is `Pkg.test`, so test env already active.
-        @debugv 2 "Running in current environment `$(Base.active_project())`"
-        return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
-    else
-        @debugv 1 "Activating test environment for `$proj_file`"
-        return Pkg.activate(proj_file) do
-            TestEnv.activate() do
-                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
+    # Wrapping with the logger that was set before eval'ing any user code to
+    # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
+    with_logger(current_logger()) do
+        if is_running_test_runtests_jl(proj_file)
+            # Assume this is `Pkg.test`, so test env already active.
+            @debugv 2 "Running in current environment `$(Base.active_project())`"
+            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
+        else
+            @debugv 1 "Activating test environment for `$proj_file`"
+            return Pkg.activate(proj_file) do
+                TestEnv.activate() do
+                    _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
+                end
             end
         end
     end
@@ -262,8 +266,7 @@ function _runtests_in_current_env(
                     end
                 end
             end
-        else
-            isempty(testitems.testitems) && @goto DONE
+        elseif !isempty(testitems.testitems)
             # spawn a task per worker to start and manage the lifetime of the worker
             # get starting test items for each worker
             starting = get_starting_testitems(testitems, nworkers)
@@ -278,7 +281,6 @@ function _runtests_in_current_env(
                 end
             end
         end
-        @label DONE
         Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
         record_results!(testitems)
         report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
@@ -383,9 +385,14 @@ function start_and_manage_worker(
                 # back up to the main coordinator task and throw to the user
                 rethrow()
             end
-            println(DEFAULT_STDOUT[])
-            # Explicitly show captured logs or say there weren't any
-            _print_captured_logs(DEFAULT_STDOUT[], testitem, nretries + 1)
+
+            if !(e isa TestSetFailure)
+                println(DEFAULT_STDOUT[])
+                # Explicitly show captured logs or say there weren't any in case we're about
+                # to terminte the worker
+                _print_captured_logs(DEFAULT_STDOUT[], testitem, nretries + 1)
+            end
+
             if e isa TimeoutException
                 @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker"
                 terminate!(worker)
@@ -652,7 +659,7 @@ function runtestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=false
         push!(body.args, :(using Test))
         if !isempty(ctx.projectname)
             # this obviously assumes we're in an environment where projectname is reachable
-            push!(body.args, :(Base.@lock Base.require_lock using $(Symbol(ctx.projectname))))
+            push!(body.args, :(using $(Symbol(ctx.projectname))))
         end
     end
     Test.push_testset(ts)
