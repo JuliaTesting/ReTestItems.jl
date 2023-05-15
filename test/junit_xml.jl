@@ -198,4 +198,41 @@ end
     @test props[5][:value] == "0.002"
 end
 
+@testset "Manual JUnitTestSuite/JUnitTestCase" begin
+    using ReTestItems: JUnitTestCase, JUnitTestSuite
+    using Dates: datetime2unix, DateTime
+
+    ts = @testset "outer" begin
+        @test true
+        @testset "inner" begin
+            @test true
+        end
+    end
+    # Make the test time deterministic to make testing report output easier
+    ts.time_start = datetime2unix(DateTime(2023, 01, 15, 16, 42))
+    ts.time_end = datetime2unix(DateTime(2023, 01, 15, 16, 42, 30))
+
+    # should be able to construct a TestCase from a TestSet
+    tc = JUnitTestCase(ts)
+    @test tc isa JUnitTestCase
+
+    # once wrapped in a TestSuite, this should have enough info to write out a report
+    suite = JUnitTestSuite("manual", tc.counts, [tc])
+    @test suite isa JUnitTestSuite
+
+    mktemp() do path, io
+        write_junit_file(path, suite)
+        report_string = read(io, String)
+        expected = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <testsuite name="manual" timestamp="2023-01-15T16:42:00.0" time="30.0" tests="2" skipped="0" failures="0" errors="0">
+        \t<testcase name="outer" timestamp="2023-01-15T16:42:00.0" time="30.0" tests="2" skipped="0" failures="0" errors="0">
+        \t</testcase>
+        </testsuite>
+        """
+        # leading/trailing whitespace isn't important
+        @test strip(report_string) == strip(expected)
+    end
+end
+
 end # junit_xml.jl testset
