@@ -28,7 +28,7 @@ end
 mutable struct JUnitTestCase  # TestItem run
     const name::String
     counts::JUnitCounts
-    stats::PerfStats
+    stats::Union{PerfStats, Nothing} # Additional stats not available from the testset
     error_message::Union{String,Nothing} # Additional message to include in `<error>`
     logs::Union{Vector{UInt8},Nothing} # Captured logs from a `@testitem`
 end
@@ -40,7 +40,13 @@ function testcases(ti::TestItem)
     return [JUnitTestCase(ti, i) for i in 1:length(ti.testsets)]
 end
 
-function JUnitTestCase(ti, run_number::Int)
+function JUnitTestCase(ts::DefaultTestSet)
+    name = ts.description
+    counts = JUnitCounts(ts)
+    return JUnitTestCase(name, counts, nothing, nothing, nothing)
+end
+
+function JUnitTestCase(ti::TestItem, run_number::Int)
     ts = ti.testsets[run_number]
     counts = JUnitCounts(ts)
     stats = ti.stats[run_number]
@@ -163,6 +169,11 @@ end
 
 function write_junit_file(proj_name, dir, junit)
     path = junit_path(proj_name, dir, junit)
+    return write_junit_file(path, junit)
+end
+
+# TestSuites or a single TestSuite can be a valid file
+function write_junit_file(path::AbstractString, junit::Union{JUnitTestSuites,JUnitTestSuite})
     @info "Writing JUnit XML file to $(repr(path))"
     mkpath(dirname(path))
     open(path, "w") do io
@@ -171,10 +182,10 @@ function write_junit_file(proj_name, dir, junit)
     return nothing
 end
 
-# TestSuites or a single TestSuite can be a valid file
-function write_junit_file(io, junit::Union{JUnitTestSuites,JUnitTestSuite})
+function write_junit_file(io::IO, junit::Union{JUnitTestSuites,JUnitTestSuite})
     write(io, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
     write_junit_xml(io, junit)
+    return nothing
 end
 
 function write_junit_xml(io, junit::JUnitTestSuites)
@@ -234,7 +245,7 @@ function write_junit_xml(io, tc::JUnitTestCase)
     write(io, "\n\t<testcase name=", xml_markup(tc.name))
     write_counts(io, tc.counts)
     write(io, ">")
-    write_dd_tags(io, tc.stats)
+    !isnothing(tc.stats) && write_dd_tags(io, tc.stats)
     if !isnothing(tc.logs)
         write(io, "\n\t\t<error")
         !isnothing(tc.error_message) && write(io, " message=", xml_markup(tc.error_message))
