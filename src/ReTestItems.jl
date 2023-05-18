@@ -191,6 +191,16 @@ function runtests(
     end
 end
 
+# keep track of temporary test environments we create in case we can reuse them
+# on repeated runs of `runtests` in the same Project
+# in https://relationalai.atlassian.net/browse/RAI-11599, it was noted that when
+# runtests was called at the REPL where Revise was already loaded, then source
+# code was changed, then `runtests` was called again, a new temp test env was
+# created on the 2nd call and precompilation happened because a source code change
+# was detected, even though Revise already picks up the changes at the REPL.
+# By tracking and reusing test environments, we can avoid this issue.
+const TEST_ENVS = Dict{String, String}()
+
 function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::Int, worker_init_expr::Expr, testitem_timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
@@ -214,10 +224,19 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::Int, worker
             return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
         else
             @debugv 1 "Activating test environment for `$proj_file`"
-            return Pkg.activate(proj_file) do
-                TestEnv.activate() do
-                    _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
+            orig_proj = Base.active_project()
+            try
+                if haskey(TEST_ENVS, proj_file) && isfile(TEST_ENVS[proj_file])
+                    testenv = TEST_ENVS[proj_file]
+                    Base.set_active_project(testenv)
+                else
+                    Pkg.activate(proj_file)
+                    testenv = TestEnv.activate()
+                    TEST_ENVS[proj_file] = testenv
                 end
+                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
+            finally
+                Base.set_active_project(orig_proj)
             end
         end
     end
