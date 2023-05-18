@@ -224,7 +224,6 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::Int, worker
                     testenv = TestEnv.activate()
                     TEST_ENVS[proj_file] = testenv
                 end
-                @debugv 2 "Running in test environment `$(Base.active_project())`"
                 _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
             finally
                 Base.set_active_project(orig_proj)
