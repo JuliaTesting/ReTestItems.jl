@@ -118,6 +118,10 @@ will be run.
 - `verbose_results::Bool`: If `true`, the final test report will test each `@testset`, otherwise
     the results are aggregated on the `@testitem` level. Default is `false` for non-interactive sessions
     or when `logs=:issues`, `true` otherwise.
+- `use_current_env::Bool=false`: if `true`, `runtests` will assume that it can run target tests in the current
+   environment instead of activating the test environment of the project being tested. This is useful when
+    running `runtests` repeatedly from the REPL with Revise and making changes to the project source code,
+    because otherwise, the project is continually re-precompiled on each `runtests` invocation.
 """
 function runtests end
 
@@ -160,6 +164,7 @@ function runtests(
     report::Bool=parse(Bool, get(ENV, "RETESTITEMS_REPORT", "false")),
     logs::Symbol=default_log_display_mode(report, nworkers),
     verbose_results::Bool=logs!=:issues && isinteractive(),
+    use_current_env::Bool=false
 )
     paths′ = filter(paths) do p
         if !ispath(p)
@@ -184,14 +189,14 @@ function runtests(
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debuglvl, report, logs)
+            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debuglvl, report, logs, use_current_env)
         end
     else
-        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debuglvl, report, logs)
+        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debuglvl, report, logs, use_current_env)
     end
 end
 
-function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::Int, worker_init_expr::Expr, testitem_timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
+function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::Int, worker_init_expr::Expr, testitem_timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, use_current_env::Bool)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -208,7 +213,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::Int, worker
     # Wrapping with the logger that was set before eval'ing any user code to
     # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
     with_logger(current_logger()) do
-        if is_running_test_runtests_jl(proj_file)
+        if use_current_env || is_running_test_runtests_jl(proj_file)
             # Assume this is `Pkg.test`, so test env already active.
             @debugv 2 "Running in current environment `$(Base.active_project())`"
             return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
