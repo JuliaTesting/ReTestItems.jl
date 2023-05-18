@@ -214,14 +214,26 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::Int, worker
             return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
         else
             @debugv 1 "Activating test environment for `$proj_file`"
-            return Pkg.activate(proj_file) do
-                TestEnv.activate() do
-                    _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
+            orig_proj = Base.active_project()
+            try
+                if haskey(TEST_ENVS, proj_file)
+                    testenv = TEST_ENVS[proj_file]
+                    Base.set_active_project(testenv)
+                else
+                    Pkg.activate(proj_file)
+                    testenv = TestEnv.activate()
+                    TEST_ENVS[proj_file] = testenv
                 end
+                @debugv 2 "Running in test environment `$(Base.active_project())`"
+                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
+            finally
+                Base.set_active_project(orig_proj)
             end
         end
     end
 end
+
+const TEST_ENVS = Dict{String, String}()
 
 function _runtests_in_current_env(
     shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr,
