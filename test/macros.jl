@@ -141,6 +141,10 @@ end
     @test !get(task_local_storage(), :__TESTITEM_ACTIVE__, false)
 end
 
+@testset "testitem macro runs immediately outside `runtests`" begin
+    @test nothing == @testitem "run" begin; @test true; end
+end
+
 #=
 NOTE:
     These tests are disabled as we stopped using anonymous modules;
