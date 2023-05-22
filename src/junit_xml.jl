@@ -108,6 +108,10 @@ function junit_record!(top::JUnitTestSuites, ts::JUnitTestSuite)
     update!(top.counts, ts.counts)
     push!(top.testsuites, ts)
 end
+function junit_record!(ts1::JUnitTestSuite, ts2::JUnitTestSuite)
+    update!(ts1.counts, ts2.counts)
+    append!(ts1.testcases, ts2.testcases)
+end
 function junit_record!(ts::JUnitTestSuite, tc::JUnitTestCase)
     update!(ts.counts, tc.counts)
     push!(ts.testcases, tc)

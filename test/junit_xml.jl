@@ -202,31 +202,40 @@ end
     using ReTestItems: JUnitTestCase, JUnitTestSuite
     using Dates: datetime2unix, DateTime
 
-    ts = @testset "outer" begin
-        @test true
-        @testset "inner" begin
+    function get_test_suite(suite_name, test_name)
+        ts = @testset "$test_name" begin
             @test true
+            @testset "inner" begin
+                @test true
+            end
         end
+        # Make the test time deterministic to make testing report output easier
+        ts.time_start = datetime2unix(DateTime(2023, 01, 15, 16, 42))
+        ts.time_end = datetime2unix(DateTime(2023, 01, 15, 16, 42, 30))
+
+        # should be able to construct a TestCase from a TestSet
+        tc = JUnitTestCase(ts)
+        @test tc isa JUnitTestCase
+
+        # once wrapped in a TestSuite, this should have enough info to write out a report
+        suite = JUnitTestSuite(suite_name)
+        junit_record!(suite, tc)
+        @test suite isa JUnitTestSuite
+        return suite
     end
-    # Make the test time deterministic to make testing report output easier
-    ts.time_start = datetime2unix(DateTime(2023, 01, 15, 16, 42))
-    ts.time_end = datetime2unix(DateTime(2023, 01, 15, 16, 42, 30))
-
-    # should be able to construct a TestCase from a TestSet
-    tc = JUnitTestCase(ts)
-    @test tc isa JUnitTestCase
-
-    # once wrapped in a TestSuite, this should have enough info to write out a report
-    suite = JUnitTestSuite("manual", tc.counts, [tc])
-    @test suite isa JUnitTestSuite
+    outer_suite = get_test_suite("manual", "outer1")
+    inner_suite = get_test_suite("inner", "outer2")
+    junit_record!(outer_suite, inner_suite)
 
     mktemp() do path, io
-        write_junit_file(path, suite)
+        write_junit_file(path, outer_suite)
         report_string = read(io, String)
         expected = """
         <?xml version="1.0" encoding="UTF-8"?>
-        <testsuite name="manual" timestamp="2023-01-15T16:42:00.0" time="30.0" tests="2" skipped="0" failures="0" errors="0">
-        \t<testcase name="outer" timestamp="2023-01-15T16:42:00.0" time="30.0" tests="2" skipped="0" failures="0" errors="0">
+        <testsuite name="manual" timestamp="2023-01-15T16:42:00.0" time="60.0" tests="4" skipped="0" failures="0" errors="0">
+        \t<testcase name="outer1" timestamp="2023-01-15T16:42:00.0" time="30.0" tests="2" skipped="0" failures="0" errors="0">
+        \t</testcase>
+        \t<testcase name="outer2" timestamp="2023-01-15T16:42:00.0" time="30.0" tests="2" skipped="0" failures="0" errors="0">
         \t</testcase>
         </testsuite>
         """
