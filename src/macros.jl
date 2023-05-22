@@ -128,6 +128,17 @@ struct TestItem
     stats::Vector{PerfStats} # populated when the test item is finished evaluating
     scheduled_for_evaluation::ScheduledForEvaluation # to keep track of whether the test item has been scheduled for evaluation
 end
+function TestItem(id, name, tags, default_imports, setups, retries, file, line, project_root, code)
+    return TestItem(
+        id, name, tags, default_imports, setups, retries, file, line, project_root, code,
+        TestSetup[],
+        Ref{Int}(0),
+        DefaultTestSet[],
+        Ref{Int}(0),
+        PerfStats[],
+        ScheduledForEvaluation(),
+    )
+end
 
 """
     @testitem "name" [tags=[] setup=[] retries=0 default_imports=true] begin
@@ -211,6 +222,7 @@ macro testitem(nm, exs...)
     retries = 0
     tags = Symbol[]
     setup = Any[]
+    _quote = false  # useful for testing `@testitem` itself
     if length(exs) > 1
         kw_seen = Set{Symbol}()
         for ex in exs[1:end-1]
@@ -231,6 +243,9 @@ macro testitem(nm, exs...)
             elseif kw == :retries
                 retries = ex.args[2]
                 @assert retries isa Integer "`default_imports` keyword must be passed an `Integer`"
+            elseif kw == :_quote
+                _quote = ex.args[2]
+                @assert _quote isa Bool "`_quote` keyword must be passed a `Bool`"
             else
                 error("unknown `@testitem` keyword arg `$(ex.args[1])`")
             end
@@ -241,20 +256,20 @@ macro testitem(nm, exs...)
     end
     q = QuoteNode(exs[end])
     esc(quote
-        $store_test_item_setup(
-            $TestItem(
-                Ref(0), $nm, $tags, $default_imports, $setup, $retries,
-                $(String(__source__.file)), $(__source__.line),
-                $gettls(:__RE_TEST_PROJECT__, "."),
-                $q,
-                $TestSetup[],
-                Ref{Int}(0),
-                $DefaultTestSet[],
-                Ref{Int}(0),
-                $PerfStats[],
-                $ScheduledForEvaluation()
-            )
+        let ti = $TestItem(
+            Ref(0), $nm, $tags, $default_imports, $setup, $retries,
+            $(String(__source__.file)), $(__source__.line),
+            $gettls(:__RE_TEST_PROJECT__, "."),
+            $q,
         )
+            if $_quote || $gettls(:__RE_TEST_RUNNING__, false)::$Bool
+                $store_test_item_setup($ti)
+                $ti
+            else # We are not in a `runtests` call, so we run the testitem immediately.
+                $runtestitem($ti)
+                nothing
+            end
+        end
     end)
 end
 

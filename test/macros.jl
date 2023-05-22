@@ -1,8 +1,22 @@
+using AutoHashEquals
+using ReTestItems
+using Test
+
 # this file specifically tests *unit* tests for the macros: `@testitem` and `@testsetup`
 # so *not* the `runtests` functionality, which utilizes specific
 # contrived packages/testfiles
 n_passed(ts) = ts.n_passed
 n_passed(ts::ReTestItems.TestItemResult) = n_passed(ts.testset)
+
+function expand(f)
+    old = get(task_local_storage(), :__RE_TEST_RUNNING__, false)
+    try
+        task_local_storage()[:__RE_TEST_RUNNING__] = true
+        return f()
+    finally
+        task_local_storage()[:__RE_TEST_RUNNING__] = old
+    end
+end
 
 @testset "macros.jl" verbose=true begin
 
@@ -14,8 +28,10 @@ n_passed(ts::ReTestItems.TestItemResult) = n_passed(ts.testset)
 end
 
 @testset "testitem macro basic" begin
-    ti = @testitem "TI1" begin
-        @test 1 + 1 == 2
+    ti = expand() do
+        @testitem "TI1" begin
+            @test 1 + 1 == 2
+        end
     end
     @test ti.name == "TI1"
     @test ti.file isa String
@@ -23,16 +39,20 @@ end
 end
 
 @testset "testitem with `tags`" begin
-    ti2 = @testitem "TI2" tags=[:foo] begin
-        @test true
+    ti2 = expand() do
+        @testitem "TI2" tags=[:foo] begin
+            @test true
+        end
     end
     @test ti2.tags == [:foo]
     @test n_passed(ReTestItems.runtestitem(ti2)) == 1
 end
 
 @testset "testitem with `retries`" begin
-    ti = @testitem "TI" retries=2 begin
-        @test true
+    ti = expand() do
+        @testitem "TI" retries=2 begin
+            @test true
+        end
     end
     @test ti.retries == 2
     @test n_passed(ReTestItems.runtestitem(ti)) == 1
@@ -40,17 +60,19 @@ end
 
 @testset "testitem with macro import" begin
     # Test that `@testitem` correctly imports macros before expanding macros.
-    ti3 = @testitem "macro-import" begin
-        # Test with something that won't be imported in Main
-        # i.e. not Base, Test, or TestsInSrc (i.e. this package)
-        # Let's use a small package with a widely-used macro.
-        # We merely want to check that this testitem runs without hitting
-        # a `UndefVarError: @auto_hash_equals not defined`.
-        using AutoHashEquals: @auto_hash_equals
-        @auto_hash_equals mutable struct MacroTest
-            x
+    ti3 = expand() do
+            @testitem "macro-import" begin
+            # Test with something that won't be imported in Main
+            # i.e. not Base, Test, or TestsInSrc (i.e. this package)
+            # Let's use a small package with a widely-used macro.
+            # We merely want to check that this testitem runs without hitting
+            # a `UndefVarError: @auto_hash_equals not defined`.
+            using AutoHashEquals: @auto_hash_equals
+            @auto_hash_equals mutable struct MacroTest
+                x
+            end
+            @test MacroTest(1) isa MacroTest
         end
-        @test MacroTest(1) isa MacroTest
     end
     @test n_passed(ReTestItems.runtestitem(ti3)) == 1
 end
@@ -69,10 +91,12 @@ end
         end
         @assert Foo(1) isa Foo
     end
-    ti4 = @testitem "Foo" setup=[FooSetup, FooSetup2] begin
-        @test FooSetup.x == 1
-        @test y == 2
-        @test FooSetup2.Foo(1) isa FooSetup2.Foo
+    ti4 = expand() do
+        @testitem "Foo" setup=[FooSetup, FooSetup2] begin
+            @test FooSetup.x == 1
+            @test y == 2
+            @test FooSetup2.Foo(1) isa FooSetup2.Foo
+        end
     end
     @test ti4.setups == [:FooSetup, :FooSetup2]
     @test n_passed(ReTestItems.runtestitem(ti4)) == 3
@@ -82,15 +106,19 @@ end
     ts = @testsetup module FooSetup3
         include("_testsetupinclude.jl")
     end
-    ti5 = @testitem "Foo3" setup=[FooSetup3] begin
-        include("_testiteminclude.jl")
+    ti5 = expand() do
+        @testitem "Foo3" setup=[FooSetup3] begin
+            include("_testiteminclude.jl")
+        end
     end
     @test n_passed(ReTestItems.runtestitem(ti5)) == 2
 end
 
 @testset "missing testsetup" begin
-    ti6 = @testitem "Foo4" setup=[NonExistentSetup] begin
-        @test 1 + 1 == 2
+    ti6 = expand() do
+        @testitem "Foo4" setup=[NonExistentSetup] begin
+            @test 1 + 1 == 2
+        end
     end
     ts = ReTestItems.runtestitem(ti6; finish_test=false)
     @test ts.testset.results[1] isa Test.Error
