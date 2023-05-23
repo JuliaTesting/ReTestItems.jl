@@ -269,7 +269,7 @@ macro testitem(nm, exs...)
                 $ti
             else # We are not in a `runtests` call, so we run the testitem immediately.
                 $runtestitem($ti)
-                nothing
+                $nothing
             end
         end
     end)
