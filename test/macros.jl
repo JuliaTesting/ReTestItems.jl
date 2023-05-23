@@ -142,7 +142,23 @@ end
 end
 
 @testset "testitem macro runs immediately outside `runtests`" begin
+    # Should run and return `nothing`
     @test nothing == @testitem "run" begin; @test true; end
+    # Double-check it runs by looking for the START/DONE messages.
+    # The START/DONE messages are always logged to DEFAULT_STDOUT, so we need to catch that.
+    old = ReTestItems.DEFAULT_STDOUT[]
+    try
+        io = IOBuffer()
+        ReTestItems.DEFAULT_STDOUT[] = io
+        @testitem "run" begin
+            @test true
+        end
+        output = String(take!(io))
+        @test contains(output, r"START\s*test item \"run\"")
+        @test contains(output, r"DONE\s*test item \"run\"")
+    finally
+        ReTestItems.DEFAULT_STDOUT[] = old
+    end
 end
 
 #=
