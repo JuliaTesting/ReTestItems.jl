@@ -8,7 +8,8 @@ using Test
 n_passed(ts) = ts.n_passed
 n_passed(ts::ReTestItems.TestItemResult) = n_passed(ts.testset)
 
-function expand(f)
+# Mark `ReTestItems.runtests` as running, so that `@testitem`s don't run themselves.
+function no_run(f)
     old = get(task_local_storage(), :__RE_TEST_RUNNING__, false)
     try
         task_local_storage()[:__RE_TEST_RUNNING__] = true
@@ -28,7 +29,7 @@ end
 end
 
 @testset "testitem macro basic" begin
-    ti = expand() do
+    ti = no_run() do
         @testitem "TI1" begin
             @test 1 + 1 == 2
         end
@@ -39,7 +40,7 @@ end
 end
 
 @testset "testitem with `tags`" begin
-    ti2 = expand() do
+    ti2 = no_run() do
         @testitem "TI2" tags=[:foo] begin
             @test true
         end
@@ -49,7 +50,7 @@ end
 end
 
 @testset "testitem with `retries`" begin
-    ti = expand() do
+    ti = no_run() do
         @testitem "TI" retries=2 begin
             @test true
         end
@@ -60,7 +61,7 @@ end
 
 @testset "testitem with macro import" begin
     # Test that `@testitem` correctly imports macros before expanding macros.
-    ti3 = expand() do
+    ti3 = no_run() do
             @testitem "macro-import" begin
             # Test with something that won't be imported in Main
             # i.e. not Base, Test, or TestsInSrc (i.e. this package)
@@ -91,7 +92,7 @@ end
         end
         @assert Foo(1) isa Foo
     end
-    ti4 = expand() do
+    ti4 = no_run() do
         @testitem "Foo" setup=[FooSetup, FooSetup2] begin
             @test FooSetup.x == 1
             @test y == 2
@@ -106,7 +107,7 @@ end
     ts = @testsetup module FooSetup3
         include("_testsetupinclude.jl")
     end
-    ti5 = expand() do
+    ti5 = no_run() do
         @testitem "Foo3" setup=[FooSetup3] begin
             include("_testiteminclude.jl")
         end
@@ -115,7 +116,7 @@ end
 end
 
 @testset "missing testsetup" begin
-    ti6 = expand() do
+    ti6 = no_run() do
         @testitem "Foo4" setup=[NonExistentSetup] begin
             @test 1 + 1 == 2
         end
@@ -158,6 +159,50 @@ end
         @test contains(output, r"DONE\s*test item \"run\"")
     finally
         ReTestItems.DEFAULT_STDOUT[] = old
+    end
+    @testset "`runtestitem` default behaviour" begin
+        # When running an individual test-item by itself we default to verbose output
+        # i.e. eager logs and full results table.
+        using IOCapture
+        # run `testset_func` as if not already inside a testset, so it prints results immediately.
+        function toplevel_testset(testset_func)
+            old = get(task_local_storage(), :__BASETESTNEXT__, nothing)
+            try
+                if old !== nothing
+                    delete!(task_local_storage(), :__BASETESTNEXT__)
+                end
+                testset_func()
+            finally
+                if old !== nothing
+                    task_local_storage()[:__BASETESTNEXT__] = old
+                end
+            end
+        end
+        c = IOCapture.capture() do
+            toplevel_testset() do
+                @testitem "comparisons" begin
+                    @testset "min" begin
+                        @info "test 1"
+                        @test min(1, 2) == 1
+                    end
+                    @testset "max" begin
+                        @info "test 2"
+                        @test max(1, 2) == 2
+                    end
+                end
+            end
+        end
+        @test contains(
+            c.output,
+            r"""
+            \[ Info: test 1
+            \[ Info: test 2
+            Test Summary: \| Pass  Total  Time
+            comparisons   \|    2      2  \d*.\ds
+              min         \|    1      1  \d*.\ds
+              max         \|    1      1  \d*.\ds
+            """
+        )
     end
 end
 

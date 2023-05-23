@@ -3,6 +3,7 @@ gettls(k, d) = get(task_local_storage(), k, d)
 ###
 ### testsetup
 ###
+
 """
     TestSetup(name, code)
 
@@ -222,7 +223,7 @@ macro testitem(nm, exs...)
     retries = 0
     tags = Symbol[]
     setup = Any[]
-    _quote = false  # useful for testing `@testitem` itself
+    _run = true  # useful for testing `@testitem` itself
     if length(exs) > 1
         kw_seen = Set{Symbol}()
         for ex in exs[1:end-1]
@@ -243,9 +244,9 @@ macro testitem(nm, exs...)
             elseif kw == :retries
                 retries = ex.args[2]
                 @assert retries isa Integer "`default_imports` keyword must be passed an `Integer`"
-            elseif kw == :_quote
-                _quote = ex.args[2]
-                @assert _quote isa Bool "`_quote` keyword must be passed a `Bool`"
+            elseif kw == :_run
+                _run = ex.args[2]
+                @assert _run isa Bool "`_run` keyword must be passed a `Bool`"
             else
                 error("unknown `@testitem` keyword arg `$(ex.args[1])`")
             end
@@ -263,7 +264,7 @@ macro testitem(nm, exs...)
             $gettls(:__RE_TEST_PROJECT__, "."),
             $q,
         )
-            if $_quote || $gettls(:__RE_TEST_RUNNING__, false)::$Bool
+            if !$_run || $gettls(:__RE_TEST_RUNNING__, false)::$Bool
                 $store_test_item_setup($ti)
                 $ti
             else # We are not in a `runtests` call, so we run the testitem immediately.

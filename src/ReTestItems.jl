@@ -159,7 +159,7 @@ function runtests(
     tags::Union{Symbol,AbstractVector{Symbol},Nothing}=nothing,
     report::Bool=parse(Bool, get(ENV, "RETESTITEMS_REPORT", "false")),
     logs::Symbol=default_log_display_mode(report, nworkers),
-    verbose_results::Bool=logs!=:issues && isinteractive(),
+    verbose_results::Bool=(logs !== :issues && isinteractive())
 )
     paths′ = filter(paths) do p
         if !ispath(p)
@@ -667,7 +667,12 @@ function runtestitem(ti::TestItem; kw...)
     runtestitem(ti, GLOBAL_TEST_CONTEXT_FOR_TESTING; kw...)
 end
 
-function runtestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=false, finish_test::Bool=true, logs::Symbol=:eager)
+# Default to verbose output for running an individual test-item by itself, i.e.
+# when `runtestitem` called directly or `@testitem` called outside of `runtests`.
+function runtestitem(
+    ti::TestItem, ctx::TestContext;
+    logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true,
+)
     name = ti.name
     log_testitem_start(ti, ctx.ntestitems)
     ts = DefaultTestSet(name; verbose=verbose_results)
