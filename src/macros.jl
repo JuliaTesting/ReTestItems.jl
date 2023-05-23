@@ -255,8 +255,9 @@ macro testitem(nm, exs...)
         error("expected `@testitem` to have a body")
     end
     q = QuoteNode(exs[end])
+    ti = gensym(:ti)
     esc(quote
-        let ti = $TestItem(
+        let $ti = $TestItem(
             Ref(0), $nm, $tags, $default_imports, $setup, $retries,
             $(String(__source__.file)), $(__source__.line),
             $gettls(:__RE_TEST_PROJECT__, "."),
