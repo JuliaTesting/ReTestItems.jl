@@ -682,6 +682,8 @@ function runtestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=false
         end
     end
     Test.push_testset(ts)
+    prev = get(task_local_storage(), :__TESTITEM_ACTIVE__, false)
+    task_local_storage()[:__TESTITEM_ACTIVE__] = true
     try
         for setup in ti.setups
             # TODO(nhd): Consider implementing some affinity to setups, so that we can
@@ -737,6 +739,7 @@ function runtestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=false
         # Make sure all test setup logs are commited to file
         foreach(ts->isassigned(ts.logstore) && flush(ts.logstore[]), ti.testsetups)
         ts1 = Test.pop_testset()
+        task_local_storage()[:__TESTITEM_ACTIVE__] = prev
         @assert ts1 === ts
         try
             finish_test && Test.finish(ts) # This will throw an exception if any of the tests failed.

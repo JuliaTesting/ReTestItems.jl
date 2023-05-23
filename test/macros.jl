@@ -106,6 +106,13 @@ end
     )
 end
 
+@testset "can identity if in a `@testitem`" begin
+    @testitem "testitem active" begin
+        @test get(task_local_storage(), :__TESTITEM_ACTIVE__, false)
+    end
+    @test !get(task_local_storage(), :__TESTITEM_ACTIVE__, false)
+end
+
 #=
 NOTE:
     These tests are disabled as we stopped using anonymous modules;
