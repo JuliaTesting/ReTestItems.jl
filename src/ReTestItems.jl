@@ -642,12 +642,18 @@ function ensure_setup!(ctx::TestContext, setup::Symbol, setups::Vector{TestSetup
         mod_expr = :(module $(gensym(ts.name)) end)
         # replace the module expr body with our @testsetup code
         mod_expr.args[3] = ts.code
-        newmod = _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : ts.logstore[]) do
-            with_source_path(() -> Core.eval(Main, mod_expr), ts.file)
+        prev = get(task_local_storage(), :__TESTSETUP_ACTIVE__, false)
+        task_local_storage()[:__TESTSETUP_ACTIVE__] = true
+        try
+            newmod = _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : ts.logstore[]) do
+                with_source_path(() -> Core.eval(Main, mod_expr), ts.file)
+            end
+            # add the new module to our TestSetupModules
+            mods.modules[setup] = newmod
+            return nameof(newmod)
+        finally
+            task_local_storage()[:__TESTSETUP_ACTIVE__] = prev
         end
-        # add the new module to our TestSetupModules
-        mods.modules[setup] = newmod
-        return nameof(newmod)
     end
 end
 
