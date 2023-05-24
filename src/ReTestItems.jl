@@ -682,6 +682,10 @@ function runtestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=false
         end
     end
     Test.push_testset(ts)
+    # This allows us to identify if the code is running inside a `@testitem`, which is
+    # useful for e.g. macros that behave differently conditional on being in a `@testitem`.
+    # This was added so we could have a `@test_foo` macro exapnd to a `@testset` if already
+    # in a `@testitem` and expand to an `@testitem` otherwise.
     prev = get(task_local_storage(), :__TESTITEM_ACTIVE__, false)
     task_local_storage()[:__TESTITEM_ACTIVE__] = true
     try
