@@ -668,4 +668,14 @@ end
     @test count("No Captured Logs", captured.output) == 1
 end
 
+if isdefined(Base.Threads, :nthreadpools)
+    @testset "Worker and nworker_threads argument" begin
+        test_file_path = joinpath(TEST_FILES_DIR, "_nworker_threads_test.jl")
+        results = encased_testset(()->runtests(test_file_path; nworkers=1, nworker_threads="3,2"))
+        @test n_passed(results) == 2
+    end
+else
+    @warn "Skipping tests with interactive threadpool support which requires Julia Version v1.9+" VERSION
+end
+
 end # integrationtests.jl testset

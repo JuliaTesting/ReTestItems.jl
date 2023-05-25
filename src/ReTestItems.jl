@@ -61,6 +61,27 @@ struct TimeoutException <: Exception
     msg::String
 end
 
+_is_good_nthread_str(str) = occursin(r"^(auto|[1-9]\d{0,4})$", str)
+_validated_nworker_threads(n::Int) = n > 0 ? string(n) : throw(ArgumentError("Invalid value for `nworker_threads` : $n"))
+function _validated_nworker_threads(str)
+    isok = true
+    if isdefined(Threads, :nthreadpools)
+        if ',' in str
+            t1, t2 = split(str, ',', limit=2, keepempty=true)
+            isok &= _is_good_nthread_str(t1) && _is_good_nthread_str(t2)
+            if isok
+                str = string(t1 == "auto" ? string(Sys.CPU_THREADS) : t1, ',', t2 == "auto" ? 1 : t2)
+            end
+        else
+            isok &= _is_good_nthread_str(str)
+        end
+    else
+        isok &= _is_good_nthread_str(str)
+    end
+    isok || throw(ArgumentError("Invalid value for `nworker_threads` : $str"))
+    return replace(str, "auto" => string(Sys.CPU_THREADS))
+end
+
 """
     ReTestItems.runtests()
     ReTestItems.runtests(mod::Module)
@@ -100,8 +121,9 @@ will be run.
   contain information for all runs of a `@testitem` that was retried.
 - `nworkers::Int`: The number of workers to use for running `@testitem`s. Default 0. Can also be set
   using the `RETESTITEMS_NWORKERS` environment variable.
-- `nworker_threads::Int`: The number of threads to use for each worker. Defaults to 2.
-  Can also be set using the `RETESTITEMS_NWORKER_THREADS` environment variable.
+- `nworker_threads::Union{String,Int}`: The number of threads to use for each worker. Defaults to 2.
+  Can also be set using the `RETESTITEMS_NWORKER_THREADS` environment variable. Interactive threads are
+  supported through a string (e.g. "auto,2").
 - `worker_init_expr::Expr`: an expression that will be evaluated on each worker before any tests are run.
   Can be used to load packages or set up the environment. Must be a `:block` expression.
 - `report::Bool=false`: If `true`, write a JUnit-format XML file summarising the test results.
@@ -150,7 +172,7 @@ function runtests(
     shouldrun,
     paths::AbstractString...;
     nworkers::Int=parse(Int, get(ENV, "RETESTITEMS_NWORKERS", "0")),
-    nworker_threads::Int=parse(Int, get(ENV, "RETESTITEMS_NWORKER_THREADS", "2")),
+    nworker_threads::Union{Int,String}=get(ENV, "RETESTITEMS_NWORKER_THREADS", "2"),
     worker_init_expr::Expr=Expr(:block),
     testitem_timeout::Real=DEFAULT_TEST_ITEM_TIMEOUT,
     retries::Int=parse(Int, get(ENV, "RETESTITEMS_RETRIES", string(DEFAULT_RETRIES))),
@@ -161,6 +183,7 @@ function runtests(
     logs::Symbol=default_log_display_mode(report, nworkers),
     verbose_results::Bool=logs!=:issues && isinteractive(),
 )
+    nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = filter(paths) do p
         if !ispath(p)
             @warn "No such path $(repr(p))"
@@ -201,7 +224,7 @@ end
 # By tracking and reusing test environments, we can avoid this issue.
 const TEST_ENVS = Dict{String, String}()
 
-function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::Int, worker_init_expr::Expr, testitem_timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
+function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, testitem_timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
