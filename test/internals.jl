@@ -219,31 +219,31 @@ end
     @test _error_message(fail, ti) == "Test failed at unknown:42"
 end
 
-@testset "_validate_nworker_threads" begin
+@testset "_validated_nworker_threads" begin
     auto_cpus = string(Base.Sys.CPU_THREADS)
 
-    @test ReTestItems._validate_nworker_threads(1) == "1"
-    @test_throws ArgumentError ReTestItems._validate_nworker_threads(0)
-    @test_throws ArgumentError ReTestItems._validate_nworker_threads(-1)
+    @test ReTestItems._validated_nworker_threads(1) == "1"
+    @test_throws ArgumentError ReTestItems._validated_nworker_threads(0)
+    @test_throws ArgumentError ReTestItems._validated_nworker_threads(-1)
 
-    @test ReTestItems._validate_nworker_threads("1") == "1"
-    @test ReTestItems._validate_nworker_threads("auto") == auto_cpus
-    @test_throws ArgumentError ReTestItems._validate_nworker_threads("0")
-    @test_throws ArgumentError ReTestItems._validate_nworker_threads("-1")
-    @test_throws ArgumentError ReTestItems._validate_nworker_threads("1auto")
-    @test_throws ArgumentError ReTestItems._validate_nworker_threads("1,")
+    @test ReTestItems._validated_nworker_threads("1") == "1"
+    @test ReTestItems._validated_nworker_threads("auto") == auto_cpus
+    @test_throws ArgumentError ReTestItems._validated_nworker_threads("0")
+    @test_throws ArgumentError ReTestItems._validated_nworker_threads("-1")
+    @test_throws ArgumentError ReTestItems._validated_nworker_threads("1auto")
+    @test_throws ArgumentError ReTestItems._validated_nworker_threads("1,")
 
     if isdefined(Base.Threads, :nthreadpools)
-        @test ReTestItems._validate_nworker_threads("1,1") == "1,1"
-        @test ReTestItems._validate_nworker_threads("2,1") == "2,1"
-        @test ReTestItems._validate_nworker_threads("1,2") == "1,2"
-        @test ReTestItems._validate_nworker_threads("auto,1") == "$auto_cpus,1"
-        @test ReTestItems._validate_nworker_threads("1,auto") == "1,1"
-        @test ReTestItems._validate_nworker_threads("auto,auto") == "$auto_cpus,1"
-        @test_throws ArgumentError ReTestItems._validate_nworker_threads("1,-1")
-        @test_throws ArgumentError ReTestItems._validate_nworker_threads("0,0")
-        @test_throws ArgumentError ReTestItems._validate_nworker_threads("0,1")
-        @test_throws ArgumentError ReTestItems._validate_nworker_threads("0,auto")
+        @test ReTestItems._validated_nworker_threads("1,1") == "1,1"
+        @test ReTestItems._validated_nworker_threads("2,1") == "2,1"
+        @test ReTestItems._validated_nworker_threads("1,2") == "1,2"
+        @test ReTestItems._validated_nworker_threads("auto,1") == "$auto_cpus,1"
+        @test ReTestItems._validated_nworker_threads("1,auto") == "1,1"
+        @test ReTestItems._validated_nworker_threads("auto,auto") == "$auto_cpus,1"
+        @test_throws ArgumentError ReTestItems._validated_nworker_threads("1,-1")
+        @test_throws ArgumentError ReTestItems._validated_nworker_threads("0,0")
+        @test_throws ArgumentError ReTestItems._validated_nworker_threads("0,1")
+        @test_throws ArgumentError ReTestItems._validated_nworker_threads("0,auto")
     end
 end
 

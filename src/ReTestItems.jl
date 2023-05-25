@@ -62,8 +62,8 @@ struct TimeoutException <: Exception
 end
 
 _is_good_nthread_str(str) = occursin(r"^(auto|[1-9]\d{0,4})$", str)
-_validate_nworker_threads(n::Int) = n > 0 ? string(n) : throw(ArgumentError("Invalid value for `nworker_threads` : $n"))
-function _validate_nworker_threads(str)
+_validated_nworker_threads(n::Int) = n > 0 ? string(n) : throw(ArgumentError("Invalid value for `nworker_threads` : $n"))
+function _validated_nworker_threads(str)
     isok = true
     if isdefined(Threads, :nthreadpools)
         if ',' in str
@@ -183,7 +183,7 @@ function runtests(
     logs::Symbol=default_log_display_mode(report, nworkers),
     verbose_results::Bool=logs!=:issues && isinteractive(),
 )
-    nworker_threads = _validate_nworker_threads(nworker_threads)
+    nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = filter(paths) do p
         if !ispath(p)
             @warn "No such path $(repr(p))"
