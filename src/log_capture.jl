@@ -215,7 +215,7 @@ end
 
 # Marks the start of each test item
 function log_testitem_start(ti::TestItem, ntestitems=0)
-    io = IOContext(IOBuffer(), :color=>Base.get_have_color())
+    io = IOContext(IOBuffer(), :color => get(DEFAULT_STDOUT[], :color, false)::Bool)
     interactive = parse(Bool, get(ENV, "RETESTITEMS_INTERACTIVE", string(Base.isinteractive())))
     print(io, format(now(), "HH:MM:SS | "))
     !interactive && print(io, _mem_watermark())
@@ -231,7 +231,7 @@ end
 
 # mostly copied from timing.jl
 function log_testitem_done(ti::TestItem, ntestitems=0)
-    io = IOContext(IOBuffer(), :color=>Base.get_have_color())
+    io = IOContext(IOBuffer(), :color => get(DEFAULT_STDOUT[], :color, false)::Bool)
     interactive = parse(Bool, get(ENV, "RETESTITEMS_INTERACTIVE", string(Base.isinteractive())))
     print(io, format(now(), "HH:MM:SS | "))
     !interactive && print(io, _mem_watermark())

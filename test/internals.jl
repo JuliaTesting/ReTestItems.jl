@@ -11,7 +11,7 @@ using ReTestItems
     # let's test this exhaustively for 1-10 testitems across 1-10 workers.
     for nworkers in 1:10
         for nitems in 1:10
-            testitems = [@testitem "ti-$i" begin; end; for i in 1:nitems]
+            testitems = [@testitem "ti-$i" _run=false begin; end; for i in 1:nitems]
             starts = get_starting_testitems(TestItems(graph, testitems, 0), nworkers)
             startitems = [x for x in starts if !isnothing(x)]
             @test length(starts) == nworkers
@@ -167,7 +167,7 @@ end # `include_testfiles!` testset
 @testset "report_empty_testsets" begin
     using ReTestItems: TestItem, report_empty_testsets, PerfStats, ScheduledForEvaluation
     using Test: DefaultTestSet, Fail, Error
-    ti = TestItem(Ref(42), "Dummy TestItem", [], false, [], 0, "source/path", 42, ".", nothing, [], Ref{Int}(), Test.DefaultTestSet[], Ref{Int}(0), PerfStats[], ScheduledForEvaluation())
+    ti = TestItem(Ref(42), "Dummy TestItem", [], false, [], 0, "source/path", 42, ".", nothing)
 
     ts = DefaultTestSet("Empty testset")
     report_empty_testsets(ti, ts)
