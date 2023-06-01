@@ -113,14 +113,15 @@ function _redirect_logs(f, target::IO)
     # Adapted from https://github.com/JuliaIO/Suppressor.jl/blob/cbfc46f1450b03d6b69dad4c35de739290ff0aff/src/Suppressor.jl#L158-L161
     logstate = Base.CoreLogging._global_logstate
     logger = logstate.logger
-    if :stream in propertynames(logger)
+    should_replace_logstate = :stream in propertynames(logger) && logger.stream == stderr
+    if should_replace_logstate
         new_logstate = Base.CoreLogging.LogState(typeof(logger)(colored_io, logger.min_level))
         Core.eval(Base.CoreLogging, Expr(:(=), :(_global_logstate), new_logstate))
     end
     try
         redirect_stdio(f, stdout=colored_io, stderr=colored_io)
     finally
-        if :stream in propertynames(logger)
+        if should_replace_logstate
             Core.eval(Base.CoreLogging, Expr(:(=), :(_global_logstate), logstate))
         end
     end
