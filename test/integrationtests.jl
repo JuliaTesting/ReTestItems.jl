@@ -678,4 +678,18 @@ else
     @warn "Skipping tests with interactive threadpool support which requires Julia Version v1.9+" VERSION
 end
 
+@testset "_redirect_logs and custom loggers" begin
+    test_file_path = joinpath(TEST_FILES_DIR, "_logging_test.jl")
+    captured = IOCapture.capture(rethrow=Union{}) do
+        encased_testset(()->runtests(
+            "test/testfiles/_logging_test.jl",
+            nworkers=1,
+            logs=:issues,
+            worker_init_expr=:(using Logging; Logging.global_logger(Logging.ConsoleLogger(stderr)))
+        ))
+    end
+    # The test passes so we shouldn't see any logs
+    @test !occursin("Info message from testitem", captured.output)
+end
+
 end # integrationtests.jl testset
