@@ -108,7 +108,22 @@ _redirect_logs(f, path::String) = open(io->_redirect_logs(f, io), path, "w")
 function _redirect_logs(f, target::IO)
     target === DEFAULT_STDOUT[] && return f()
     colored_io = IOContext(target, :color => get(DEFAULT_STDOUT[], :color, false))
-    redirect_stdio(f, stdout=colored_io, stderr=colored_io)
+    # In case the default logger was changed by the user, we need to make sure the new logstate
+    # is poinitng to the new stderr.
+    # Adapted from https://github.com/JuliaIO/Suppressor.jl/blob/cbfc46f1450b03d6b69dad4c35de739290ff0aff/src/Suppressor.jl#L158-L161
+    logstate = Base.CoreLogging._global_logstate
+    logger = logstate.logger
+    if :stream in propertynames(logger)
+        new_logstate = Base.CoreLogging.LogState(typeof(logger)(colored_io, logger.min_level))
+        Core.eval(Base.CoreLogging, Expr(:(=), :(_global_logstate), new_logstate))
+    end
+    try
+        redirect_stdio(f, stdout=colored_io, stderr=colored_io)
+    finally
+        if :stream in propertynames(logger)
+            Core.eval(Base.CoreLogging, Expr(:(=), :(_global_logstate), logstate))
+        end
+    end
 end
 
 
