@@ -224,6 +224,7 @@ macro testitem(nm, exs...)
     tags = Symbol[]
     setup = Any[]
     _run = true  # useful for testing `@testitem` itself
+    _source = QuoteNode(__source__)
     if length(exs) > 1
         kw_seen = Set{Symbol}()
         for ex in exs[1:end-1]
@@ -247,6 +248,9 @@ macro testitem(nm, exs...)
             elseif kw == :_run
                 _run = ex.args[2]
                 @assert _run isa Bool "`_run` keyword must be passed a `Bool`"
+            elseif kw == :_source
+                _source = ex.args[2]
+                @assert isa(_source, Union{QuoteNode,Expr})
             else
                 error("unknown `@testitem` keyword arg `$(ex.args[1])`")
             end
@@ -259,8 +263,8 @@ macro testitem(nm, exs...)
     ti = gensym(:ti)
     esc(quote
         let $ti = $TestItem(
-            Ref(0), $nm, $tags, $default_imports, $setup, $retries,
-            $(String(__source__.file)), $(__source__.line),
+            $Ref(0), $nm, $tags, $default_imports, $setup, $retries,
+            $String($_source.file), $_source.line,
             $gettls(:__RE_TEST_PROJECT__, "."),
             $q,
         )
