@@ -206,16 +206,16 @@ end
     end
 end
 
-# Macros must be defined at global-scope (outside `@testset`)
-macro foo_test(name)
-    _source = QuoteNode(__source__)
-    quote
-        @testitem $name _source=$_source _run=false begin
-            @test true
+@testset "manually specify `source` location" begin
+    # eval because macros must be defined at global-scope
+    @eval macro foo_test(name)
+        _source = QuoteNode(__source__)
+        quote
+            @testitem $name _source=$_source _run=false begin
+                @test true
+            end
         end
     end
-end
-@testset "manually specify `source` location" begin
     # this would point to the definition a few lines up, if we weren't correctly setting the
     # source location manually
     line = @__LINE__() + 1
