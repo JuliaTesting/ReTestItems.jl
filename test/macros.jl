@@ -206,6 +206,28 @@ end
     end
 end
 
+# Macros must be defined at global-scope (outside `@testset`)
+macro foo_test(name)
+    _source = QuoteNode(__source__)
+    quote
+        @testitem $name _source=$_source _run=false begin
+            @test true
+        end
+    end
+end
+@testset "manually specify `source` location" begin
+    # this would point to the definition a few lines up, if we weren't correctly setting the
+    # source location manually
+    line = @__LINE__() + 1
+    ti = @foo_test "one"
+    @test ti.file == @__FILE__
+    @test ti.line == line
+
+    ti = @testitem "two" _source=LineNumberNode(42, "foo.jl") _run=false begin; end;
+    @test ti.file == "foo.jl"
+    @test ti.line == 42
+end
+
 #=
 NOTE:
     These tests are disabled as we stopped using anonymous modules;
