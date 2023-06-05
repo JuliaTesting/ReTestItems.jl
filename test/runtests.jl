@@ -1,5 +1,15 @@
 using ReTestItems, Test, Pkg
 
+# Used by test/macros.jl, but macros must be defined at global scope (outside `@testset).
+macro foo_test(name)
+    _source = QuoteNode(__source__)
+    quote
+        @testitem $name _source=$_source _run=false begin
+            @test true
+        end
+    end
+end
+
 @testset "ReTestItems" verbose=true begin
     # track all workers every created
     ALL_WORKERS = []
