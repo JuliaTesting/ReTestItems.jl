@@ -219,6 +219,15 @@ end
     @test ti.line == 42
 end
 
+@testset "testsetup not given module" begin
+    # can only check for text of the error message in Julia v1.8+
+    expected = VERSION < v"1.8" ? Exception : "`@testsetup` expects a `module ... end` argument"
+    @test_throws expected (@eval @testsetup(FooSetup))
+
+    expected = VERSION < v"1.8" ? Exception : "no method matching"
+    @test_throws expected (@eval @testsetup("foo", begin end))
+end
+
 #=
 NOTE:
     These tests are disabled as we stopped using anonymous modules;

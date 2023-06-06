@@ -48,7 +48,7 @@ A `@testitem` depends on a `@testsetup` via the `setup` keyword e.g
     end
 """
 macro testsetup(mod)
-    mod.head == :module || error("`@testsetup` expects a `module ... end` argument")
+    (mod isa Expr && mod.head == :module) || error("`@testsetup` expects a `module ... end` argument")
     _, name, code = mod.args
     name isa Symbol || error("`@testsetup module` expects a valid module name")
     nm = QuoteNode(name)
