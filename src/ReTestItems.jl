@@ -512,6 +512,31 @@ function _is_subproject(dir, current_projectfile)
     return true
 end
 
+# Error if we are trying to `include` a file with anything except an `@testitem` or
+# `@testsetup` call at the top-level.
+# Re-use `Base.include` to avoid duplicating subtle code-loading logic from `Base`.
+# Note:
+#   For now this is just checks for `:macrocall` so we can support alternative macros that
+#   expand to be an `@testitem`. We will likely _tighten_ this check in future.
+#   i.e. We may in future throw an error for files that currently successfully get included.
+#   i.e. Only `@testitem` and `@testsetup` calls are officially supported.
+checked_include(mod, filepath) = Base.include(check_retestitem_macrocall, mod, filepath)
+function check_retestitem_macrocall(expr::Expr)
+    expr.head == :macrocall || _throw_not_macrocall(expr)
+    return expr
+end
+function _throw_not_macrocall(expr)
+    # `Base.include` sets the `:SOURCE_PATH` before the `mapexpr`
+    # (`check_retestitem_macrocall`) is first called
+    file = get(task_local_storage(), :SOURCE_PATH, "unknown")
+    msg = """
+    Test files must only include `@testitem` and `@testsetup` calls.
+    In $(repr(file)) got:
+        $(Base.remove_linenums!(expr))
+    """
+    error(msg)
+end
+
 # for each directory, kick off a recursive test-finding task
 function include_testfiles!(project_name, projectfile, paths, shouldrun, report::Bool)
     project_root = dirname(projectfile)
@@ -557,7 +582,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
                     task_local_storage(:__RE_TEST_ITEMS__, $file_node) do
                         task_local_storage(:__RE_TEST_PROJECT__, $(project_root)) do
                             task_local_storage(:__RE_TEST_SETUPS__, $setups) do
-                                Base.include(Main, $filepath)
+                                checked_include(Main, $filepath)
                             end
                         end
                     end

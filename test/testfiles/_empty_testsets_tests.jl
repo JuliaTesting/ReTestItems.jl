@@ -1,6 +1,3 @@
-using Test: @testset
-using ReTestItems: @testitem
-
 @testitem "Warn on empty test set -- integration test" begin
     @testset "Empty testset" begin end
 
