@@ -11,7 +11,7 @@ using ReTestItems
     # let's test this exhaustively for 1-10 testitems across 1-10 workers.
     for nworkers in 1:10
         for nitems in 1:10
-            testitems = [@testitem "ti-$i" _run=false begin; end; for i in 1:nitems]
+            testitems = [@testitem("ti-$i", _run=false, begin end) for i in 1:nitems]
             starts = get_starting_testitems(TestItems(graph, testitems, 0), nworkers)
             startitems = [x for x in starts if !isnothing(x)]
             @test length(starts) == nworkers
