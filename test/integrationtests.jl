@@ -692,4 +692,12 @@ end
     @test !occursin("Info message from testitem", captured.output)
 end
 
+@testset "error on code outside `@testitem`/`@testsetup`" begin
+    err_msg = "Test files must only include `@testitem` and `@testsetup` calls."
+    expected = VERSION < v"1.8" ? Exception : err_msg
+    @test_throws expected runtests(joinpath(TEST_FILES_DIR, "_misuse_file1_test.jl"))
+    @test_throws expected runtests(joinpath(TEST_FILES_DIR, "_misuse_file2_test.jl"))
+    @test_throws expected runtests(joinpath(TEST_FILES_DIR, "_misuse_file3_test.jl"))
+end
+
 end # integrationtests.jl testset
