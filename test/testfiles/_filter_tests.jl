@@ -1,5 +1,3 @@
-using ReTestItems
-
 @testitem "Test item no tags" begin
     @test true
 end

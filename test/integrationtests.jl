@@ -541,7 +541,7 @@ end
 
 @testset "Warn on empty test set -- integration test" begin
     @test_logs (:warn, """
-    Test item "Warn on empty test set -- integration test" at test/testfiles/_empty_testsets_tests.jl:4 contains test sets without tests:
+    Test item "Warn on empty test set -- integration test" at test/testfiles/_empty_testsets_tests.jl:1 contains test sets without tests:
     "Empty testset"
     "Inner empty testset"
     """) match_mode=:any begin
@@ -690,6 +690,14 @@ end
     end
     # The test passes so we shouldn't see any logs
     @test !occursin("Info message from testitem", captured.output)
+end
+
+@testset "error on code outside `@testitem`/`@testsetup`" begin
+    err_msg = "Test files must only include `@testitem` and `@testsetup` calls."
+    expected = VERSION < v"1.8" ? Exception : err_msg
+    @test_throws expected runtests(joinpath(TEST_FILES_DIR, "_misuse_file1_test.jl"))
+    @test_throws expected runtests(joinpath(TEST_FILES_DIR, "_misuse_file2_test.jl"))
+    @test_throws expected runtests(joinpath(TEST_FILES_DIR, "_misuse_file3_test.jl"))
 end
 
 end # integrationtests.jl testset
