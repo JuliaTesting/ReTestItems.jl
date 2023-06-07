@@ -541,7 +541,7 @@ end
 
 @testset "Warn on empty test set -- integration test" begin
     @test_logs (:warn, """
-    Test item "Warn on empty test set -- integration test" at test/testfiles/_empty_testsets_tests.jl:4 contains test sets without tests:
+    Test item "Warn on empty test set -- integration test" at test/testfiles/_empty_testsets_tests.jl:1 contains test sets without tests:
     "Empty testset"
     "Inner empty testset"
     """) match_mode=:any begin
