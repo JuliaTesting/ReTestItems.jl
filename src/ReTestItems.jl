@@ -521,9 +521,17 @@ end
 #   i.e. We may in future throw an error for files that currently successfully get included.
 #   i.e. Only `@testitem` and `@testsetup` calls are officially supported.
 checked_include(mod, filepath) = Base.include(check_retestitem_macrocall, mod, filepath)
-function check_retestitem_macrocall(expr::Expr)
-    expr.head == :macrocall || _throw_not_macrocall(expr)
-    return expr
+check_retestitem_macrocall(expr) = is_retestitem_macrocall(expr) || _throw_not_macrocall(expr)
+function is_retestitem_macrocall(expr::Expr)
+    if expr.head == :macrocall
+        # For now, we're not checking for `@testitem`/`@testsetup` only,
+        # but we can still guard against the most common issue.
+        name = expr.args[1]
+        if name != Symbol("@testset") && name != Symbol("@test")
+            return true
+        end
+    end
+    return false
 end
 function _throw_not_macrocall(expr)
     # `Base.include` sets the `:SOURCE_PATH` before the `mapexpr`
