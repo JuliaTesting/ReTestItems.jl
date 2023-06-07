@@ -521,7 +521,10 @@ end
 #   i.e. We may in future throw an error for files that currently successfully get included.
 #   i.e. Only `@testitem` and `@testsetup` calls are officially supported.
 checked_include(mod, filepath) = Base.include(check_retestitem_macrocall, mod, filepath)
-check_retestitem_macrocall(expr) = is_retestitem_macrocall(expr) || _throw_not_macrocall(expr)
+function check_retestitem_macrocall(expr)
+    is_retestitem_macrocall(expr) || _throw_not_macrocall(expr)
+    return expr
+end
 function is_retestitem_macrocall(expr::Expr)
     if expr.head == :macrocall
         # For now, we're not checking for `@testitem`/`@testsetup` only,
