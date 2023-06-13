@@ -432,14 +432,15 @@ function start_and_manage_worker(
                 rethrow()
             end
 
-            if !(e isa TestSetFailure)
+            if e isa TestSetFailure
+                # The worker will be re-used for retrying or next testitem
+                @debugv 2 "Triggering GC on $worker"
+                remote_eval(worker, :(run_full_gc()))
+            else
                 println(DEFAULT_STDOUT[])
                 # Explicitly show captured logs or say there weren't any in case we're about
                 # to terminte the worker
                 _print_captured_logs(DEFAULT_STDOUT[], testitem, nretries + 1)
-                @debugv 2 "Triggering GC on $worker"
-                # Run GC to free memory on the worker before retrying or next testitem.
-                remote_eval(worker, :(run_full_gc()))
             end
 
             if e isa TimeoutException
