@@ -306,6 +306,7 @@ function _runtests_in_current_env(
                         end
                         break
                     end
+                    run_full_gc()
                 end
             end
         elseif !isempty(testitems.testitems)
@@ -415,6 +416,9 @@ function start_and_manage_worker(
                 report_empty_testsets(testitem, ts)
                 # if the result isn't a pass, we throw to go to the outer try-catch
                 throw_if_failed(ts)
+                @debugv 2 "Triggering GC on $worker"
+                # Run GC to free memory on the worker before next testitem.
+                remote_eval(worker, :(run_full_gc()))
                 testitem = next_testitem(testitems, testitem.id[])
                 nretries = 0
             finally
@@ -433,6 +437,9 @@ function start_and_manage_worker(
                 # Explicitly show captured logs or say there weren't any in case we're about
                 # to terminte the worker
                 _print_captured_logs(DEFAULT_STDOUT[], testitem, nretries + 1)
+                @debugv 2 "Triggering GC on $worker"
+                # Run GC to free memory on the worker before retrying or next testitem.
+                remote_eval(worker, :(run_full_gc()))
             end
 
             if e isa TimeoutException
@@ -819,11 +826,12 @@ function runtestitem(
     push!(ti.testsets, ts)
     push!(ti.stats, stats)
     log_testitem_done(ti, ctx.ntestitems)
-    # It takes 2 GCs to do a full mark+sweep (the first one is a partial mark, full sweep, the next one is a full mark)
-    GC.gc(true)
-    GC.gc(false)
     return TestItemResult(convert_results_to_be_transferrable(ts), stats)
 end
+
+# It takes 2 GCs to do a full mark+sweep
+# (the first one is a partial mark, full sweep, the next one is a full mark).
+run_full_gc() = GC.gc(true); GC.gc(false)
 
 # copied from XUnit.jl
 function convert_results_to_be_transferrable(ts::Test.AbstractTestSet)
