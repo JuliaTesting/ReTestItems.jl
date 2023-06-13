@@ -409,16 +409,16 @@ function start_and_manage_worker(
                 @debugv 2 "Waiting on test item result"
                 testitem_result = @lock cond wait(cond)
                 @debugv 2 "Recieved test item result"
+                @debugv 2 "Triggering GC on $worker"
+                # Run GC to free memory on the worker before next testitem.
+                remote_eval(worker, :(run_full_gc()))
                 ts = testitem_result.testset
                 push!(testitem.testsets, ts)
                 push!(testitem.stats, testitem_result.stats)
                 print_errors_and_captured_logs(testitem, nretries + 1; logs)
                 report_empty_testsets(testitem, ts)
-                # if the result isn't a pass, we throw to go to the outer try-catch
+                # If the result isn't a pass, we throw to go to the outer try-catch
                 throw_if_failed(ts)
-                @debugv 2 "Triggering GC on $worker"
-                # Run GC to free memory on the worker before next testitem.
-                remote_eval(worker, :(run_full_gc()))
                 testitem = next_testitem(testitems, testitem.id[])
                 nretries = 0
             finally
@@ -432,11 +432,7 @@ function start_and_manage_worker(
                 rethrow()
             end
 
-            if e isa TestSetFailure
-                # The worker will be re-used for retrying or next testitem
-                @debugv 2 "Triggering GC on $worker"
-                remote_eval(worker, :(run_full_gc()))
-            else
+            if !(e isa TestSetFailure)
                 println(DEFAULT_STDOUT[])
                 # Explicitly show captured logs or say there weren't any in case we're about
                 # to terminte the worker
