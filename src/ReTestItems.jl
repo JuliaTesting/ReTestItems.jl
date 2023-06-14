@@ -818,11 +818,13 @@ function runtestitem(
     @debugv 1 "Test item $(repr(name)) done$(_on_worker())."
     push!(ti.testsets, ts)
     push!(ti.stats, stats)
+    @debugv 2 "Converting results for test item $(repr(name))$(_on_worker())."
     res = convert_results_to_be_transferrable(ts)
     log_testitem_done(ti, ctx.ntestitems)
     # Spawn so we can return immediately, so testitem does not time out waiting on GC.
     # It takes 2 GCs to do a full mark+sweep.
     # (the first one is a partial mark, full sweep, the next one is a full mark)
+    @debugv 2 "Spawning GC$(_on_worker())."
     @spawn begin
         GC.gc(true)
         GC.gc(false)
