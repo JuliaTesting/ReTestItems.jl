@@ -802,7 +802,7 @@ function runtestitem(
             with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
             nothing # return nothing as the first return value of @timed_with_compilation
         end
-        @debugv 1 "Test item $(repr(name)) done$(_on_worker())."
+        @debugv 1 "Done evaluating test item $(repr(name))$(_on_worker())."
     catch err
         err isa InterruptException && rethrow()
         # Handle exceptions thrown outside a `@test` in the body of the @testitem:
@@ -825,8 +825,10 @@ function runtestitem(
     @debugv 1 "Test item $(repr(name)) done$(_on_worker())."
     push!(ti.testsets, ts)
     push!(ti.stats, stats)
+    @debugv 2 "Converting results for test item $(repr(name))$(_on_worker())."
+    res = convert_results_to_be_transferrable(ts)
     log_testitem_done(ti, ctx.ntestitems)
-    return TestItemResult(convert_results_to_be_transferrable(ts), stats)
+    return TestItemResult(res, stats)
 end
 
 # copied from XUnit.jl
