@@ -40,3 +40,13 @@ end
     write(joinpath(tempdir(), "num_runs_4"), string(NUM_RUNS_4[]))
     @test false
 end
+
+
+# For this to timeout, must be run with `testitem_timeout < 60`
+# Cannot use `StatefulSetup` for this as it will be a new worker
+# every retry, so the `setup` will always have been re-evaluated anew.
+@testitem "Timeout always" retries=1 begin
+    write(tempname() * "_num_runs_5", "1")
+    sleep(60.0)
+    @test true
+end

@@ -609,7 +609,8 @@ end
 
 @testset "test retrying failing testitem" begin
     file = joinpath(TEST_FILES_DIR, "_retry_tests.jl")
-    results = encased_testset(()->runtests(file; nworkers=1, retries=2))
+    # must run with `testitem_timeout < 60` for test to timeout as expected.
+    results = encased_testset(()->runtests(file; nworkers=1, retries=2, testitem_timeout=3))
     # Test we _ran_ each test-item the expected number of times
     read_count(x) = parse(Int, read(x, String))
     # Passes on second attempt, so only need to retry once.
@@ -622,11 +623,19 @@ end
     # Doesn't pass ever, so need all retries. This testitem set `retries=1` which is less
     # than the `retries=2` that `runtests` set, so we should retry 2 times.
     @test read_count(joinpath(tempdir(), "num_runs_4")) == 3
+    # Times out always, so should retry as many times as allowed.
+    # Since it will be a new worker for each retry, we write one file for each.
+    @test count(contains("num_runs_5"), readdir(tempdir())) == 3
 
     # Test we _report_ the expected number of test-items
-    @test n_tests(results) == 4
+    @test n_tests(results) == 5
     # The first two testitems pass on retry.
     @test n_passed(results) == 2
+
+    # Clear out any files created by this testset
+    foreach(readdir(tempdir(); join=true)) do tmp
+        contains(tmp, "num_runs") && rm(tmp)
+    end
 end
 
 @testset "testitem timeout" begin
