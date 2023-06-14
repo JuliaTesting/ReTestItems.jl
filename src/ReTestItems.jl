@@ -385,8 +385,8 @@ function start_and_manage_worker(
     ntestitems = length(testitems.testitems)
     worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
     nretries = 0
-    cond = Threads.Condition()
     while testitem !== nothing
+        ch = Channel{TestItemResult}(1)
         testitem.workerid[] = worker.pid
         fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; verbose_results=$verbose_results, logs=$(QuoteNode(logs)))))
         retry_limit = max(retries, testitem.retries)
@@ -394,23 +394,23 @@ function start_and_manage_worker(
             timer = Timer(timeout) do tm
                 close(tm)
                 ex = TimeoutException("Test item $(repr(testitem.name)) timed out after $timeout seconds")
-                @lock cond notify(cond, ex; error=true)
+                close(ch, ex)
             end
             errmon(@spawn begin
                 _fut = $fut
                 try
                     # Future blocks until worker is done eval-ing and returns result
                     res = fetch(_fut)::TestItemResult
-                    isopen($timer) && @lock cond notify(cond, res)
+                    isopen($timer) && put!(ch, res)
                 catch e
-                    isopen($timer) && @lock cond notify(cond, e; error=true)
+                    isopen($timer) && close(ch, e)
                 end
             end)
             try
                 # if we get a WorkerTerminatedException or TimeoutException
                 # then wait will throw here and we fall through to the outer try-catch
                 @debugv 2 "Waiting on result for test item $(repr(testitem.name))"
-                testitem_result = @lock cond wait(cond)
+                testitem_result = take!(ch)
                 @debugv 2 "Received result for test item $(repr(testitem.name))"
                 ts = testitem_result.testset
                 push!(testitem.testsets, ts)
