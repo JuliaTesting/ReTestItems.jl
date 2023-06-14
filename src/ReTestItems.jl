@@ -412,13 +412,13 @@ function start_and_manage_worker(
                 @debugv 2 "Waiting on test item result"
                 testitem_result = @lock cond wait(cond)
                 @debugv 2 "Recieved test item result"
-                @debugv 2 "Triggering GC on $worker"
                 ts = testitem_result.testset
                 push!(testitem.testsets, ts)
                 push!(testitem.stats, testitem_result.stats)
                 print_errors_and_captured_logs(testitem, nretries + 1; logs)
                 report_empty_testsets(testitem, ts)
                 # Run GC to free memory on the worker before next testitem.
+                @debugv 2 "Running GC on $worker"
                 remote_fetch(worker, :(GC.gc(true); GC.gc(false)))
                 # If the result isn't a pass, we throw to go to the outer try-catch
                 throw_if_failed(ts)
