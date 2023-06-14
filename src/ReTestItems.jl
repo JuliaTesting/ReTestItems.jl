@@ -411,7 +411,7 @@ function start_and_manage_worker(
                 # then wait will throw here and we fall through to the outer try-catch
                 @debugv 2 "Waiting on result for test item $(repr(testitem.name))"
                 testitem_result = @lock cond wait(cond)
-                @debugv 2 "Recieved result for test item $(repr(testitem.name))"
+                @debugv 2 "Received result for test item $(repr(testitem.name))"
                 ts = testitem_result.testset
                 push!(testitem.testsets, ts)
                 push!(testitem.stats, testitem_result.stats)
