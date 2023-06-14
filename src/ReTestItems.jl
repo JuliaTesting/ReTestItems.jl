@@ -306,6 +306,10 @@ function _runtests_in_current_env(
                         end
                         break
                     end
+                    # It takes 2 GCs to do a full mark+sweep
+                    # (the first one is a partial mark, full sweep, the next one is a full mark).
+                    GC.gc(true)
+                    GC.gc(false)
                 end
             end
         elseif !isempty(testitems.testitems)
@@ -405,15 +409,18 @@ function start_and_manage_worker(
             try
                 # if we get a WorkerTerminatedException or TimeoutException
                 # then wait will throw here and we fall through to the outer try-catch
-                @debugv 2 "Waiting on test item result"
+                @debugv 2 "Waiting on result for test item $(repr(testitem.name))"
                 testitem_result = @lock cond wait(cond)
-                @debugv 2 "Recieved test item result"
+                @debugv 2 "Received result for test item $(repr(testitem.name))"
                 ts = testitem_result.testset
                 push!(testitem.testsets, ts)
                 push!(testitem.stats, testitem_result.stats)
                 print_errors_and_captured_logs(testitem, nretries + 1; logs)
                 report_empty_testsets(testitem, ts)
-                # if the result isn't a pass, we throw to go to the outer try-catch
+                # Run GC to free memory on the worker before next testitem.
+                @debugv 2 "Running GC on $worker"
+                remote_fetch(worker, :(GC.gc(true); GC.gc(false)))
+                # If the result isn't a pass, we throw to go to the outer try-catch
                 throw_if_failed(ts)
                 testitem = next_testitem(testitems, testitem.id[])
                 nretries = 0
@@ -795,7 +802,7 @@ function runtestitem(
             with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
             nothing # return nothing as the first return value of @timed_with_compilation
         end
-        @debugv 1 "Test item $(repr(name)) done$(_on_worker())."
+        @debugv 1 "Done evaluating test item $(repr(name))$(_on_worker())."
     catch err
         err isa InterruptException && rethrow()
         # Handle exceptions thrown outside a `@test` in the body of the @testitem:
@@ -818,25 +825,21 @@ function runtestitem(
     @debugv 1 "Test item $(repr(name)) done$(_on_worker())."
     push!(ti.testsets, ts)
     push!(ti.stats, stats)
+    @debugv 2 "Converting results for test item $(repr(name))$(_on_worker())."
+    res = convert_results_to_be_transferrable(ts)
     log_testitem_done(ti, ctx.ntestitems)
-    # It takes 2 GCs to do a full mark+sweep (the first one is a partial mark, full sweep, the next one is a full mark)
-    GC.gc(true)
-    GC.gc(false)
-    return TestItemResult(convert_results_to_be_transferrable(ts), stats)
+    return TestItemResult(res, stats)
 end
 
-# copied from XUnit.jl
 function convert_results_to_be_transferrable(ts::Test.AbstractTestSet)
-    results_copy = copy(ts.results)
-    empty!(ts.results)
-    for t in results_copy
-        push!(ts.results, convert_results_to_be_transferrable(t))
+    for (i, res) in enumerate(ts.results)
+        ts.results[i] = convert_results_to_be_transferrable(res)
     end
     return ts
 end
 
 function convert_results_to_be_transferrable(res::Test.Pass)
-    if res.test_type == :test_throws
+    if res.test_type === :test_throws
         # A passed `@test_throws` contains the stacktrace for the (correctly) thrown exception
         # This exception might contain references to some types that are not available
         # on other processes (e.g., the master process that consolidates the results)
