@@ -832,18 +832,15 @@ function runtestitem(
     return TestItemResult(res, stats)
 end
 
-# copied from XUnit.jl
 function convert_results_to_be_transferrable(ts::Test.AbstractTestSet)
-    results_copy = copy(ts.results)
-    empty!(ts.results)
-    for t in results_copy
-        push!(ts.results, convert_results_to_be_transferrable(t))
+    for (i, res) in enumerate(ts.results)
+        ts.results[i] = convert_results_to_be_transferrable(res)
     end
     return ts
 end
 
 function convert_results_to_be_transferrable(res::Test.Pass)
-    if res.test_type == :test_throws
+    if res.test_type === :test_throws
         # A passed `@test_throws` contains the stacktrace for the (correctly) thrown exception
         # This exception might contain references to some types that are not available
         # on other processes (e.g., the master process that consolidates the results)
