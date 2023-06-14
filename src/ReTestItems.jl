@@ -409,9 +409,9 @@ function start_and_manage_worker(
             try
                 # if we get a WorkerTerminatedException or TimeoutException
                 # then wait will throw here and we fall through to the outer try-catch
-                @debugv 2 "Waiting on test item result"
+                @debugv 2 "Waiting on result for test item $(repr(testitem.name))"
                 testitem_result = @lock cond wait(cond)
-                @debugv 2 "Recieved test item result"
+                @debugv 2 "Recieved result for test item $(repr(testitem.name))"
                 ts = testitem_result.testset
                 push!(testitem.testsets, ts)
                 push!(testitem.stats, testitem_result.stats)
