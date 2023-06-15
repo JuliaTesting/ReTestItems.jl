@@ -295,11 +295,11 @@ function store_test_item_setup(ti::Union{TestItem, TestSetup})
     elseif ti isa TestSetup
         @debugv 2 "expanding test setup: `$(ti.name)`"
         # if we're not in a runtests context, add the test setup to the global dict
-        setups = get(tls, :__RE_TEST_SETUPS__, GLOBAL_TEST_SETUPS_FOR_TESTING)
-        if haskey(setups, ti.name)
-            @warn "Encountered duplicate @testsetup with name: `$(ti.name)`. Replacing..."
+        if haskey(tls, :__RE_TEST_SETUPS__)
+            put!(tls[:__RE_TEST_SETUPS__], ti.name => ti)
+        else
+            GLOBAL_TEST_SETUPS_FOR_TESTING[ti.name] = ti
         end
-        setups[ti.name] = ti
     end
     return ti
 end

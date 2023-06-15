@@ -561,9 +561,19 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
     subproject_root = nothing  # don't recurse into directories with their own Project.toml.
     root_node = DirNode(project_name; report, verbose=true)
     dir_nodes = Dict{String, DirNode}()
-    # setups is populated in store_test_item_setup when we expand a @testsetup
+    # setup_channel is populated in store_test_item_setup when we expand a @testsetup
     # we set it below in tls as __RE_TEST_SETUPS__ for each included file
-    setups = Dict{Symbol, TestSetup}()
+    setup_channel = Channel{Pair{Symbol, TestSetup}}(Inf)
+    setup_task = @spawn begin
+        setups = Dict{Symbol, TestSetup}()
+        for (name, setup) in setup_channel
+            if haskey(setups, name)
+                @warn "Encountered duplicate @testsetup with name: `$name`. Replacing..."
+            end
+            setups[name] = setup
+        end
+        return setups
+    end
     hidden_re = r"\.\w"
     @sync for (root, d, files) in Base.walkdir(project_root)
         if subproject_root !== nothing && startswith(root, subproject_root)
@@ -600,7 +610,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
                 task_local_storage(:__RE_TEST_RUNNING__, true) do
                     task_local_storage(:__RE_TEST_ITEMS__, ($file_node, $testitem_names)) do
                         task_local_storage(:__RE_TEST_PROJECT__, $(project_root)) do
-                            task_local_storage(:__RE_TEST_SETUPS__, $setups) do
+                            task_local_storage(:__RE_TEST_SETUPS__, $setup_channel) do
                                 checked_include(Main, $filepath)
                             end
                         end
@@ -609,11 +619,14 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
             end
         end
     end
+    @debugv 2 "Finished including files"
     # finished including all test files, so finalize our graph
     # prune empty directories/files
+    close(setup_channel)
     prune!(root_node)
     ti = TestItems(root_node)
     flatten_testitems!(ti)
+    setups = fetch(setup_task)
     for (i, x) in enumerate(ti.testitems)
         # set id for each testitem
         x.id[] = i
