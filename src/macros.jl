@@ -54,7 +54,7 @@ macro testsetup(mod)
     nm = QuoteNode(name)
     q = QuoteNode(code)
     esc(quote
-        $store_test_item_setup($TestSetup($nm, $q, $(String(__source__.file)), $(__source__.line), $gettls(:__RE_TEST_PROJECT__, "."), Ref{IOStream}()))
+        $store_test_setup($TestSetup($nm, $q, $(String(__source__.file)), $(__source__.line), $gettls(:__RE_TEST_PROJECT__, "."), Ref{IOStream}()))
     end)
 end
 
@@ -269,7 +269,7 @@ macro testitem(nm, exs...)
             $q,
         )
             if !$_run || $gettls(:__RE_TEST_RUNNING__, false)::$Bool
-                $store_test_item_setup($ti)
+                $store_test_item($ti)
                 $ti
             else # We are not in a `runtests` call, so we run the testitem immediately.
                 $runtestitem($ti)
@@ -279,7 +279,7 @@ macro testitem(nm, exs...)
     end)
 end
 
-function store_test_item_setup(ti::Union{TestItem, TestSetup})
+function store_test_item(ti::TestItem)
     tls = task_local_storage()
     if ti isa TestItem && haskey(tls, :__RE_TEST_ITEMS__)
         name = ti.name
@@ -292,14 +292,18 @@ function store_test_item_setup(ti::Union{TestItem, TestSetup})
         end
         push!(names, name)
         push!(tis, ti)
-    elseif ti isa TestSetup
-        @debugv 2 "expanding test setup: `$(ti.name)`"
-        # if we're not in a runtests context, add the test setup to the global dict
-        if haskey(tls, :__RE_TEST_SETUPS__)
-            put!(tls[:__RE_TEST_SETUPS__], ti.name => ti)
-        else
-            GLOBAL_TEST_SETUPS_FOR_TESTING[ti.name] = ti
-        end
     end
     return ti
+end
+
+function store_test_setup(ts::TestSetup)
+    @debugv 2 "expanding test setup: `$(ts.name)`"
+    tls = task_local_storage()
+    if haskey(tls, :__RE_TEST_SETUPS__)
+        put!(tls[:__RE_TEST_SETUPS__], ts.name => ts)
+    else
+        # if we're not in a runtests context, add the test setup to the global dict
+        GLOBAL_TEST_SETUPS_FOR_TESTING[ts.name] = ts
+    end
+    return ts
 end
