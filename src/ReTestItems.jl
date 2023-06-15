@@ -561,7 +561,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
     subproject_root = nothing  # don't recurse into directories with their own Project.toml.
     root_node = DirNode(project_name; report, verbose=true)
     dir_nodes = Dict{String, DirNode}()
-    # setup_channel is populated in store_test_item_setup when we expand a @testsetup
+    # setup_channel is populated in store_test_setup when we expand a @testsetup
     # we set it below in tls as __RE_TEST_SETUPS__ for each included file
     setup_channel = Channel{Pair{Symbol, TestSetup}}(Inf)
     setup_task = @spawn begin
