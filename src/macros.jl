@@ -280,11 +280,20 @@ macro testitem(nm, exs...)
 end
 
 function store_test_item_setup(ti::Union{TestItem, TestSetup})
-    @debugv 2 "expanding test item/setup: `$(ti.name)`"
     tls = task_local_storage()
     if ti isa TestItem && haskey(tls, :__RE_TEST_ITEMS__)
-        push!(tls[:__RE_TEST_ITEMS__], ti)
+        name = ti.name
+        @debugv 2 "expanding test item: `$name`"
+        tis, names = tls[:__RE_TEST_ITEMS__]
+        if name in names
+            project_root = get(task_local_storage(), :__RE_TEST_PROJECT__, ".")
+            file = relpath(ti.file, project_root)
+            error("Duplicate test item name `$name` in file `$file` at line $(ti.line)")
+        end
+        push!(names, name)
+        push!(tis, ti)
     elseif ti isa TestSetup
+        @debugv 2 "expanding test setup: `$(ti.name)`"
         # if we're not in a runtests context, add the test setup to the global dict
         setups = get(tls, :__RE_TEST_SETUPS__, GLOBAL_TEST_SETUPS_FOR_TESTING)
         if haskey(setups, ti.name)
