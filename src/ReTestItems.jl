@@ -593,11 +593,12 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
             end
             fpath = relpath(filepath, project_root)
             file_node = FileNode(fpath, shouldrun; report, verbose=true)
+            testitem_names = Set{String}() # to enforce that names in the same file are unique
             push!(dir_node, file_node)
             @debugv 1 "Including test items from file `$filepath`"
             @spawn begin
                 task_local_storage(:__RE_TEST_RUNNING__, true) do
-                    task_local_storage(:__RE_TEST_ITEMS__, $file_node) do
+                    task_local_storage(:__RE_TEST_ITEMS__, ($file_node, $testitem_names)) do
                         task_local_storage(:__RE_TEST_PROJECT__, $(project_root)) do
                             task_local_storage(:__RE_TEST_SETUPS__, $setups) do
                                 checked_include(Main, $filepath)

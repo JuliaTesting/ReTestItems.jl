@@ -700,4 +700,19 @@ end
     @test_throws expected runtests(joinpath(TEST_FILES_DIR, "_misuse_file3_test.jl"))
 end
 
+@testset "Duplicate names in same file throws" begin
+    file = joinpath(TEST_FILES_DIR, "_duplicate_names_test.jl")
+    expected_msg = Regex("Duplicate test item name `dup` in file `test/testfiles/_duplicate_names_test.jl` at line 4")
+    @test_throws expected_msg runtests(file; nworkers=0)
+    @test_throws expected_msg runtests(file; nworkers=1)
+end
+@testset "Duplicate names in different files allowed" begin
+    file1 = joinpath(TEST_FILES_DIR, "_same_name1_test.jl")
+    file2 = joinpath(TEST_FILES_DIR, "_same_name2_test.jl")
+    for nworkers in (0, 1)
+        results = encased_testset(() -> runtests(file1, file2; nworkers))
+        @test n_tests(results) == 2
+    end
+end
+
 end # integrationtests.jl testset
