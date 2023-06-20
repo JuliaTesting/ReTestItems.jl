@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites timestamp="2023-06-20T17:07:39.516" time="60.626" tests="14" skipped="0" failures="10" errors="1">
+<testsuite name="test/testfiles/_retry_tests.jl" timestamp="2023-06-20T17:07:39.516" time="60.626" tests="14" skipped="0" failures="10" errors="1">
+	<testcase name="Pass on second run" timestamp="2023-06-20T17:07:39.516" time="0.15" tests="1" skipped="0" failures="1" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="2476514"></property>
+		<property name="dd_tags[perf.allocs]" value="40394"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.029147623"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.0037301269999999963"></property>
+		</properties>
+		<error message="Test failed at test/testfiles/_retry_tests.jl:15">Captured logs for test setup "StatefulSetup" (dependency of "Pass on second run") at test/testfiles/_retry_tests.jl:1 on worker 29306
+These are the test setup logs.
+No Captured Logs for test item "Pass on second run" at test/testfiles/_retry_tests.jl:10 on worker 29306
+Error in testset "Pass on second run" on worker 29306:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:15
+  Expression: x
+		</error>
+	</testcase>
+	<testcase name="Pass on second run" timestamp="2023-06-20T17:07:39.808" time="0.002" tests="1" skipped="0" failures="0" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="80342"></property>
+		<property name="dd_tags[perf.allocs]" value="1233"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="8.3e-8"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.0022855419999999998"></property>
+		</properties>
+	</testcase>
+	<testcase name="Error, then Fail, then Pass" timestamp="2023-06-20T17:07:39.81" time="0.436" tests="1" skipped="0" failures="0" errors="1">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="72681850"></property>
+		<property name="dd_tags[perf.allocs]" value="1352094"></property>
+		<property name="dd_tags[perf.gctime]" value="0.004803042"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.366038792"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.06489945800000002"></property>
+		</properties>
+		<error message="Error during test at test/testfiles/_retry_tests.jl:24">Captured logs for test setup "StatefulSetup" (dependency of "Error, then Fail, then Pass") at test/testfiles/_retry_tests.jl:1 on worker 29306
+These are the test setup logs.
+Captured Logs for test item "Error, then Fail, then Pass" at test/testfiles/_retry_tests.jl:18 on worker 29306
+These are the logs for run number: 1
+Error in testset "Error, then Fail, then Pass" on worker 29306:
+Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:24
+  Test threw exception
+  Expression: not_defined_err
+  UndefVarError: not_defined_err not defined
+  Stacktrace:
+   [1] macro expansion
+     @ /Applications/Julia-1.8.app/Contents/Resources/julia/share/julia/stdlib/v1.8/Test/src/Test.jl:464 [inlined]
+   [2] top-level scope
+     @ /repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:24
+		</error>
+	</testcase>
+	<testcase name="Error, then Fail, then Pass" timestamp="2023-06-20T17:07:40.307" time="0.008" tests="1" skipped="0" failures="1" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="217267"></property>
+		<property name="dd_tags[perf.allocs]" value="3710"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.004937874"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.003308043"></property>
+		</properties>
+		<error message="Test failed at test/testfiles/_retry_tests.jl:26">Captured logs for test setup "StatefulSetup" (dependency of "Error, then Fail, then Pass") at test/testfiles/_retry_tests.jl:1 on worker 29306
+These are the test setup logs.
+Captured Logs for test item "Error, then Fail, then Pass" at test/testfiles/_retry_tests.jl:18 on worker 29306
+These are the logs for run number: 2
+Error in testset "Error, then Fail, then Pass" on worker 29306:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:26
+  Expression: 2 + 2 == 5
+   Evaluated: 4 == 5
+		</error>
+	</testcase>
+	<testcase name="Error, then Fail, then Pass" timestamp="2023-06-20T17:07:40.365" time="0.003" tests="1" skipped="0" failures="0" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="104734"></property>
+		<property name="dd_tags[perf.allocs]" value="1715"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="4.2e-8"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.003208875"></property>
+		</properties>
+	</testcase>
+	<testcase name="Has retries=4 and always fails" timestamp="2023-06-20T17:07:40.368" time="0.002" tests="1" skipped="0" failures="1" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="77526"></property>
+		<property name="dd_tags[perf.allocs]" value="1177"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="8.3e-8"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.002095292"></property>
+		</properties>
+		<error message="Test failed at test/testfiles/_retry_tests.jl:35">Captured logs for test setup "StatefulSetup" (dependency of "Has retries=4 and always fails") at test/testfiles/_retry_tests.jl:1 on worker 29306
+These are the test setup logs.
+No Captured Logs for test item "Has retries=4 and always fails" at test/testfiles/_retry_tests.jl:32 on worker 29306
+Error in testset "Has retries=4 and always fails" on worker 29306:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:35
+  Expression: false
+		</error>
+	</testcase>
+	<testcase name="Has retries=4 and always fails" timestamp="2023-06-20T17:07:40.419" time="0.002" tests="1" skipped="0" failures="1" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="77526"></property>
+		<property name="dd_tags[perf.allocs]" value="1177"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.002039917"></property>
+		</properties>
+		<error message="Test failed at test/testfiles/_retry_tests.jl:35">Captured logs for test setup "StatefulSetup" (dependency of "Has retries=4 and always fails") at test/testfiles/_retry_tests.jl:1 on worker 29306
+These are the test setup logs.
+No Captured Logs for test item "Has retries=4 and always fails" at test/testfiles/_retry_tests.jl:32 on worker 29306
+Error in testset "Has retries=4 and always fails" on worker 29306:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:35
+  Expression: false
+		</error>
+	</testcase>
+	<testcase name="Has retries=4 and always fails" timestamp="2023-06-20T17:07:40.469" time="0.002" tests="1" skipped="0" failures="1" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="77526"></property>
+		<property name="dd_tags[perf.allocs]" value="1177"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="8.4e-8"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.002031375"></property>
+		</properties>
+		<error message="Test failed at test/testfiles/_retry_tests.jl:35">Captured logs for test setup "StatefulSetup" (dependency of "Has retries=4 and always fails") at test/testfiles/_retry_tests.jl:1 on worker 29306
+These are the test setup logs.
+No Captured Logs for test item "Has retries=4 and always fails" at test/testfiles/_retry_tests.jl:32 on worker 29306
+Error in testset "Has retries=4 and always fails" on worker 29306:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:35
+  Expression: false
+		</error>
+	</testcase>
+	<testcase name="Has retries=4 and always fails" timestamp="2023-06-20T17:07:40.52" time="0.002" tests="1" skipped="0" failures="1" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="77526"></property>
+		<property name="dd_tags[perf.allocs]" value="1177"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="8.3e-8"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.0020383339999999997"></property>
+		</properties>
+		<error message="Test failed at test/testfiles/_retry_tests.jl:35">Captured logs for test setup "StatefulSetup" (dependency of "Has retries=4 and always fails") at test/testfiles/_retry_tests.jl:1 on worker 29306
+These are the test setup logs.
+No Captured Logs for test item "Has retries=4 and always fails" at test/testfiles/_retry_tests.jl:32 on worker 29306
+Error in testset "Has retries=4 and always fails" on worker 29306:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:35
+  Expression: false
+		</error>
+	</testcase>
+	<testcase name="Has retries=4 and always fails" timestamp="2023-06-20T17:07:40.57" time="0.002" tests="1" skipped="0" failures="1" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="77526"></property>
+		<property name="dd_tags[perf.allocs]" value="1177"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="4.2e-8"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.002009583"></property>
+		</properties>
+		<error message="Test failed at test/testfiles/_retry_tests.jl:35">Captured logs for test setup "StatefulSetup" (dependency of "Has retries=4 and always fails") at test/testfiles/_retry_tests.jl:1 on worker 29306
+These are the test setup logs.
+No Captured Logs for test item "Has retries=4 and always fails" at test/testfiles/_retry_tests.jl:32 on worker 29306
+Error in testset "Has retries=4 and always fails" on worker 29306:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:35
+  Expression: false
+		</error>
+	</testcase>
+	<testcase name="Has retries=1 and always fails" timestamp="2023-06-20T17:07:40.573" time="0.002" tests="1" skipped="0" failures="1" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="77526"></property>
+		<property name="dd_tags[perf.allocs]" value="1177"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="8.3e-8"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.00200425"></property>
+		</properties>
+		<error message="Test failed at test/testfiles/_retry_tests.jl:41">Captured logs for test setup "StatefulSetup" (dependency of "Has retries=1 and always fails") at test/testfiles/_retry_tests.jl:1 on worker 29306
+These are the test setup logs.
+No Captured Logs for test item "Has retries=1 and always fails" at test/testfiles/_retry_tests.jl:38 on worker 29306
+Error in testset "Has retries=1 and always fails" on worker 29306:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:41
+  Expression: false
+		</error>
+	</testcase>
+	<testcase name="Has retries=1 and always fails" timestamp="2023-06-20T17:07:40.624" time="0.002" tests="1" skipped="0" failures="1" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="77526"></property>
+		<property name="dd_tags[perf.allocs]" value="1177"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="8.3e-8"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.002038209"></property>
+		</properties>
+		<error message="Test failed at test/testfiles/_retry_tests.jl:41">Captured logs for test setup "StatefulSetup" (dependency of "Has retries=1 and always fails") at test/testfiles/_retry_tests.jl:1 on worker 29306
+These are the test setup logs.
+No Captured Logs for test item "Has retries=1 and always fails" at test/testfiles/_retry_tests.jl:38 on worker 29306
+Error in testset "Has retries=1 and always fails" on worker 29306:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:41
+  Expression: false
+		</error>
+	</testcase>
+	<testcase name="Has retries=1 and always fails" timestamp="2023-06-20T17:07:40.675" time="0.002" tests="1" skipped="0" failures="1" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="77526"></property>
+		<property name="dd_tags[perf.allocs]" value="1177"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="8.4e-8"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.002190082"></property>
+		</properties>
+		<error message="Test failed at test/testfiles/_retry_tests.jl:41">Captured logs for test setup "StatefulSetup" (dependency of "Has retries=1 and always fails") at test/testfiles/_retry_tests.jl:1 on worker 29306
+These are the test setup logs.
+No Captured Logs for test item "Has retries=1 and always fails" at test/testfiles/_retry_tests.jl:38 on worker 29306
+Error in testset "Has retries=1 and always fails" on worker 29306:
+Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:41
+  Expression: false
+		</error>
+	</testcase>
+	<testcase name="Timeout always" timestamp="2023-06-20T17:07:40.678" time="60.01" tests="1" skipped="0" failures="0" errors="0">
+		<properties>
+		<property name="dd_tags[perf.bytes]" value="65238"></property>
+		<property name="dd_tags[perf.allocs]" value="1015"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.00174"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="60.007931667"></property>
+		</properties>
+	</testcase>
+</testsuite>
+</testsuites>

@@ -100,11 +100,18 @@ end
         mktempdir() do dir
             withenv("RETESTITEMS_REPORT_LOCATION" => dir, "RETESTITEMS_NWORKERS" => nworkers) do
                 try # Ignore the fact that the `_retry_tests.jl` testset has failures/errors.
-                    run(`$(Base.julia_cmd()) --project -e 'using ReTestItems; runtests("testfiles/_retry_tests.jl"; report=true, retries=2)'`)
+                    run(`$(Base.julia_cmd()) --project -e 'using ReTestItems; runtests("testfiles/_retry_tests.jl"; testitem_timeout=5, report=true, retries=2)'`)
                 catch
                 end
                 report = only(filter(endswith("xml"), readdir(dir, join=true)))
-                test_reference(joinpath(REF_DIR, "retry_tests_report.xml"), report)
+                # timeouts are not supported when running without workers, so
+                # with 0 workers the "retry tests" that are expected to timeout will pass.
+                ref = if nworkers == 0
+                    joinpath(REF_DIR, "retry_tests_report_0worker.xml")
+                else
+                    joinpath(REF_DIR, "retry_tests_report_1worker.xml")
+                end
+                test_reference(ref, report)
             end
         end
     end

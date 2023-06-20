@@ -42,11 +42,11 @@ end
 end
 
 
-# For this to timeout, must be run with `testitem_timeout < 60`
+# For this to timeout, must be run with `testitem_timeout < 30`
 # Cannot use `StatefulSetup` for this as it will be a new worker
 # every retry, so the `setup` will always have been re-evaluated anew.
 @testitem "Timeout always" retries=1 begin
     write(tempname() * "_num_runs_5", "1")
-    sleep(60.0)
+    sleep(30.0)
     @test true
 end
