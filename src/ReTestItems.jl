@@ -360,10 +360,31 @@ end
 struct TestSetFailure <: Exception end
 throw_if_failed(ts) = ts.anynonpass ? throw(TestSetFailure()) : nothing
 
-function record_test_error!(testitem, ntries)
+function record_timeout!(testitem, run_number::Int, timeout_limit::Real)
+    timeout_s = round(Int, timeout_limit)
+    time_str = if timeout_s < 60
+        string(timeout_s, "s")
+    else
+        mins, secs = divrem(timeout_s, 60)
+        if iszero(secs)
+            string(mins, "m")
+        else
+            string(mins, "m", lpad(secs, 2, "0"), "s")
+        end
+    end
+    msg = "Timed out after $time_str evaluating test item $(repr(testitem.name)) (run=$run_number)"
+    record_test_error!(testitem, msg)
+end
+
+function record_worker_terminated!(testitem, run_number::Int)
+    msg = "Worker aborted evaluating test item $(repr(testitem.name)) (run=$run_number)"
+    record_test_error!(testitem, msg)
+end
+
+function record_test_error!(testitem, msg)
     Test.TESTSET_PRINT_ENABLE[] = false
     ts = DefaultTestSet(testitem.name)
-    err = ErrorException("test item $(repr(testitem.name)) didn't succeed after $ntries tries")
+    err = ErrorException(msg)
     Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
         Base.ExceptionStack([(exception=err, backtrace=Union{Ptr{Nothing}, Base.InterpreterIP}[])]),
         LineNumberNode(testitem.line, testitem.file)))
@@ -439,11 +460,11 @@ function start_and_manage_worker(
                 wait(worker)
                 @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
                     Recording test error."
-                record_test_error!(testitem, run_number)
+                record_timeout!(testitem, run_number, timeout)
             elseif e isa WorkerTerminatedException
                 @warn "$worker died evaluating test item $(repr(testitem.name)). \
                     Recording test error."
-                record_test_error!(testitem, run_number)
+                record_worker_terminated!(testitem, run_number)
             elseif e isa TestSetFailure
                 # We already printed the error and recorded the testset.
             else

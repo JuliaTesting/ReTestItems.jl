@@ -604,7 +604,7 @@ end
     # Test the error is as expected
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
-    @test err.value == string(ErrorException("test item \"Abort\" didn't succeed after 1 tries"))
+    @test err.value == string(ErrorException("Worker aborted evaluating test item \"Abort\" (run=1)"))
 end
 
 @testset "test retrying failing testitem" begin
@@ -650,7 +650,7 @@ end
     # Test the error is as expected
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
-    @test err.value == string(ErrorException("test item \"Test item takes 60 seconds\" didn't succeed after 1 tries"))
+    @test err.value == string(ErrorException("Timed out after 4s evaluating test item \"Test item takes 60 seconds\" (run=1)"))
 end
 
 @testset "Error outside `@testitem`" begin
