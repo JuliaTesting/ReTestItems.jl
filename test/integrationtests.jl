@@ -640,7 +640,7 @@ end
     # Clear out any files created by this testset
     for dir in (tempdir(), tmpdir)
         foreach(readdir(dir; join=true)) do tmp
-            # `force` in case it gets cleaned up between `readder` and `rm`
+            # `force` in case it gets cleaned up between `readdir` and `rm`
             contains(tmp, "num_runs") && rm(tmp; force=true)
         end
     end
