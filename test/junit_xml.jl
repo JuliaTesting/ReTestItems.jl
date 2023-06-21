@@ -110,7 +110,6 @@ end
                         rm(tmp; force=true)
                     end
                 end
-                end
                 report = only(filter(endswith("xml"), readdir(dir, join=true)))
                 # timeouts are not supported when running without workers, so
                 # with 0 workers the "retry tests" that are expected to timeout will pass.
