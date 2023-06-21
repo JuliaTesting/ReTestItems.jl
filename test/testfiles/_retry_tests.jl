@@ -42,7 +42,7 @@ end
 end
 
 
-# For these tests to timeout, must be run with `testitem_timeout < 30`
+# For these tests to timeout, must be run with `testitem_timeout < 20`
 # Cannot use `StatefulSetup` for testing timeouts, as it will be a new worker
 # every retry, so the `setup` will always have been re-evaluated anew.
 # Instead we write a new file for each run. We don't use `tempdir()` in case files written
@@ -55,7 +55,7 @@ end
     filename = joinpath(tmpdir, "num_runs_5_" * randstring())
     @assert !isfile(filename)
     write(filename, "1")
-    sleep(30.0)
+    sleep(20.0)
     @test true
 end
 
@@ -67,7 +67,7 @@ end
     is_first_run = !any(contains("num_runs_6"), readdir(tmpdir))
     write(filename, "1")
     if is_first_run
-        sleep(30.0)
+        sleep(20.0)
     end
     @test true
 end

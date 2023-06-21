@@ -609,7 +609,7 @@ end
 
 @testset "test retrying failing testitem" begin
     file = joinpath(TEST_FILES_DIR, "_retry_tests.jl")
-    # must run with `testitem_timeout < 30` for test to timeout as expected.
+    # must run with `testitem_timeout < 20` for test to timeout as expected.
     # and must run with `nworkers > 0` for retries to be supported.
     results = encased_testset(()->runtests(file; nworkers=1, retries=2, testitem_timeout=3))
     # Test we _ran_ each test-item the expected number of times
