@@ -452,7 +452,6 @@ function start_and_manage_worker(
             # Handle the exception
             if e isa TimeoutException
                 @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker"
-                # Explicitly show captured logs or say there weren't any before terminating worker
                 terminate!(worker)
                 wait(worker)
                 @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
