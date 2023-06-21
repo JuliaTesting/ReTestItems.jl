@@ -474,7 +474,7 @@ function start_and_manage_worker(
                 run_number += 1
                 @info "Retrying $(repr(testitem.name)) on a new worker. Run=$run_number."
             end
-            # Replace worker unless there are no more testitems to run
+            # The worker was terminated, so replace it unless there are no more testitems to run
             if testitem !== nothing
                 worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
             end
