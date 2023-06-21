@@ -102,6 +102,14 @@ end
                 try # Ignore the fact that the `_retry_tests.jl` testset has failures/errors.
                     run(`$(Base.julia_cmd()) --project -e 'using ReTestItems; runtests("testfiles/_retry_tests.jl"; testitem_timeout=5, report=true, retries=2)'`)
                 catch
+                finally
+                    # running `_retry_tests` creates files which we need to clean up before
+                    # we run `_retry_tests` again, because these files store state that is
+                    # used to control the behaviour of the tests.
+                    foreach(readdir(joinpath("/tmp", "JL_RETESTITEMS_TEST_TMPDIR"); join=true)) do tmp
+                        rm(tmp; force=true)
+                    end
+                end
                 end
                 report = only(filter(endswith("xml"), readdir(dir, join=true)))
                 # timeouts are not supported when running without workers, so

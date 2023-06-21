@@ -42,11 +42,32 @@ end
 end
 
 
-# For this to timeout, must be run with `testitem_timeout < 30`
-# Cannot use `StatefulSetup` for this as it will be a new worker
+# For these tests to timeout, must be run with `testitem_timeout < 30`
+# Cannot use `StatefulSetup` for testing timeouts, as it will be a new worker
 # every retry, so the `setup` will always have been re-evaluated anew.
+# Instead we write a new file for each run. We don't use `tempdir()` in case files written
+# there get cleaned up as soon as the worker dies.
+# We need to write a new file each time for our counting to be correct, so if the assertion
+# fails we need to switch to a more robust ways of creating unique filenames.
 @testitem "Timeout always" retries=1 begin
-    write(tempname() * "_num_runs_5", "1")
+    using Random
+    tmpdir = mkpath(joinpath("/tmp", "JL_RETESTITEMS_TEST_TMPDIR"))
+    filename = joinpath(tmpdir, "num_runs_5_" * randstring())
+    @assert !isfile(filename)
+    write(filename, "1")
     sleep(30.0)
+    @test true
+end
+
+@testitem "Timeout first, pass after" retries=1 begin
+    using Random
+    tmpdir = mkpath(joinpath("/tmp", "JL_RETESTITEMS_TEST_TMPDIR"))
+    filename = joinpath(tmpdir, "num_runs_6_" * randstring())
+    @assert !isfile(filename)
+    is_first_run = !any(contains("num_runs_6"), readdir(tmpdir))
+    write(filename, "1")
+    if is_first_run
+        sleep(30.0)
+    end
     @test true
 end
