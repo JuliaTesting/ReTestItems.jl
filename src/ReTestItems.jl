@@ -354,12 +354,6 @@ function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
     return w
 end
 
-
-# This is only used to signal that we need to retry. We don't use Test.TestSetException as
-# that requires information that we are not going to use anyway.
-struct TestSetFailure <: Exception end
-throw_if_failed(ts) = ts.anynonpass ? throw(TestSetFailure()) : nothing
-
 function record_timeout!(testitem, run_number::Int, timeout_limit::Real)
     timeout_s = round(Int, timeout_limit)
     time_str = if timeout_s < 60
@@ -441,21 +435,24 @@ function start_and_manage_worker(
                 # Run GC to free memory on the worker before next testitem.
                 @debugv 2 "Running GC on $worker"
                 remote_fetch(worker, :(GC.gc(true); GC.gc(false)))
-                # If the result isn't a pass, we throw to go to the outer try-catch
-                throw_if_failed(ts)
-                testitem = next_testitem(testitems, testitem.id[])
-                run_number = 1
+                if ts.anynonpass && (run_number != (1 + retry_limit))
+                    run_number += 1
+                    @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
+                else
+                    testitem = next_testitem(testitems, testitem.id[])
+                    run_number = 1
+                end
             finally
                 close(timer)
             end
         catch e
             @debugv 2 "Error" exception=e
+            println(DEFAULT_STDOUT[])
+            _print_captured_logs(DEFAULT_STDOUT[], testitem, run_number)
             # Handle the exception
             if e isa TimeoutException
                 @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker"
                 # Explicitly show captured logs or say there weren't any before terminating worker
-                println(DEFAULT_STDOUT[])
-                _print_captured_logs(DEFAULT_STDOUT[], testitem, run_number)
                 terminate!(worker)
                 wait(worker)
                 @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
@@ -465,8 +462,6 @@ function start_and_manage_worker(
                 @warn "$worker died evaluating test item $(repr(testitem.name)). \
                     Recording test error."
                 record_worker_terminated!(testitem, run_number)
-            elseif e isa TestSetFailure
-                # We already printed the error and recorded the testset.
             else
                 # We don't expect any other kind of error, so rethrow, which will propagate
                 # back up to the main coordinator task and throw to the user
@@ -478,14 +473,10 @@ function start_and_manage_worker(
                 run_number = 1
             else
                 run_number += 1
-                if e isa TestSetFailure
-                    @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
-                else
-                    @info "Retrying $(repr(testitem.name)) on a new worker. Run=$run_number."
-                end
+                @info "Retrying $(repr(testitem.name)) on a new worker. Run=$run_number."
             end
-            # Replace worker if necessary
-            if (e isa TimeoutException || e isa WorkerTerminatedException) && (testitem !== nothing)
+            # Replace worker unless there are no more testitems to run
+            if testitem !== nothing
                 worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
             end
             # Now loop back around to reschedule the testitem
