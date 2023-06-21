@@ -604,29 +604,45 @@ end
     # Test the error is as expected
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
-    @test err.value == string(ErrorException("test item \"Abort\" didn't succeed after 1 tries"))
+    @test err.value == string(ErrorException("Worker aborted evaluating test item \"Abort\" (run=1)"))
 end
 
 @testset "test retrying failing testitem" begin
     file = joinpath(TEST_FILES_DIR, "_retry_tests.jl")
-    results = encased_testset(()->runtests(file; nworkers=1, retries=2))
+    # This directory must match what's set in `_retry_tests`
+    tmpdir = joinpath("/tmp", "JL_RETESTITEMS_TEST_TMPDIR")
+    # must run with `testitem_timeout < 20` for test to timeout as expected.
+    # and must run with `nworkers > 0` for retries to be supported.
+    results = encased_testset(()->runtests(file; nworkers=1, retries=2, testitem_timeout=3))
     # Test we _ran_ each test-item the expected number of times
     read_count(x) = parse(Int, read(x, String))
     # Passes on second attempt, so only need to retry once.
-    @test read_count(joinpath(tempdir(), "num_runs_1")) == 2
+    @test read_count(joinpath(tmpdir, "num_runs_1")) == 2
     # Doesn't pass til third attempt, so needs both retries.
-    @test read_count(joinpath(tempdir(), "num_runs_2")) == 3
+    @test read_count(joinpath(tmpdir, "num_runs_2")) == 3
     # Doesn't pass ever, so need all retries. This testitem set `retries=4` which is greater
     # than the `retries=2` that `runtests` set, so we should retry 4 times.
-    @test read_count(joinpath(tempdir(), "num_runs_3")) == 5
+    @test read_count(joinpath(tmpdir, "num_runs_3")) == 5
     # Doesn't pass ever, so need all retries. This testitem set `retries=1` which is less
     # than the `retries=2` that `runtests` set, so we should retry 2 times.
-    @test read_count(joinpath(tempdir(), "num_runs_4")) == 3
+    @test read_count(joinpath(tmpdir, "num_runs_4")) == 3
+    # Times out always, so should retry as many times as allowed.
+    # Since it will be a new worker for each retry, we write one file for each.
+    @test count(contains("num_runs_5"), readdir(tmpdir)) == 3
+    # Times out on first run, then passes on second attempt.
+    @test count(contains("num_runs_6"), readdir(tmpdir)) == 2
 
     # Test we _report_ the expected number of test-items
-    @test n_tests(results) == 4
-    # The first two testitems pass on retry.
-    @test n_passed(results) == 2
+    @test n_tests(results) == 6
+    # Testitems 1, 2, and 6 pass on retry.
+    @test n_passed(results) == 3
+
+    # Clear out any files created by this testset
+    foreach(readdir(tmpdir; join=true)) do tmp
+        # `force` in case it gets cleaned up between `readdir` and `rm`
+        contains(tmp, "num_runs") && rm(tmp; force=true)
+    end
+    rm(tmpdir; force=true)
 end
 
 @testset "testitem timeout" begin
@@ -641,7 +657,7 @@ end
     # Test the error is as expected
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
-    @test err.value == string(ErrorException("test item \"Test item takes 60 seconds\" didn't succeed after 1 tries"))
+    @test err.value == string(ErrorException("Timed out after 4s evaluating test item \"Test item takes 60 seconds\" (run=1)"))
 end
 
 @testset "Error outside `@testitem`" begin

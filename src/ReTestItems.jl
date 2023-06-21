@@ -354,16 +354,31 @@ function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
     return w
 end
 
+function record_timeout!(testitem, run_number::Int, timeout_limit::Real)
+    timeout_s = round(Int, timeout_limit)
+    time_str = if timeout_s < 60
+        string(timeout_s, "s")
+    else
+        mins, secs = divrem(timeout_s, 60)
+        if iszero(secs)
+            string(mins, "m")
+        else
+            string(mins, "m", lpad(secs, 2, "0"), "s")
+        end
+    end
+    msg = "Timed out after $time_str evaluating test item $(repr(testitem.name)) (run=$run_number)"
+    record_test_error!(testitem, msg)
+end
 
-# This is only used to signal that we need to retry. We don't use Test.TestSetException as
-# that requires information that we are not going to use anyway.
-struct TestSetFailure <: Exception end
-throw_if_failed(ts) = ts.anynonpass ? throw(TestSetFailure()) : nothing
+function record_worker_terminated!(testitem, run_number::Int)
+    msg = "Worker aborted evaluating test item $(repr(testitem.name)) (run=$run_number)"
+    record_test_error!(testitem, msg)
+end
 
-function record_test_error!(testitem, ntries)
+function record_test_error!(testitem, msg)
     Test.TESTSET_PRINT_ENABLE[] = false
     ts = DefaultTestSet(testitem.name)
-    err = ErrorException("test item $(repr(testitem.name)) didn't succeed after $ntries tries")
+    err = ErrorException(msg)
     Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
         Base.ExceptionStack([(exception=err, backtrace=Union{Ptr{Nothing}, Base.InterpreterIP}[])]),
         LineNumberNode(testitem.line, testitem.file)))
@@ -384,7 +399,7 @@ function start_and_manage_worker(
 )
     ntestitems = length(testitems.testitems)
     worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
-    nretries = 0
+    run_number = 1
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
         testitem.workerid[] = worker.pid
@@ -415,70 +430,55 @@ function start_and_manage_worker(
                 ts = testitem_result.testset
                 push!(testitem.testsets, ts)
                 push!(testitem.stats, testitem_result.stats)
-                print_errors_and_captured_logs(testitem, nretries + 1; logs)
+                print_errors_and_captured_logs(testitem, run_number; logs)
                 report_empty_testsets(testitem, ts)
                 # Run GC to free memory on the worker before next testitem.
                 @debugv 2 "Running GC on $worker"
                 remote_fetch(worker, :(GC.gc(true); GC.gc(false)))
-                # If the result isn't a pass, we throw to go to the outer try-catch
-                throw_if_failed(ts)
-                testitem = next_testitem(testitems, testitem.id[])
-                nretries = 0
+                if ts.anynonpass && (run_number != (1 + retry_limit))
+                    run_number += 1
+                    @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
+                else
+                    testitem = next_testitem(testitems, testitem.id[])
+                    run_number = 1
+                end
             finally
                 close(timer)
             end
         catch e
             @debugv 2 "Error" exception=e
-            if !(e isa WorkerTerminatedException || e isa TimeoutException || e isa TestSetFailure)
-                # we don't expect any other kind of error, so rethrow, which will propagate
-                # back up to the main coordinator task and throw to the user
-                rethrow()
-            end
-
-            if !(e isa TestSetFailure)
-                println(DEFAULT_STDOUT[])
-                # Explicitly show captured logs or say there weren't any in case we're about
-                # to terminte the worker
-                _print_captured_logs(DEFAULT_STDOUT[], testitem, nretries + 1)
-            end
-
+            println(DEFAULT_STDOUT[])
+            _print_captured_logs(DEFAULT_STDOUT[], testitem, run_number)
+            # Handle the exception
             if e isa TimeoutException
                 @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker"
                 terminate!(worker)
                 wait(worker)
-            end
-            if nretries == retry_limit
-                if e isa TimeoutException
-                    @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
-                        Recording test error, and starting a new worker."
-                    record_test_error!(testitem, nretries + 1)
-                elseif e isa WorkerTerminatedException
-                    @warn "$worker died evaluating test item $(repr(testitem.name)). \
-                        Recording test error, and starting a new worker."
-                    record_test_error!(testitem, nretries + 1)
-                else
-                    @assert e isa TestSetFailure
-                    # We already printed the error and recorded the testset.
-                end
-                testitem = next_testitem(testitems, testitem.id[])
-                nretries = 0
+                @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
+                    Recording test error."
+                record_timeout!(testitem, run_number, timeout)
+            elseif e isa WorkerTerminatedException
+                @warn "$worker died evaluating test item $(repr(testitem.name)). \
+                    Recording test error."
+                record_worker_terminated!(testitem, run_number)
             else
-                nretries += 1
-                if e isa TimeoutException
-                    @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
-                        Starting a new worker and retrying. Retry=$nretries."
-                elseif e isa WorkerTerminatedException
-                    @warn "$worker died evaluating test item $(repr(testitem.name)). \
-                        Starting a new worker and retrying. Retry=$nretries."
-                else
-                    @assert e isa TestSetFailure
-                    @warn "Test item $(repr(testitem.name)) failed. Retrying on $worker. Retry=$nretries."
-                end
+                # We don't expect any other kind of error, so rethrow, which will propagate
+                # back up to the main coordinator task and throw to the user
+                rethrow()
             end
-            if (e isa TimeoutException || e isa WorkerTerminatedException)
+            # Handle retries
+            if run_number == (1 + retry_limit)
+                testitem = next_testitem(testitems, testitem.id[])
+                run_number = 1
+            else
+                run_number += 1
+                @info "Retrying $(repr(testitem.name)) on a new worker. Run=$run_number."
+            end
+            # The worker was terminated, so replace it unless there are no more testitems to run
+            if testitem !== nothing
                 worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
             end
-            # now we loop back around to reschedule the testitem
+            # Now loop back around to reschedule the testitem
             continue
         end
     end
