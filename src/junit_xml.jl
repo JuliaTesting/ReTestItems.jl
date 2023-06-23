@@ -55,7 +55,7 @@ function JUnitTestCase(ti::TestItem, run_number::Int)
         message = nothing
     else
         io = IOBuffer()
-        print_errors_and_captured_logs(io, ti, run_number)
+        print_errors_and_captured_logs(io, ti, run_number; errors_first=true)
         logs = take!(io)
         message = _error_message(ts, ti)
     end

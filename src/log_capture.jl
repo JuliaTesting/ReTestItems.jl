@@ -147,7 +147,7 @@ _mem_watermark() = string(
 )
 
 """
-    print_errors_and_captured_logs(ti::TestItem, run_number::Int; logs=:batched)
+    print_errors_and_captured_logs(ti::TestItem, run_number::Int; logs=:batched, errors_first=false)
 
 When a testitem doesn't succeed, we print the corresponding error/failure reports
 from the testset and any logs that we captured while the testitem was eval()'d.
@@ -156,11 +156,16 @@ For `:eager` mode of `logs` we don't print any logs as they bypass log capture. 
 means we print logs even for passing test items, whereas `:issues` means we are only printing
 captured logs if there were any errors or failures.
 
+If `errors_first=true`, then the test errors are printed first and the logs second.
+The default `errors_first=false`, prints the logs firsts.
+
 Nothing is printed when no logs were captures and no failures or errors occured.
 """
-print_errors_and_captured_logs(ti::TestItem, run_number::Int; logs=:batched) =
-    print_errors_and_captured_logs(DEFAULT_STDOUT[], ti, run_number; logs)
-function print_errors_and_captured_logs(io, ti::TestItem, run_number::Int; logs=:batched)
+print_errors_and_captured_logs(ti::TestItem, run_number::Int; kwargs...) =
+    print_errors_and_captured_logs(DEFAULT_STDOUT[], ti, run_number; kwargs...)
+function print_errors_and_captured_logs(
+    io, ti::TestItem, run_number::Int; logs=:batched, errors_first::Bool=false,
+)
     ts = ti.testsets[run_number]
     has_errors = ts.anynonpass
     has_logs = _has_logs(ti, run_number) || any(_has_logs, ti.testsetups)
@@ -168,8 +173,13 @@ function print_errors_and_captured_logs(io, ti::TestItem, run_number::Int; logs=
         report_iob = IOContext(IOBuffer(), :color=>Base.get_have_color())
         println(report_iob)
         # in :eager mode, the logs were already printed
-        logs != :eager && _print_captured_logs(report_iob, ti, run_number)
-        has_errors && _print_test_errors(report_iob, ts, _on_worker(ti))
+        if errors_first
+            has_errors && _print_test_errors(report_iob, ts, _on_worker(ti))
+            logs != :eager && _print_captured_logs(report_iob, ti, run_number)
+        else
+            logs != :eager && _print_captured_logs(report_iob, ti, run_number)
+            has_errors && _print_test_errors(report_iob, ts, _on_worker(ti))
+        end
         if has_errors || has_logs
             # a newline to visually separate the report for the current test item
             println(report_iob)
