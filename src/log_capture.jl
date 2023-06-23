@@ -147,7 +147,7 @@ _mem_watermark() = string(
 )
 
 """
-    print_errors_and_captured_logs(ti::TestItem, run_number::Int; logs=:batched)
+    print_errors_and_captured_logs(ti::TestItem, run_number::Int; logs=:batched, errors_first=false)
 
 When a testitem doesn't succeed, we print the corresponding error/failure reports
 from the testset and any logs that we captured while the testitem was eval()'d.
@@ -155,6 +155,9 @@ from the testset and any logs that we captured while the testitem was eval()'d.
 For `:eager` mode of `logs` we don't print any logs as they bypass log capture. `:batched`
 means we print logs even for passing test items, whereas `:issues` means we are only printing
 captured logs if there were any errors or failures.
+
+If `errors_first=true`, then the test errors are printed first and the logs second.
+The default `errors_first=false`, prints the logs firsts.
 
 Nothing is printed when no logs were captures and no failures or errors occured.
 """
