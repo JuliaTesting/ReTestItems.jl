@@ -195,21 +195,24 @@ end
     # The reference tests ensure the properties are written as we expect,
     # BUT they can't test the values (since they will differ between runs)
     # so here we tests the values are written as expected.
-    using ReTestItems: PerfStats, write_dd_tags
+    using ReTestItems: JUnitTestCase, JUnitCounts, PerfStats, write_dd_tags
     stats = PerfStats(; allocs=1, bytes=8, gctime=42, compile_time=3e10, recompile_time=2e6)
-    xml = XMLDict.parse_xml(sprint(write_dd_tags, stats))
+    tc = JUnitTestCase("name", "id007", JUnitCounts(), stats, nothing, nothing)
+    xml = XMLDict.parse_xml(sprint(write_dd_tags, tc))
     props = xml["property"]
-    @test contains(props[1][:name], "bytes")
-    @test props[1][:value] == "8"
-    @test contains(props[2][:name], "allocs")
-    @test props[2][:value] == "1"
+    @test contains(props[1][:name], "id")
+    @test props[1][:value] == "id007"
+    @test contains(props[2][:name], "bytes")
+    @test props[2][:value] == "8"
+    @test contains(props[3][:name], "allocs")
+    @test props[3][:value] == "1"
     # Time values should be converted from Nanoseconds to Seconds, and printed as floats.
-    @test contains(props[3][:name], "gctime")
-    @test props[3][:value] == "4.2e-8"
-    @test contains(props[4][:name], "compile_time")
-    @test props[4][:value] == "30.0"
-    @test contains(props[5][:name], "recompile_time")
-    @test props[5][:value] == "0.002"
+    @test contains(props[4][:name], "gctime")
+    @test props[4][:value] == "4.2e-8"
+    @test contains(props[5][:name], "compile_time")
+    @test props[5][:value] == "30.0"
+    @test contains(props[6][:name], "recompile_time")
+    @test props[6][:value] == "0.002"
 end
 
 @testset "Manual JUnitTestSuite/JUnitTestCase" begin
@@ -248,8 +251,14 @@ end
         <?xml version="1.0" encoding="UTF-8"?>
         <testsuite name="manual" timestamp="2023-01-15T16:42:00.0" time="60.0" tests="4" skipped="0" failures="0" errors="0">
         \t<testcase name="outer1" timestamp="2023-01-15T16:42:00.0" time="30.0" tests="2" skipped="0" failures="0" errors="0">
+        \t\t<properties>
+        \t\t<property name=\"dd_tags[test.id]\" value=\"$(repr(hash("outer1")))\"></property>
+        \t\t</properties>
         \t</testcase>
         \t<testcase name="outer2" timestamp="2023-01-15T16:42:00.0" time="30.0" tests="2" skipped="0" failures="0" errors="0">
+        \t\t<properties>
+        \t\t<property name=\"dd_tags[test.id]\" value=\"$(repr(hash("outer2")))\"></property>
+        \t\t</properties>
         \t</testcase>
         </testsuite>
         """
