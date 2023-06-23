@@ -86,10 +86,10 @@ end
 
 function logfile_name(ti::TestItem, i=nothing)
     # Replacing reserved chars https://en.wikipedia.org/wiki/Filename
-    # File name should remain unique due to the inclusion of `ti.id`.
+    # File name should remain unique due to the inclusion of `ti.number`.
     safe_name = replace(ti.name, r"[/\\\?%\*\:\|\"\<\>\.\,\;\=\s\$\#\@]" => "_")
     i = something(i, length(ti.testsets) + 1)  # Separate log file for each retry.
-    return string("ReTestItems_test_", first(safe_name, 150), "_", ti.id[], "_", i, ".log")
+    return string("ReTestItems_test_", first(safe_name, 150), "_", ti.number[], "_", i, ".log")
 end
 function logfile_name(ts::TestSetup)
     # Test setup names should be unique to begin with, but we add hash of their location to be sure

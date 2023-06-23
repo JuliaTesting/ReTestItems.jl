@@ -439,7 +439,7 @@ function start_and_manage_worker(
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
                 else
-                    testitem = next_testitem(testitems, testitem.id[])
+                    testitem = next_testitem(testitems, testitem.number[])
                     run_number = 1
                 end
             finally
@@ -468,7 +468,7 @@ function start_and_manage_worker(
             end
             # Handle retries
             if run_number == (1 + retry_limit)
-                testitem = next_testitem(testitems, testitem.id[])
+                testitem = next_testitem(testitems, testitem.number[])
                 run_number = 1
             else
                 run_number += 1
@@ -628,8 +628,8 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
     flatten_testitems!(ti)
     setups = fetch(setup_task)
     for (i, x) in enumerate(ti.testitems)
-        # set id for each testitem
-        x.id[] = i
+        # set a unique number for each testitem
+        x.number[] = i
         # populate testsetups for each testitem
         for s in x.setups
             if haskey(setups, s)

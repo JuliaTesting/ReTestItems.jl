@@ -27,6 +27,7 @@ end
 
 mutable struct JUnitTestCase  # TestItem run
     const name::String
+    id::String
     counts::JUnitCounts
     stats::Union{PerfStats, Nothing} # Additional stats not available from the testset
     error_message::Union{String,Nothing} # Additional message to include in `<error>`
@@ -42,8 +43,9 @@ end
 
 function JUnitTestCase(ts::DefaultTestSet)
     name = ts.description
+    id = repr(hash(name))
     counts = JUnitCounts(ts)
-    return JUnitTestCase(name, counts, nothing, nothing, nothing)
+    return JUnitTestCase(name, id, counts, nothing, nothing, nothing)
 end
 
 function JUnitTestCase(ti::TestItem, run_number::Int)
@@ -59,7 +61,7 @@ function JUnitTestCase(ti::TestItem, run_number::Int)
         logs = take!(io)
         message = _error_message(ts, ti)
     end
-    return JUnitTestCase(ti.name, counts, stats, message, logs)
+    return JUnitTestCase(ti.name, ti.id, counts, stats, message, logs)
 end
 
 function _error_message(fail::Test.Fail, ti)
@@ -227,14 +229,16 @@ function write_counts(io, x::JUnitCounts)
     return nothing
 end
 
-function write_dd_tags(io, x::PerfStats)
+function write_dd_tags(io, tc::JUnitTestCase)
     # We don't record `elapsedtime`, since that already stored in the JUnitTestCase `time`.
     # Convert values from nanoseconds to seconds to match JUnit convention.
+    x = tc.stats
     gctime = x.gctime / 1e9
     compile_time = x.compile_time / 1e9
     recompile_time = x.recompile_time / 1e9
     eval_time = (x.elapsedtime / 1e9) - gctime - compile_time  # compile_time includes recompile_time
     write(io, "\n\t\t<properties>")
+    write(io, "\n\t\t<property name=\"dd_tags[test.id]\" value=\"$(tc.id)\"></property>")
     write(io, "\n\t\t<property name=\"dd_tags[perf.bytes]\" value=\"$(x.bytes)\"></property>")
     write(io, "\n\t\t<property name=\"dd_tags[perf.allocs]\" value=\"$(x.allocs)\"></property>")
     write(io, "\n\t\t<property name=\"dd_tags[perf.gctime]\" value=\"$(gctime)\"></property>")
@@ -249,7 +253,7 @@ function write_junit_xml(io, tc::JUnitTestCase)
     write(io, "\n\t<testcase name=", xml_markup(tc.name))
     write_counts(io, tc.counts)
     write(io, ">")
-    !isnothing(tc.stats) && write_dd_tags(io, tc.stats)
+    !isnothing(tc.stats) && write_dd_tags(io, tc)
     if !isnothing(tc.logs)
         write(io, "\n\t\t<error")
         !isnothing(tc.error_message) && write(io, " message=", xml_markup(tc.error_message))

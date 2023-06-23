@@ -228,6 +228,28 @@ end
     @test_throws expected (@eval @testsetup("foo", begin end))
 end
 
+@testset "testitem `id` keyword" begin
+    # Should default to `repr(hash(name))`.
+    ti1 = @testitem "one" _run=false begin; end;
+    @test ti1.id == repr(hash("one"))
+    # Should accept an `AbstractString`.
+    ti2a = @testitem "two" id="two" _run=false begin; end;
+    ti2b = @testitem "two" id=Test.GenericString("two") _run=false begin; end;
+    @test ti2a.id == "two"
+    @test ti2b.id == "two"
+    # Should accept an expression evaluating to a string.
+    ti3 = @testitem "three" id=repr(hash("3")) _run=false begin; end;
+    @test ti3.id == repr(hash("3"))
+    # Should not accept anything but a string or an expression evaluating to a string.
+    # Can detect `id` is an Int at macro-expansion time, so throws hand-written error.
+    expected = VERSION < v"1.8" ? LoadError : "must be passed a string"
+    @test_throws expected (@eval @testitem("four", id=1, _run=false, begin end))
+    # Cannot detect type of `id` at macro-expansion time, so throws run-time error
+    expected = VERSION < v"1.8" ? MethodError : "MethodError: Cannot `convert` an object of type UInt64 to an object of type String"
+    @test_throws expected (@eval @testitem("five", id=hash("five"), _run=false, begin end))
+end
+
+
 #=
 NOTE:
     These tests are disabled as we stopped using anonymous modules;
