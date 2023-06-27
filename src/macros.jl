@@ -131,8 +131,9 @@ struct TestItem
     scheduled_for_evaluation::ScheduledForEvaluation # to keep track of whether the test item has been scheduled for evaluation
 end
 function TestItem(number, name, id, tags, default_imports, setups, retries, file, line, project_root, code)
+    _id = @something(id, repr(hash(name, hash(file))))
     return TestItem(
-        number, name, id, tags, default_imports, setups, retries, file, line, project_root, code,
+        number, name, _id, tags, default_imports, setups, retries, file, line, project_root, code,
         TestSetup[],
         Ref{Int}(0),
         DefaultTestSet[],
@@ -224,7 +225,7 @@ macro testitem(nm, exs...)
     retries = 0
     tags = Symbol[]
     setup = Any[]
-    id = repr(hash(nm))
+    _id = nothing
     _run = true  # useful for testing `@testitem` itself
     _source = QuoteNode(__source__)
     if length(exs) > 1
@@ -247,12 +248,12 @@ macro testitem(nm, exs...)
             elseif kw == :retries
                 retries = ex.args[2]
                 @assert retries isa Integer "`default_imports` keyword must be passed an `Integer`"
-            elseif kw == :id
-                id = ex.args[2]
+            elseif kw == :_id
+                _id = ex.args[2]
                 # This will always be written to the JUnit XML as a String, require the user
                 # gives us a String, so that we write exactly what the user expects.
                 # If given an `Expr` that doesn't evaluate to a String, throws at runtime.
-                @assert id isa Union{AbstractString,Expr} "`id` keyword must be passed a string"
+                @assert _id isa Union{AbstractString,Expr} "`id` keyword must be passed a string"
             elseif kw == :_run
                 _run = ex.args[2]
                 @assert _run isa Bool "`_run` keyword must be passed a `Bool`"
@@ -271,7 +272,7 @@ macro testitem(nm, exs...)
     ti = gensym(:ti)
     esc(quote
         let $ti = $TestItem(
-            $Ref(0), $nm, $id, $tags, $default_imports, $setup, $retries,
+            $Ref(0), $nm, $_id, $tags, $default_imports, $setup, $retries,
             $String($_source.file), $_source.line,
             $gettls(:__RE_TEST_PROJECT__, "."),
             $q,
