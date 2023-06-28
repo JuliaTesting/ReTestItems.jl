@@ -229,8 +229,10 @@ end
 end
 
 @testset "testitem `_id` keyword" begin
-    # Should default to `repr(hash(name, hash(file)))`
-    file = @__FILE__
+    # Should default to `repr(hash(name, hash(file)))` where `file` is relative to the root
+    # of the project being tested.
+    file = "test/macros.jl" # this file
+    # set the source to be this file, so that the test is valid even when run in the REPL.
     ti1 = @testitem "one" _run=false _source=LineNumberNode(@__LINE__, file) begin; end;
     @test ti1.id == repr(hash("one", hash(file)))
     # Should accept an `AbstractString`.

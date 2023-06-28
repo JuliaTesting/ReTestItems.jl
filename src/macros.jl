@@ -131,7 +131,7 @@ struct TestItem
     scheduled_for_evaluation::ScheduledForEvaluation # to keep track of whether the test item has been scheduled for evaluation
 end
 function TestItem(number, name, id, tags, default_imports, setups, retries, file, line, project_root, code)
-    _id = @something(id, repr(hash(name, hash(file))))
+    _id = @something(id, repr(hash(name, hash(relpath(file, project_root)))))
     return TestItem(
         number, name, _id, tags, default_imports, setups, retries, file, line, project_root, code,
         TestSetup[],
