@@ -626,6 +626,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
     prune!(root_node)
     ti = TestItems(root_node)
     flatten_testitems!(ti)
+    check_ids(ti.testitems)
     setups = fetch(setup_task)
     for (i, x) in enumerate(ti.testitems)
         # set a unique number for each testitem
@@ -638,6 +639,31 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
         end
     end
     return ti, setups # only returned for testing
+end
+
+function check_ids(testitems)
+    ids = getproperty.(testitems, :id)
+    # This should only be possible to trip if users are manually passing the `_id` keyword.
+    allunique(ids) || _throw_duplicate_ids(testitems)
+    return nothing
+end
+
+# Try to give an informative error, so users can correct the issue.
+function _throw_duplicate_ids(testitems)
+    seen = Dict{String,String}()
+    for ti in testitems
+        id = ti.id
+        source = string(relpath(ti.file, ti.project_root), ":", ti.line)
+        name = string(repr(ti.name), " at ", source)
+        if haskey(seen, id)
+            name1 = seen[id]
+            error("Test item IDs must be unique. ID `$id` used for test items: $name1 and $name")
+        else
+            seen[id] = name
+        end
+    end
+    # This should be unreachable, since the loop above should always find a duplicate.
+    error("Test item IDs must be unique")
 end
 
 # Is filepath one of the paths the user requested?
