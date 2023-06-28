@@ -311,7 +311,7 @@ end
     # Test that the final summary has testitems by file, with files sorted alphabetically
     using IOCapture
     testset = with_test_package("TestsInSrc.jl") do
-        runtests()
+        runtests(verbose_results=true)
     end
     c = IOCapture.capture() do
         Test.print_test_results(testset)
