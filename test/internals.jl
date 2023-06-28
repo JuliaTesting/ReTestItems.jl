@@ -90,18 +90,19 @@ end
 @testset "only requested testfiles included" begin
     using ReTestItems: ReTestItems, include_testfiles!, identify_project, is_test_file
     shouldrun = Returns(true)
+    verbose_results = false
     report = false
 
     # Requesting only non-existent files/dirs should result in no files being included
-    ti, setups = include_testfiles!("proj", "/this/file/", ("/this/file/is/not/a/t-e-s-tfile.jl",), shouldrun, report)
+    ti, setups = include_testfiles!("proj", "/this/file/", ("/this/file/is/not/a/t-e-s-tfile.jl",), shouldrun, verbose_results, report)
     @test isempty(ti.testitems)
     @test isempty(setups)
 
-    ti, setups = include_testfiles!("proj", "/this/file/", ("/this/file/does/not/exist/imaginary_tests.jl",), shouldrun, report)
+    ti, setups = include_testfiles!("proj", "/this/file/", ("/this/file/does/not/exist/imaginary_tests.jl",), shouldrun, verbose_results, report)
     @test isempty(ti.testitems)
     @test isempty(setups)
 
-    ti, setups = include_testfiles!("proj", "/this/dir/", ("/this/dir/does/not/exist/", "/this/dir/also/not/exist/"), shouldrun, report)
+    ti, setups = include_testfiles!("proj", "/this/dir/", ("/this/dir/does/not/exist/", "/this/dir/also/not/exist/"), shouldrun, verbose_results, report)
     @test isempty(ti.testitems)
     @test isempty(setups)
 
@@ -109,7 +110,7 @@ end
     pkg_file = joinpath(pkgdir(ReTestItems), "test", "packages", "NoDeps.jl", "src", "NoDeps.jl")
     @assert isfile(pkg_file)
     project = identify_project(pkg_file)
-    ti, setups = include_testfiles!("NoDeps.jl", project, (pkg_file,), shouldrun, report)
+    ti, setups = include_testfiles!("NoDeps.jl", project, (pkg_file,), shouldrun, verbose_results, report)
     @test isempty(ti.testitems)
     @test isempty(setups)
 
@@ -117,7 +118,7 @@ end
     pkg_src = joinpath(pkgdir(ReTestItems), "test", "packages", "NoDeps.jl", "src")
     @assert all(!is_test_file, readdir(pkg_src))
     project = identify_project(pkg_src)
-    ti, setups = include_testfiles!("NoDeps.jl", project, (pkg_src,), shouldrun, report)
+    ti, setups = include_testfiles!("NoDeps.jl", project, (pkg_src,), shouldrun, verbose_results, report)
     @test isempty(ti.testitems)
     @test isempty(setups)
 
@@ -125,7 +126,7 @@ end
     pkg_file = joinpath(pkgdir(ReTestItems), "test", "packages", "TestsInSrc.jl", "src", "foo_test.jl")
     @assert isfile(pkg_file) && is_test_file(pkg_file)
     project = identify_project(pkg_file)
-    ti, setups = include_testfiles!("TestsInSrc.jl", project, (pkg_file,), shouldrun, report)
+    ti, setups = include_testfiles!("TestsInSrc.jl", project, (pkg_file,), shouldrun, verbose_results, report)
     @test length(ti.testitems) == 1
     @test isempty(setups)
 
@@ -133,7 +134,7 @@ end
     pkg = joinpath(pkgdir(ReTestItems), "test", "packages", "TestsInSrc.jl")
     @assert any(!is_test_file, readdir(joinpath(pkg, "src")))
     project = identify_project(pkg)
-    ti, setups = include_testfiles!("TestsInSrc.jl", project, (pkg,), shouldrun, report)
+    ti, setups = include_testfiles!("TestsInSrc.jl", project, (pkg,), shouldrun, verbose_results, report)
     @test map(x -> x.name, ti.testitems) == ["a1", "a2", "z", "y", "x", "b", "bar", "foo"]
     @test isempty(setups)
 end
@@ -141,6 +142,7 @@ end
 @testset "testsetup files always included" begin
     using ReTestItems: include_testfiles!, is_test_file, is_testsetup_file
     shouldrun = Returns(true)
+    verbose_results = false
     report = false
     proj = joinpath(pkgdir(ReTestItems), "Project.toml")
 
@@ -148,7 +150,7 @@ end
     @assert count(is_testsetup_file, readdir(test_dir)) == 1
     file = joinpath(test_dir, "_empty_file.jl")
     @assert isfile(file) && !is_test_file(file)
-    ti, setups = include_testfiles!("empty_file", proj, (file,), shouldrun, report)
+    ti, setups = include_testfiles!("empty_file", proj, (file,), shouldrun, verbose_results, report)
     @test length(ti.testitems) == 0 # just the testsetup
     @test haskey(setups, :FooSetup)
 
@@ -157,7 +159,7 @@ end
     @assert !any(is_testsetup_file, readdir(nested_dir))
     file = joinpath(nested_dir, "_testitem_test.jl")
     @assert isfile(file)
-    ti, setups = include_testfiles!("_nested", proj, (file,), shouldrun, report)
+    ti, setups = include_testfiles!("_nested", proj, (file,), shouldrun, verbose_results, report)
     @test length(ti.testitems) == 1 # the testsetup and only one test item
     @test haskey(setups, :FooSetup)
 end
