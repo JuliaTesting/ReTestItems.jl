@@ -299,7 +299,7 @@ function _runtests_in_current_env(
                     report_empty_testsets(testitem, ts)
                     if ts.anynonpass && nretries < retry_limit
                         nretries += 1
-                        @warn "Test item $(repr(testitem.name)) failed. Retrying. Retry=$nretries."
+                        @info "Retrying $(repr(testitem.name)). Run=$run_number."
                     else
                         if nretries > 0
                             @info "Test item $(repr(testitem.name)) passed on retry $nretries."
@@ -454,11 +454,11 @@ function start_and_manage_worker(
                 @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker"
                 terminate!(worker)
                 wait(worker)
-                @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
+                @error "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
                     Recording test error."
                 record_timeout!(testitem, run_number, timeout)
             elseif e isa WorkerTerminatedException
-                @warn "$worker died evaluating test item $(repr(testitem.name)). \
+                @error "$worker died evaluating test item $(repr(testitem.name)). \
                     Recording test error."
                 record_worker_terminated!(testitem, run_number)
             else
