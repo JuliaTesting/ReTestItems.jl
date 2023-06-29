@@ -299,7 +299,7 @@ function _runtests_in_current_env(
                     report_empty_testsets(testitem, ts)
                     if ts.anynonpass && nretries < retry_limit
                         nretries += 1
-                        @info "Retrying $(repr(testitem.name)). Run=$run_number."
+                        @info "Retrying $(repr(testitem.name)). Retry=$nretries."
                     else
                         if nretries > 0
                             @info "Test item $(repr(testitem.name)) passed on retry $nretries."
