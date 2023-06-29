@@ -310,6 +310,7 @@ end
 @testset "print report sorted" begin
     # Test that the final summary has testitems by file, with files sorted alphabetically
     using IOCapture
+    # verbose_results=true
     testset = with_test_package("TestsInSrc.jl") do
         runtests(verbose_results=true)
     end
@@ -344,6 +345,21 @@ end
               foo                         \|    2      2  \s*\d*.\ds
         """
     )
+    # verbose_results=false
+    testset = with_test_package("TestsInSrc.jl") do
+        runtests(verbose_results=false)
+    end
+    c = IOCapture.capture() do
+        Test.print_test_results(testset)
+    end
+    m = match(
+        r"""
+        Test Summary: \| Pass  Total  Time
+        TestsInSrc    \|   13     13  \s*\d*.\ds
+        """,
+        c.output
+    )
+    @test m.match == c.output
 end
 
 @testset "`verbose_results`, `debug` and `logs` keywords" begin
