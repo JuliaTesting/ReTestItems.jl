@@ -137,8 +137,8 @@ will be run.
   - `:issues`: Logs are saved to a file and only printed if there were any errors or failures.
   For interative sessions, `:eager` is the default when running with 0 or 1 workers, `:batched` otherwise.
   For non-interactive sessions, `:issues` is used by default.
-- `verbose_results::Bool`: If `true`, the final test report will test each `@testset`, otherwise
-    the results are aggregated on the `@testitem` level. Default is `false` for non-interactive sessions
+- `verbose_results::Bool`: If `true`, the final test report will list each `@testitem`, otherwise
+    the results are aggregated. Default is `false` for non-interactive sessions
     or when `logs=:issues`, `true` otherwise.
 """
 function runtests end
@@ -274,7 +274,7 @@ function _runtests_in_current_env(
     @info "Scanning for test items in project `$proj_name` at paths: $(join(paths, ", "))"
     inc_time = time()
     @debugv 1 "Including tests in $paths"
-    testitems, _ = include_testfiles!(proj_name, projectfile, paths, shouldrun, report)
+    testitems, _ = include_testfiles!(proj_name, projectfile, paths, shouldrun, verbose_results, report)
     ntestitems = length(testitems.testitems)
     @debugv 1 "Done including tests in $paths"
     @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds." *
@@ -556,10 +556,10 @@ function _throw_not_macrocall(expr)
 end
 
 # for each directory, kick off a recursive test-finding task
-function include_testfiles!(project_name, projectfile, paths, shouldrun, report::Bool)
+function include_testfiles!(project_name, projectfile, paths, shouldrun, verbose_results::Bool, report::Bool)
     project_root = dirname(projectfile)
     subproject_root = nothing  # don't recurse into directories with their own Project.toml.
-    root_node = DirNode(project_name; report, verbose=true)
+    root_node = DirNode(project_name; report, verbose=verbose_results)
     dir_nodes = Dict{String, DirNode}()
     # setup_channel is populated in store_test_setup when we expand a @testsetup
     # we set it below in tls as __RE_TEST_SETUPS__ for each included file
@@ -585,7 +585,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
         end
         rpath = relpath(root, project_root)
         startswith(rpath, hidden_re) && continue # skip hidden directories
-        dir_node = DirNode(rpath; report, verbose=true)
+        dir_node = DirNode(rpath; report, verbose=verbose_results)
         dir_nodes[rpath] = dir_node
         push!(get(dir_nodes, dirname(rpath), root_node), dir_node)
         for file in files
@@ -602,7 +602,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
                 continue
             end
             fpath = relpath(filepath, project_root)
-            file_node = FileNode(fpath, shouldrun; report, verbose=true)
+            file_node = FileNode(fpath, shouldrun; report, verbose=verbose_results)
             testitem_names = Set{String}() # to enforce that names in the same file are unique
             push!(dir_node, file_node)
             @debugv 1 "Including test items from file `$filepath`"

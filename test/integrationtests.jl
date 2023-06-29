@@ -310,32 +310,12 @@ end
 @testset "print report sorted" begin
     # Test that the final summary has testitems by file, with files sorted alphabetically
     using IOCapture
+    # verbose_results=true
     testset = with_test_package("TestsInSrc.jl") do
-        runtests()
+        runtests(verbose_results=true)
     end
     c = IOCapture.capture() do
         Test.print_test_results(testset)
-        ## Should look like (possibly with different Time values):
-        # Test Summary:                     | Pass  Total  Time
-        # TestsInSrc                        |   13     13  0.0s
-        #   src                             |   13     13
-        #     src/a_dir                     |    6      6
-        #       src/a_dir/a1_test.jl        |    1      1
-        #         a1                        |    1      1  0.0s
-        #       src/a_dir/a2_test.jl        |    2      2
-        #         a2                        |    2      2  0.0s
-        #       src/a_dir/x_dir             |    3      3
-        #         src/a_dir/x_dir/x_test.jl |    3      3
-        #           x                       |    1      1  0.0s
-        #           y                       |    1      1  0.0s
-        #           z                       |    1      1  0.0s
-        #     src/b_dir                     |    1      1
-        #       src/b_dir/b_test.jl         |    1      1
-        #         b                         |    1      1  0.0s
-        #     src/bar_tests.jl              |    4      4
-        #       bar                         |    4      4  0.0s
-        #     src/foo_test.jl               |    2      2
-        #       foo                         |    2      2  0.0s
     end
     # Test with `contains` rather than `match` so failure print an informative message.
     @test contains(
@@ -349,6 +329,7 @@ end
                 a1                        \|    1      1  \s*\d*.\ds
               src/a_dir/a2_test.jl        \|    2      2  \s*
                 a2                        \|    2      2  \s*\d*.\ds
+                  a2_testset              \|    1      1  \s*\d*.\ds
               src/a_dir/x_dir             \|    3      3  \s*
                 src/a_dir/x_dir/x_test.jl \|    3      3  \s*
                   z                       \|    1      1  \s*\d*.\ds
@@ -359,10 +340,26 @@ end
                 b                         \|    1      1  \s*\d*.\ds
             src/bar_tests.jl              \|    4      4  \s*
               bar                         \|    4      4  \s*\d*.\ds
+                bar values                \|    2      2  \s*\d*.\ds
             src/foo_test.jl               \|    2      2  \s*
               foo                         \|    2      2  \s*\d*.\ds
         """
     )
+    # verbose_results=false
+    testset = with_test_package("TestsInSrc.jl") do
+        runtests(verbose_results=false)
+    end
+    c = IOCapture.capture() do
+        Test.print_test_results(testset)
+    end
+    m = match(
+        r"""
+        Test Summary: \| Pass  Total  Time
+        TestsInSrc    \|   13     13  \s*\d*.\ds
+        """,
+        c.output
+    )
+    @test m.match == c.output
 end
 
 @testset "`verbose_results`, `debug` and `logs` keywords" begin
@@ -392,8 +389,10 @@ end
                 Test.print_test_results(testset)
             end
             if verbose_results
+                @test contains(c2.output, "NoDeps-testitem")
                 @test contains(c2.output, "inner-testset")
             else
+                @test !contains(c2.output, "NoDeps-testitem")
                 @test !contains(c2.output, "inner-testset")
             end
         finally
