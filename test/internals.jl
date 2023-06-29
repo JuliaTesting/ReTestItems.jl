@@ -167,7 +167,7 @@ end # `include_testfiles!` testset
 @testset "report_empty_testsets" begin
     using ReTestItems: TestItem, report_empty_testsets, PerfStats, ScheduledForEvaluation
     using Test: DefaultTestSet, Fail, Error
-    ti = TestItem(Ref(42), "Dummy TestItem", [], false, [], 0, "source/path", 42, ".", nothing)
+    ti = TestItem(Ref(42), "Dummy TestItem", "DummyID", [], false, [], 0, "source/path", 42, ".", nothing)
 
     ts = DefaultTestSet("Empty testset")
     report_empty_testsets(ti, ts)

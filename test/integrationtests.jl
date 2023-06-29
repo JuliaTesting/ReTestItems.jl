@@ -731,4 +731,12 @@ end
     end
 end
 
+@testset "Duplicate IDs not allowed" begin
+    file = joinpath(TEST_FILES_DIR, "_duplicate_id_test.jl")
+    err_msg = r"Test item IDs must be unique. ID `dup` used for test items: \"name1\" at .* and \"name2\" at .*"
+    expected = VERSION < v"1.8" ? ErrorException : err_msg
+    @test_throws expected runtests(file; nworkers=0)
+    @test_throws expected runtests(file; nworkers=1)
+end
+
 end # integrationtests.jl testset

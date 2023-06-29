@@ -1,63 +1,67 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuites timestamp="2023-06-21T18:19:11.24" time="0.539" tests="13" skipped="3" failures="3" errors="2">
-<testsuite name="test/testfiles/_junit_xml_test.jl" timestamp="2023-06-21T18:19:11.24" time="0.539" tests="13" skipped="3" failures="3" errors="2">
-	<testcase name="testitem1" timestamp="2023-06-21T18:19:11.24" time="0.052" tests="2" skipped="0" failures="1" errors="0">
+<testsuites timestamp="2023-06-28T15:26:42.609" time="0.599" tests="13" skipped="3" failures="3" errors="2">
+<testsuite name="test/testfiles/_junit_xml_test.jl" timestamp="2023-06-28T15:26:42.609" time="0.599" tests="13" skipped="3" failures="3" errors="2">
+	<testcase name="testitem1" timestamp="2023-06-28T15:26:42.609" time="0.051" tests="2" skipped="0" failures="1" errors="0">
 		<properties>
-		<property name="dd_tags[perf.bytes]" value="4851625"></property>
+		<property name="dd_tags[test.id]" value="0x3be12c10b59b2bc1"></property>
+		<property name="dd_tags[perf.bytes]" value="4851641"></property>
 		<property name="dd_tags[perf.allocs]" value="82688"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="0.042752083"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.043321663"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
-		<property name="dd_tags[perf.eval_time]" value="0.004830874999999998"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.0033048789999999967"></property>
 		</properties>
-		<error message="Test failed at test/testfiles/_junit_xml_test.jl:4">Error in testset "testitem1" on worker 42127:
+		<error message="Test failed at test/testfiles/_junit_xml_test.jl:4">Error in testset "testitem1" on worker 69343:
 Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:4
   Expression: 2 == 3
    Evaluated: 2 == 3
-No Captured Logs for test item "testitem1" at test/testfiles/_junit_xml_test.jl:2 on worker 42127
+No Captured Logs for test item "testitem1" at test/testfiles/_junit_xml_test.jl:2 on worker 69343
 		</error>
 	</testcase>
-	<testcase name="testitem2" timestamp="2023-06-21T18:19:11.423" time="0.031" tests="3" skipped="0" failures="1" errors="1">
+	<testcase name="testitem2" timestamp="2023-06-28T15:26:42.806" time="0.034" tests="3" skipped="0" failures="1" errors="1">
 		<properties>
-		<property name="dd_tags[perf.bytes]" value="3214759"></property>
+		<property name="dd_tags[test.id]" value="0x01963d8032b3dcaa"></property>
+		<property name="dd_tags[perf.bytes]" value="3214775"></property>
 		<property name="dd_tags[perf.allocs]" value="57345"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="0.027323084"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.029457502"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
-		<property name="dd_tags[perf.eval_time]" value="0.003977082999999996"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.004084248000000002"></property>
 		</properties>
-		<error message="Multiple errors for test item at test/testfiles/_junit_xml_test.jl:8">Error in testset "inner testset" on worker 42127:
+		<error message="Multiple errors for test item at test/testfiles/_junit_xml_test.jl:8">Error in testset "inner testset" on worker 69343:
 Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:11
   Expression: 4 == 5
    Evaluated: 4 == 5
-Error in testset "inner testset" on worker 42127:
+Error in testset "inner testset" on worker 69343:
 Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:12
   Expression evaluated to non-Boolean
   Expression: not a bool
        Value: "not a bool"
-No Captured Logs for test item "testitem2" at test/testfiles/_junit_xml_test.jl:8 on worker 42127
+No Captured Logs for test item "testitem2" at test/testfiles/_junit_xml_test.jl:8 on worker 69343
 		</error>
 	</testcase>
-	<testcase name="testitem3" timestamp="2023-06-21T18:19:11.458" time="0.002" tests="2" skipped="0" failures="0" errors="0">
+	<testcase name="testitem3" timestamp="2023-06-28T15:26:42.844" time="0.002" tests="2" skipped="0" failures="0" errors="0">
 		<properties>
-		<property name="dd_tags[perf.bytes]" value="71118"></property>
+		<property name="dd_tags[test.id]" value="0x04ddd1939796384f"></property>
+		<property name="dd_tags[perf.bytes]" value="71134"></property>
 		<property name="dd_tags[perf.allocs]" value="1162"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="2.08e-7"></property>
+		<property name="dd_tags[perf.compile_time]" value="4.2e-8"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
-		<property name="dd_tags[perf.eval_time]" value="0.002104084"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.002165999"></property>
 		</properties>
 	</testcase>
-	<testcase name="testitem4" timestamp="2023-06-21T18:19:11.461" time="0.442" tests="1" skipped="0" failures="0" errors="1">
+	<testcase name="testitem4" timestamp="2023-06-28T15:26:42.847" time="0.499" tests="1" skipped="0" failures="0" errors="1">
 		<properties>
-		<property name="dd_tags[perf.bytes]" value="78309834"></property>
+		<property name="dd_tags[test.id]" value="0x370bd84148c36dc3"></property>
+		<property name="dd_tags[perf.bytes]" value="78309850"></property>
 		<property name="dd_tags[perf.allocs]" value="1456708"></property>
-		<property name="dd_tags[perf.gctime]" value="0.005731084"></property>
-		<property name="dd_tags[perf.compile_time]" value="0.37133442"></property>
+		<property name="dd_tags[perf.gctime]" value="0.012247499"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.420526417"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
-		<property name="dd_tags[perf.eval_time]" value="0.06502566199999998"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.06586916800000003"></property>
 		</properties>
-		<error message="Error during test at test/testfiles/_junit_xml_test.jl:24">Error in testset "nested testset" on worker 42127:
+		<error message="Error during test at test/testfiles/_junit_xml_test.jl:24">Error in testset "nested testset" on worker 69343:
 Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:24
   Got exception outside of a @test
   UndefVarError: x not defined
@@ -71,11 +75,11 @@ Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml
     [4] eval
       @ ./boot.jl:368 [inlined]
     [5] #79
-      @ /repos/ReTestItems.jl/src/ReTestItems.jl:816 [inlined]
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:842 [inlined]
     [6] with_source_path(f::ReTestItems.var"#79#82"{Expr}, path::String)
-      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:688
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:714
     [7] #78
-      @ /repos/ReTestItems.jl/src/ReTestItems.jl:816 [inlined]
+      @ /repos/ReTestItems.jl/src/ReTestItems.jl:842 [inlined]
     [8] redirect_stdio(f::ReTestItems.var"#78#81"{TestItem, Expr}; stdin::Nothing, stderr::IOContext{IOStream}, stdout::IOContext{IOStream})
       @ Base ./stream.jl:1411
     [9] _redirect_logs(f::ReTestItems.var"#78#81"{TestItem, Expr}, target::IOStream)
@@ -91,7 +95,7 @@ Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml
    [14] macro expansion
       @ /repos/ReTestItems.jl/src/macros.jl:82 [inlined]
    [15] runtestitem(ti::TestItem, ctx::ReTestItems.TestContext; logs::Symbol, verbose_results::Bool, finish_test::Bool)
-      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:815
+      @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:841
    [16] _runtests_in_current_env(shouldrun::Function, paths::Tuple{String}, projectfile::String, nworkers::Int64, nworker_threads::String, worker_init_expr::Expr, testitem_timeout::Int64, retries::Int64, verbose_results::Bool, debug::Int64, report::Bool, logs::Symbol)
       @ ReTestItems /repos/ReTestItems.jl/src/ReTestItems.jl:296
    [17] (::ReTestItems.var"#46#47"{ReTestItems.var"#shouldrun_combined#44"{Nothing, Nothing, typeof(ReTestItems.default_shouldrun)}, Tuple{String}, Int64, String, Expr, Int64, Int64, Bool, Int64, Bool, Symbol, String})()
@@ -114,32 +118,34 @@ Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml
       @ Base ./client.jl:276
    [26] _start()
       @ Base ./client.jl:522
-No Captured Logs for test item "testitem4" at test/testfiles/_junit_xml_test.jl:23 on worker 42127
+No Captured Logs for test item "testitem4" at test/testfiles/_junit_xml_test.jl:23 on worker 69343
 		</error>
 	</testcase>
-	<testcase name="testitem5" timestamp="2023-06-21T18:19:11.908" time="0.009" tests="3" skipped="2" failures="0" errors="0">
+	<testcase name="testitem5" timestamp="2023-06-28T15:26:43.351" time="0.01" tests="3" skipped="2" failures="0" errors="0">
 		<properties>
-		<property name="dd_tags[perf.bytes]" value="84286"></property>
+		<property name="dd_tags[test.id]" value="0xd79ae7dd884908df"></property>
+		<property name="dd_tags[perf.bytes]" value="84302"></property>
 		<property name="dd_tags[perf.allocs]" value="1419"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="0.006578499"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.0076245"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
-		<property name="dd_tags[perf.eval_time]" value="0.002154418"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.002529292"></property>
 		</properties>
 	</testcase>
-	<testcase name="testitem6" timestamp="2023-06-21T18:19:11.918" time="0.003" tests="2" skipped="1" failures="1" errors="0">
+	<testcase name="testitem6" timestamp="2023-06-28T15:26:43.363" time="0.003" tests="2" skipped="1" failures="1" errors="0">
 		<properties>
-		<property name="dd_tags[perf.bytes]" value="92718"></property>
+		<property name="dd_tags[test.id]" value="0xfaecf913e3dd727b"></property>
+		<property name="dd_tags[perf.bytes]" value="92734"></property>
 		<property name="dd_tags[perf.allocs]" value="1584"></property>
 		<property name="dd_tags[perf.gctime]" value="0.0"></property>
-		<property name="dd_tags[perf.compile_time]" value="8.3e-8"></property>
+		<property name="dd_tags[perf.compile_time]" value="8.4e-8"></property>
 		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
-		<property name="dd_tags[perf.eval_time]" value="0.002965001"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.003051416"></property>
 		</properties>
-		<error message="Test failed at test/testfiles/_junit_xml_test.jl:41">Error in testset "testitem6" on worker 42127:
+		<error message="Test failed at test/testfiles/_junit_xml_test.jl:41">Error in testset "testitem6" on worker 69343:
 Test Failed at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_junit_xml_test.jl:41
   Expression: false
-No Captured Logs for test item "testitem6" at test/testfiles/_junit_xml_test.jl:40 on worker 42127
+No Captured Logs for test item "testitem6" at test/testfiles/_junit_xml_test.jl:40 on worker 69343
 		</error>
 	</testcase>
 </testsuite>

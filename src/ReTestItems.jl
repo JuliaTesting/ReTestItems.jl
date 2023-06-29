@@ -439,7 +439,7 @@ function start_and_manage_worker(
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
                 else
-                    testitem = next_testitem(testitems, testitem.id[])
+                    testitem = next_testitem(testitems, testitem.number[])
                     run_number = 1
                 end
             finally
@@ -468,7 +468,7 @@ function start_and_manage_worker(
             end
             # Handle retries
             if run_number == (1 + retry_limit)
-                testitem = next_testitem(testitems, testitem.id[])
+                testitem = next_testitem(testitems, testitem.number[])
                 run_number = 1
             else
                 run_number += 1
@@ -626,10 +626,11 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
     prune!(root_node)
     ti = TestItems(root_node)
     flatten_testitems!(ti)
+    check_ids(ti.testitems)
     setups = fetch(setup_task)
     for (i, x) in enumerate(ti.testitems)
-        # set id for each testitem
-        x.id[] = i
+        # set a unique number for each testitem
+        x.number[] = i
         # populate testsetups for each testitem
         for s in x.setups
             if haskey(setups, s)
@@ -638,6 +639,31 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, report:
         end
     end
     return ti, setups # only returned for testing
+end
+
+function check_ids(testitems)
+    ids = getproperty.(testitems, :id)
+    # This should only be possible to trip if users are manually passing the `_id` keyword.
+    allunique(ids) || _throw_duplicate_ids(testitems)
+    return nothing
+end
+
+# Try to give an informative error, so users can correct the issue.
+function _throw_duplicate_ids(testitems)
+    seen = Dict{String,String}()
+    for ti in testitems
+        id = ti.id
+        source = string(relpath(ti.file, ti.project_root), ":", ti.line)
+        name = string(repr(ti.name), " at ", source)
+        if haskey(seen, id)
+            name1 = seen[id]
+            error("Test item IDs must be unique. ID `$id` used for test items: $name1 and $name")
+        else
+            seen[id] = name
+        end
+    end
+    # This should be unreachable, since the loop above should always find a duplicate.
+    error("Test item IDs must be unique")
 end
 
 # Is filepath one of the paths the user requested?
