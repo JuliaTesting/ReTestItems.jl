@@ -41,6 +41,12 @@ function testcases(ti::TestItem)
     return [JUnitTestCase(ti, i) for i in 1:length(ti.testsets)]
 end
 
+# For backwards compatibility
+function JUnitTestCase(name::String, counts::JUnitCounts, stats, error_message, logs)
+    id = repr(hash(name))
+    return JUnitTestCase(name, id, counts, stats, error_message, logs)
+end
+
 function JUnitTestCase(ts::DefaultTestSet)
     name = ts.description
     id = repr(hash(name))
