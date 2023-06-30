@@ -167,7 +167,7 @@ function print_errors_and_captured_logs(
     io, ti::TestItem, run_number::Int; logs=:batched, errors_first::Bool=false,
 )
     ts = ti.testsets[run_number]
-    has_errors = ts.anynonpass
+    has_errors = any_non_pass(ts)
     has_logs = _has_logs(ti, run_number) || any(_has_logs, ti.testsetups)
     if has_errors || logs == :batched
         report_iob = IOContext(IOBuffer(), :color=>Base.get_have_color())

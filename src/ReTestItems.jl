@@ -290,26 +290,23 @@ function _runtests_in_current_env(
             for (i, testitem) in enumerate(testitems.testitems)
                 testitem.workerid[] = Libc.getpid()
                 testitem.eval_number[] = i
-                nretries = 0
-                retry_limit = max(retries, testitem.retries)
-                while nretries ≤ retry_limit
+                run_number = 1
+                max_runs = 1 + max(retries, testitem.retries)
+                while run_number ≤ max_runs
                     res = runtestitem(testitem, ctx; verbose_results, logs)
                     ts = res.testset
-                    print_errors_and_captured_logs(testitem, nretries + 1; logs)
+                    print_errors_and_captured_logs(testitem, run_number; logs)
                     report_empty_testsets(testitem, ts)
-                    if ts.anynonpass && nretries < retry_limit
-                        nretries += 1
-                        @warn "Test item $(repr(testitem.name)) failed. Retrying. Retry=$nretries."
-                    else
-                        if nretries > 0
-                            @info "Test item $(repr(testitem.name)) passed on retry $nretries."
-                        end
-                        break
-                    end
                     # It takes 2 GCs to do a full mark+sweep
                     # (the first one is a partial mark, full sweep, the next one is a full mark).
                     GC.gc(true)
                     GC.gc(false)
+                    if any_non_pass(ts) && run_number != max_runs
+                        run_number += 1
+                        @info "Retrying $(repr(testitem.name)). Run=$run_number."
+                    else
+                        break
+                    end
                 end
             end
         elseif !isempty(testitems.testitems)
@@ -353,6 +350,8 @@ function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
     end)
     return w
 end
+
+any_non_pass(ts::DefaultTestSet) = ts.anynonpass
 
 function record_timeout!(testitem, run_number::Int, timeout_limit::Real)
     timeout_s = round(Int, timeout_limit)
@@ -404,7 +403,7 @@ function start_and_manage_worker(
         ch = Channel{TestItemResult}(1)
         testitem.workerid[] = worker.pid
         fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; verbose_results=$verbose_results, logs=$(QuoteNode(logs)))))
-        retry_limit = max(retries, testitem.retries)
+        max_runs = 1 + max(retries, testitem.retries)
         try
             timer = Timer(timeout) do tm
                 close(tm)
@@ -435,7 +434,7 @@ function start_and_manage_worker(
                 # Run GC to free memory on the worker before next testitem.
                 @debugv 2 "Running GC on $worker"
                 remote_fetch(worker, :(GC.gc(true); GC.gc(false)))
-                if ts.anynonpass && (run_number != (1 + retry_limit))
+                if any_non_pass(ts) && run_number != max_runs
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
                 else
@@ -454,11 +453,11 @@ function start_and_manage_worker(
                 @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker"
                 terminate!(worker)
                 wait(worker)
-                @warn "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
+                @error "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
                     Recording test error."
                 record_timeout!(testitem, run_number, timeout)
             elseif e isa WorkerTerminatedException
-                @warn "$worker died evaluating test item $(repr(testitem.name)). \
+                @error "$worker died evaluating test item $(repr(testitem.name)). \
                     Recording test error."
                 record_worker_terminated!(testitem, run_number)
             else
@@ -467,7 +466,7 @@ function start_and_manage_worker(
                 rethrow()
             end
             # Handle retries
-            if run_number == (1 + retry_limit)
+            if run_number == max_runs
                 testitem = next_testitem(testitems, testitem.number[])
                 run_number = 1
             else
