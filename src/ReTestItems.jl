@@ -301,7 +301,7 @@ function _runtests_in_current_env(
                     # (the first one is a partial mark, full sweep, the next one is a full mark).
                     GC.gc(true)
                     GC.gc(false)
-                    if ts.anynonpass && run_number != max_runs
+                    if any_non_pass(ts) && run_number != max_runs
                         run_number += 1
                         @info "Retrying $(repr(testitem.name)). Run=$run_number."
                     else
@@ -350,6 +350,8 @@ function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
     end)
     return w
 end
+
+any_non_pass(ts::DefaultTestSet) = ts.anynonpass
 
 function record_timeout!(testitem, run_number::Int, timeout_limit::Real)
     timeout_s = round(Int, timeout_limit)
@@ -432,7 +434,7 @@ function start_and_manage_worker(
                 # Run GC to free memory on the worker before next testitem.
                 @debugv 2 "Running GC on $worker"
                 remote_fetch(worker, :(GC.gc(true); GC.gc(false)))
-                if ts.anynonpass && run_number != max_runs
+                if any_non_pass(ts) && run_number != max_runs
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
                 else

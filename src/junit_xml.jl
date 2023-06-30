@@ -58,7 +58,7 @@ function JUnitTestCase(ti::TestItem, run_number::Int)
     ts = ti.testsets[run_number]
     counts = JUnitCounts(ts)
     stats = ti.stats[run_number]
-    if !ts.anynonpass
+    if !any_non_pass(ts)
         logs = nothing
         message = nothing
     else
