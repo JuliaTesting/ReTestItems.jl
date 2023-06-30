@@ -42,7 +42,7 @@ function testcases(ti::TestItem)
 end
 
 # For backwards compatibility
-function JUnitTestCase(name::String, counts::JUnitCounts, stats, error_message, logs)
+function JUnitTestCase(name::AbstractString, counts::JUnitCounts, stats, error_message, logs)
     id = repr(hash(name))
     return JUnitTestCase(name, id, counts, stats, error_message, logs)
 end
