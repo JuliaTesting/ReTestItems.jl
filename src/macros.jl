@@ -277,7 +277,9 @@ macro testitem(nm, exs...)
             $gettls(:__RE_TEST_PROJECT__, "."),
             $q,
         )
-            if !$_run || $gettls(:__RE_TEST_RUNNING__, false)::$Bool
+            if !$_run
+                $ti
+            elseif $gettls(:__RE_TEST_RUNNING__, false)::$Bool
                 $store_test_item($ti)
                 $ti
             else # We are not in a `runtests` call, so we run the testitem immediately.
