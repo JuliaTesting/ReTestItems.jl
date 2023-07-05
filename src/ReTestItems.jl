@@ -386,6 +386,8 @@ function record_test_error!(testitem, msg, elapsed_seconds::Real=0.0)
     catch e2
         e2 isa TestSetException || rethrow()
     end
+    # Since we're manually constructing a TestSet here to report tests that already ran and
+    # were killed, we need to manually set how long those tests were running (if known).
     ts.time_end = ts.time_start + elapsed_seconds
     Test.TESTSET_PRINT_ENABLE[] = true
     push!(testitem.testsets, ts)
