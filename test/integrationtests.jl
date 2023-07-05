@@ -738,4 +738,18 @@ end
     @test_throws expected runtests(file; nworkers=1)
 end
 
+@testset "Timeout failures accurately record elapsed time" begin
+    timeout = 3
+    results = encased_testset() do
+        runtests(joinpath(TEST_FILES_DIR, "_timeout_tests.jl"); nworkers=1, testitem_timeout=timeout)
+    end
+    # unwrap results down to the testset for the timed-out testitem to check its elapsed time
+    results = only(results.results) # test
+    results = only(results.results) # test/testfiles
+    results = only(results.results) # test/testfiles/_timeout_tests.jl
+    ts = results.results[1]
+    @assert ts.description == "Test item takes 60 seconds"
+    @test ts.time_end - ts.time_start ≈ timeout
+end
+
 end # integrationtests.jl testset
