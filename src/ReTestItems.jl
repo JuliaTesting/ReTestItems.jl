@@ -366,7 +366,7 @@ function record_timeout!(testitem, run_number::Int, timeout_limit::Real)
         end
     end
     msg = "Timed out after $time_str evaluating test item $(repr(testitem.name)) (run=$run_number)"
-    record_test_error!(testitem, msg)
+    record_test_error!(testitem, msg, timeout_limit)
 end
 
 function record_worker_terminated!(testitem, run_number::Int)
@@ -374,7 +374,7 @@ function record_worker_terminated!(testitem, run_number::Int)
     record_test_error!(testitem, msg)
 end
 
-function record_test_error!(testitem, msg)
+function record_test_error!(testitem, msg, elapsed_seconds::Real=0.0)
     Test.TESTSET_PRINT_ENABLE[] = false
     ts = DefaultTestSet(testitem.name)
     err = ErrorException(msg)
@@ -386,6 +386,7 @@ function record_test_error!(testitem, msg)
     catch e2
         e2 isa TestSetException || rethrow()
     end
+    ts.time_end = ts.time_start + elapsed_seconds
     Test.TESTSET_PRINT_ENABLE[] = true
     push!(testitem.testsets, ts)
     push!(testitem.stats, PerfStats())  # No data since testitem didn't complete
