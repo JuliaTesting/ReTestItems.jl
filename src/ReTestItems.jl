@@ -456,7 +456,7 @@ function start_and_manage_worker(
                 @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker"
                 terminate!(worker)
                 wait(worker)
-                @error "$worker timed out evaluating test item $(repr(testitem.name)) afer $timeout seconds. \
+                @error "$worker timed out evaluating test item $(repr(testitem.name)) after $timeout seconds. \
                     Recording test error."
                 record_timeout!(testitem, run_number, timeout)
             elseif e isa WorkerTerminatedException
