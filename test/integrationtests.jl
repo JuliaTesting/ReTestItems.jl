@@ -769,4 +769,20 @@ end
     @test ts.time_end - ts.time_start ≈ timeout
 end
 
+@testset "worker crashes immediately" begin
+    file = joinpath(TEST_FILES_DIR, "_happy_tests.jl")
+    worker_init_expr = quote
+        if iseven(Libc.getpid())
+            @eval ccall(:abort, Cvoid, ())
+            # sleep(10)
+        end
+    end
+    captured = IOCapture.capture() do
+        encased_testset() do
+            runtests(file; nworkers=4, worker_init_expr)
+        end
+    end
+    @show captured
+end
+
 end # integrationtests.jl testset

@@ -311,16 +311,30 @@ function _runtests_in_current_env(
                 end
             end
         elseif !isempty(testitems.testitems)
-            # spawn a task per worker to start and manage the lifetime of the worker
-            # get starting test items for each worker
+            # Use the logger that was set before we eval'd any user code to avoid world age
+            # issues when logging https://github.com/JuliaLang/julia/issues/33865
+            original_logger = current_logger()
+            # Wait for all workers to be started so we can throw as soon as possible if
+            # there was an error starting a worker.
+            @info "Starting test workers"
+            workers = Vector{Worker}(undef, nworkers)
+            ntestitems = length(testitems.testitems)
+            @sync for i in 1:nworkers
+                @spawn begin
+                    with_logger(original_logger) do
+                        $workers[$i] = start_worker($proj_name, $nworker_threads, $worker_init_expr, $ntestitems)
+                    end
+                end
+            end
+            # Now all workers are started, we can begin processing test items.
+            @info "Starting evaluating test items"
             starting = get_starting_testitems(testitems, nworkers)
-            @sync for i = 1:nworkers
+            @sync for i in 1:nworkers
+                w = workers[i]
                 ti = starting[i]
                 @spawn begin
-                    # Wrapping with the logger that was set before we eval'd any user code to
-                    # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
-                    with_logger(current_logger()) do
-                        start_and_manage_worker($proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $testitem_timeout, $retries, $verbose_results, $debug, $report, $logs)
+                    with_logger(original_logger) do
+                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $testitem_timeout, $retries, $verbose_results, $debug, $report, $logs)
                     end
                 end
             end
@@ -345,7 +359,7 @@ function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
         Test.TESTSET_PRINT_ENABLE[] = false
         const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)
         GLOBAL_TEST_CONTEXT.setups_evaled = ReTestItems.TestSetupModules()
-        @info "Starting test item evaluations on pid = $(Libc.getpid()), with $(Threads.nthreads()) threads"
+        @info "Starting test worker on pid = $(Libc.getpid()), with $(Threads.nthreads()) threads"
         $(worker_init_expr.args...)
         nothing
     end)
@@ -396,13 +410,12 @@ function record_test_error!(testitem, msg, elapsed_seconds::Real=0.0)
     return testitem
 end
 
-function start_and_manage_worker(
-    proj_name, testitems, testitem, nworker_threads, worker_init_expr,
+function manage_worker(
+    worker::Worker, proj_name, testitems, testitem, nworker_threads, worker_init_expr,
     timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
 )
     ntestitems = length(testitems.testitems)
-    worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
-    run_number = 1
+    @show run_number = 1
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
         testitem.workerid[] = worker.pid
