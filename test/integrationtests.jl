@@ -659,6 +659,23 @@ end
     @test err.value == string(ErrorException("Timed out after 4s evaluating test item \"Test item takes 60 seconds\" (run=1)"))
 end
 
+@testset "testitem timeout set via env variable" begin
+    file = joinpath(TEST_FILES_DIR, "_timeout_tests.jl")
+    # NOTE: this test must run with exactly 1 worker, so that we can test that the worker
+    # is replaced after the timeout and subsequent testitems still run.
+    nworkers = 1
+    @assert nworkers == 1
+    results = withenv("RETESTITEMS_TESTITEM_TIMEOUT" => "4.0") do
+        encased_testset(()->runtests(file; nworkers, debug=1))
+    end
+    @test n_tests(results) == 2
+    @test n_passed(results) == 1
+    # Test the error is as expected
+    err = only(non_passes(results))
+    @test err.test_type == :nontest_error
+    @test err.value == string(ErrorException("Timed out after 4s evaluating test item \"Test item takes 60 seconds\" (run=1)"))
+end
+
 @testset "Error outside `@testitem`" begin
     @test_throws Exception runtests(joinpath(TEST_FILES_DIR, "_invalid_file1_test.jl"))
     @test_throws Exception runtests(joinpath(TEST_FILES_DIR, "_invalid_file2_test.jl"))
