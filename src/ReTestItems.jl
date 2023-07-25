@@ -315,22 +315,21 @@ function _runtests_in_current_env(
             # issues when logging https://github.com/JuliaLang/julia/issues/33865
             original_logger = current_logger()
             # Wait for all workers to be started so we can throw as soon as possible if
-            # there was an error starting a worker.
+            # we were unable to start the requested number of workers
             @info "Starting test workers"
             workers = Vector{Worker}(undef, nworkers)
             ntestitems = length(testitems.testitems)
             @sync for i in 1:nworkers
                 @spawn begin
                     with_logger(original_logger) do
-                        $workers[$i] = start_worker($proj_name, $nworker_threads, $worker_init_expr, $ntestitems)
+                        $workers[$i] = robust_start_worker($proj_name, $nworker_threads, $worker_init_expr, $ntestitems; worker_num=$i)
                     end
                 end
             end
             # Now all workers are started, we can begin processing test items.
             @info "Starting evaluating test items"
             starting = get_starting_testitems(testitems, nworkers)
-            @sync for i in 1:nworkers
-                w = workers[i]
+            @sync for (i, w) in enumerate(worker)
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
@@ -339,31 +338,61 @@ function _runtests_in_current_env(
                 end
             end
         end
-        Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
-        record_results!(testitems)
-        report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
-        Test.finish(testitems) # print summary of total passes/failures/errors
-    finally
-        Test.TESTSET_PRINT_ENABLE[] = true
-        # Cleanup test setup logs
-        foreach(rm, filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER, join=true)))
-    end
-    return nothing
+    Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
+    record_results!(testitems)
+    report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
+    Test.finish(testitems) # print summary of total passes/failures/errors
+finally
+    Test.TESTSET_PRINT_ENABLE[] = true
+    # Cleanup test setup logs
+    foreach(rm, filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER, join=true)))
+end
+return nothing
 end
 
-function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
+# Start a new `Worker` with `nworker_threads` threads and evaluate `worker_init_expr` on it.
+# The provided `worker_num` is only for logging purposes, and not persisted as part of the worker.
+function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems; worker_num=nothing)
     w = Worker(; threads="$nworker_threads")
+    i = worker_num == nothing ? "" : " $worker_num"
     # remote_fetch here because we want to make sure the worker is all setup before starting to eval testitems
     remote_fetch(w, quote
         using ReTestItems, Test
         Test.TESTSET_PRINT_ENABLE[] = false
         const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)
         GLOBAL_TEST_CONTEXT.setups_evaled = ReTestItems.TestSetupModules()
-        @info "Starting test worker on pid = $(Libc.getpid()), with $(Threads.nthreads()) threads"
+        @info "Starting test worker$($i) on pid = $(Libc.getpid()), with $(Threads.nthreads()) threads"
         $(worker_init_expr.args...)
         nothing
     end)
     return w
+end
+
+# Want to be somewhat robust to workers possibly terminating during start up (e.g. due to
+# the `worker_init_expr`).
+# The number of retries and delay between retries is currently arbitrary...
+# we want to retry at least once, and we give a slight delay in case their are resources
+# that need to be cleaned up before a new worker would be able to start successfully.
+const _NRETRIES = 2
+const _RETRY_DELAY_SECONDS = 1
+
+# Start a worker, retrying up to `_NRETRIES` times if it terminates unexpectedly,
+# with a delay of `_RETRY_DELAY_SECONDS` seconds between retries.
+# If we fail to start a worker successfully after `_NRETRIES` retries, or if we somehow hit
+# something other than a `WorkerTerminatedException`, then rethrow the exception.
+function robust_start_worker(args...; kwargs...)
+    f = retry(start_worker; delays=fill(_RETRY_DELAY_SECONDS, _NRETRIES), check=_worker_terminated)
+    f(args...; kwargs...)
+end
+
+function _worker_terminated(state, exception)
+    if exception isa WorkerTerminatedException
+        retry_num = state - 1
+        @error "$(exception.worker) terminated unexpectedly. Starting new worker (retry $retry_num/$_NRETRIES)."
+        return true
+    else
+        return false
+    end
 end
 
 any_non_pass(ts::DefaultTestSet) = ts.anynonpass
@@ -415,7 +444,6 @@ function manage_worker(
     timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
 )
     ntestitems = length(testitems.testitems)
-    @show run_number = 1
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
         testitem.workerid[] = worker.pid
@@ -492,7 +520,7 @@ function manage_worker(
             end
             # The worker was terminated, so replace it unless there are no more testitems to run
             if testitem !== nothing
-                worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
+                worker = robust_start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
             end
             # Now loop back around to reschedule the testitem
             continue
