@@ -338,16 +338,16 @@ function _runtests_in_current_env(
                 end
             end
         end
-    Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
-    record_results!(testitems)
-    report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
-    Test.finish(testitems) # print summary of total passes/failures/errors
-finally
-    Test.TESTSET_PRINT_ENABLE[] = true
-    # Cleanup test setup logs
-    foreach(rm, filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER, join=true)))
-end
-return nothing
+        Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
+        record_results!(testitems)
+        report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
+        Test.finish(testitems) # print summary of total passes/failures/errors
+    finally
+        Test.TESTSET_PRINT_ENABLE[] = true
+        # Cleanup test setup logs
+        foreach(rm, filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER, join=true)))
+    end
+    return nothing
 end
 
 # Start a new `Worker` with `nworker_threads` threads and evaluate `worker_init_expr` on it.
