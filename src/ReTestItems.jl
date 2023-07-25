@@ -112,7 +112,7 @@ will be run.
 
 ## Configuring `runtests`
 - `testitem_timeout::Real`: The number of seconds to wait until a `@testitem` is marked as failed.
-  Defaults to 30 minutes. Can also be set using the `RETESTITEMS_TIMEOUT` environment variable.
+  Defaults to 30 minutes. Can also be set using the `RETESTITEMS_TESTITEM_TIMEOUT` environment variable.
   Note timeouts are currently only applied when `nworkers > 0`.
 - `retries::Int=$DEFAULT_RETRIES`: The number of times to retry a `@testitem` if either tests
   do not pass or, if running with multiple workers, the worker fails or hits the `testitem_timeout`
@@ -175,7 +175,7 @@ function runtests(
     nworkers::Int=parse(Int, get(ENV, "RETESTITEMS_NWORKERS", "0")),
     nworker_threads::Union{Int,String}=get(ENV, "RETESTITEMS_NWORKER_THREADS", "2"),
     worker_init_expr::Expr=Expr(:block),
-    testitem_timeout::Real=parse(Float64, get(ENV, "RETESTITEMS_TIMEOUT", string(DEFAULT_TEST_ITEM_TIMEOUT))),
+    testitem_timeout::Real=parse(Float64, get(ENV, "RETESTITEMS_TESTITEM_TIMEOUT", string(DEFAULT_TESTITEM_TIMEOUT))),
     retries::Int=parse(Int, get(ENV, "RETESTITEMS_RETRIES", string(DEFAULT_RETRIES))),
     debug=0,
     name::Union{Regex,AbstractString,Nothing}=nothing,

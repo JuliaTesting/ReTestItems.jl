@@ -665,7 +665,7 @@ end
     # is replaced after the timeout and subsequent testitems still run.
     nworkers = 1
     @assert nworkers == 1
-    results = withenv("RETESTITEMS_TIMEOUT" => "4.0") do
+    results = withenv("RETESTITEMS_TESTITEM_TIMEOUT" => "4.0") do
         encased_testset(()->runtests(file; nworkers, debug=1))
     end
     @test n_tests(results) == 2
