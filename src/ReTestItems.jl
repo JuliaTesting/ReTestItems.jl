@@ -329,7 +329,7 @@ function _runtests_in_current_env(
             # Now all workers are started, we can begin processing test items.
             @info "Starting evaluating test items"
             starting = get_starting_testitems(testitems, nworkers)
-            @sync for (i, w) in enumerate(worker)
+            @sync for (i, w) in enumerate(workers)
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
