@@ -14,7 +14,7 @@ export @testsetup, @testitem
 export TestSetup, TestItem, TestItemResult
 
 const RETESTITEMS_TEMP_FOLDER = mkpath(joinpath(tempdir(), "ReTestItemsTempLogsDirectory"))
-const DEFAULT_TEST_ITEM_TIMEOUT = 30*60
+const DEFAULT_TESTITEM_TIMEOUT = 30*60
 const DEFAULT_RETRIES = 0
 
 if isdefined(Base, :errormonitor)
