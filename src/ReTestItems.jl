@@ -444,6 +444,7 @@ function manage_worker(
     timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
 )
     ntestitems = length(testitems.testitems)
+    run_number = 1
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
         testitem.workerid[] = worker.pid
