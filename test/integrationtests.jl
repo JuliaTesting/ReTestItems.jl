@@ -784,7 +784,7 @@ end
     mktemp() do io, path
         results = redirect_stdio(stdout=io, stderr=io, stdin=devnull) do
             encased_testset() do
-                runtests(file; nworkers=1, worker_init_expr)
+                runtests(file; nworkers=2, worker_init_expr)
             end
         end
         captured = read(path, String)
@@ -799,44 +799,31 @@ end
 
 @testset "worker crashes immediately but succeeds on retry" begin
     file = joinpath(TEST_FILES_DIR, "_happy_tests.jl")
-    nworkers = 4
-    # use `/tmp` directly instead of `mktemp` to remove chance that files are cleaned up
-    # as soon as the worker process crashes.
-    tmpdir = joinpath("/tmp", "JL_RETESTITEMS_TEST_TMPDIR")
-    tmpfile = joinpath(tmpdir, "worker_crash")
-    # At least one worker should crash, but all workers should succeed upon a retry.
-    worker_init_expr = quote
-        if !isfile($tmpfile)
-            mkpath($tmpdir)
-            write($tmpfile, "1")
-            @eval ccall(:abort, Cvoid, ())
+    mktemp() do crash_io, _
+        # At least one worker should crash, but all workers should succeed upon a retry.
+        worker_init_expr = quote
+            if isempty(read($crash_io))
+                write($crash_io, "1")
+                @eval ccall(:abort, Cvoid, ())
+            end
         end
-    end
-    # We have occassionally seen the Process exist with the expected signal.
-    @assert typemin(Int32) == -2147483648
-    terminated_err_log_1 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker \(retry 1/2\)."
-    # We don't use IOCapture for capturing logs as that seems to hang when the worker crashes.
-    try
-        mktemp() do io, path
-            results = redirect_stdio(stdout=io, stderr=io, stdin=devnull) do
+        # We have occassionally seen the Process exist with the expected signal.
+        @assert typemin(Int32) == -2147483648
+        terminated_err_log_1 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker \(retry 1/2\)."
+        # We don't use IOCapture for capturing logs as that seems to hang when the worker crashes.
+        mktemp() do log_io, _
+            results = redirect_stdio(stdout=log_io, stderr=log_io, stdin=devnull) do
                 encased_testset() do
-                    runtests(file; nworkers, worker_init_expr)
+                    runtests(file; nworkers=2, worker_init_expr)
                 end
             end
-            captured = read(path, String)
+            captured = read(log_io, String)
             # Test we saw a worker crash and retried starting the worker.
             @test contains(captured, terminated_err_log_1)
             # Test we were then able to run all tests successfully.
             @test n_tests(results) == 3
             @test all_passed(results) == 1
         end
-    finally
-        # Clear out any files created by this testset
-        foreach(readdir(tmpdir; join=true)) do tmp
-            # `force` in case it gets cleaned up between `readdir` and `rm`
-            contains(tmp, "worker_crash") && rm(tmp; force=true)
-        end
-        rm(tmpdir; force=true)
     end
 end
 
