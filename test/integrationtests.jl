@@ -808,7 +808,9 @@ end
             @eval ccall(:abort, Cvoid, ())
         end
     end
-    terminated_err_log_1 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=6\) terminated unexpectedly. Starting new worker \(retry 1/2\)."
+    # We have occassionally seen the Process exist with the expected signal.
+    @assert typemin(Int32) == -2147483648
+    terminated_err_log_1 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker \(retry 1/2\)."
     # We don't use IOCapture for capturing logs as that seems to hang when the worker crashes.
     try
         mktemp() do io, path
