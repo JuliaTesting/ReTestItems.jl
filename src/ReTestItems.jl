@@ -371,7 +371,7 @@ end
 # Want to be somewhat robust to workers possibly terminating during start up (e.g. due to
 # the `worker_init_expr`).
 # The number of retries and delay between retries is currently arbitrary...
-# we want to retry at least once, and we give a slight delay in case their are resources
+# we want to retry at least once, and we give a slight delay in case there are resources
 # that need to be cleaned up before a new worker would be able to start successfully.
 const _NRETRIES = 2
 const _RETRY_DELAY_SECONDS = 1
