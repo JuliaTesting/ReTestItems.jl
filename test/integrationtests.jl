@@ -609,6 +609,8 @@ end
 @testset "test retrying failing testitem" begin
     file = joinpath(TEST_FILES_DIR, "_retry_tests.jl")
     # This directory must match what's set in `_retry_tests`
+    # Use `/tmp` directly instead of `mktemp` to remove chance that files are cleaned up
+    # as soon as the worker process crashes.
     tmpdir = joinpath("/tmp", "JL_RETESTITEMS_TEST_TMPDIR")
     # must run with `testitem_timeout < 20` for test to timeout as expected.
     # and must run with `nworkers > 0` for retries to be supported.
@@ -798,9 +800,11 @@ end
 @testset "worker crashes immediately but succeeds on retry" begin
     file = joinpath(TEST_FILES_DIR, "_happy_tests.jl")
     nworkers = 4
+    # use `/tmp` directly instead of `mktemp` to remove chance that files are cleaned up
+    # as soon as the worker process crashes.
     tmpdir = joinpath("/tmp", "JL_RETESTITEMS_TEST_TMPDIR")
     tmpfile = joinpath(tmpdir, "worker_crash")
-    # First worker start should crash, then all subsequent worker starts should succeed.
+    # At least one worker should crash, but all workers should succeed upon a retry.
     worker_init_expr = quote
         if !isfile($tmpfile)
             mkpath($tmpdir)
