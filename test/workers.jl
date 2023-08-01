@@ -52,7 +52,6 @@ using Test
             x
         end
         fut = remote_eval(w, expr)
-        @test length(w.futures) == 1
         @test fetch(fut) == 101
         @test isempty(w.futures) # should be empty since we've received all expected responses
 

@@ -311,16 +311,29 @@ function _runtests_in_current_env(
                 end
             end
         elseif !isempty(testitems.testitems)
-            # spawn a task per worker to start and manage the lifetime of the worker
-            # get starting test items for each worker
+            # Use the logger that was set before we eval'd any user code to avoid world age
+            # issues when logging https://github.com/JuliaLang/julia/issues/33865
+            original_logger = current_logger()
+            # Wait for all workers to be started so we can throw as soon as possible if
+            # we were unable to start the requested number of workers
+            @info "Starting test workers"
+            workers = Vector{Worker}(undef, nworkers)
+            ntestitems = length(testitems.testitems)
+            @sync for i in 1:nworkers
+                @spawn begin
+                    with_logger(original_logger) do
+                        $workers[$i] = robust_start_worker($proj_name, $nworker_threads, $worker_init_expr, $ntestitems; worker_num=$i)
+                    end
+                end
+            end
+            # Now all workers are started, we can begin processing test items.
+            @info "Starting evaluating test items"
             starting = get_starting_testitems(testitems, nworkers)
-            @sync for i = 1:nworkers
+            @sync for (i, w) in enumerate(workers)
                 ti = starting[i]
                 @spawn begin
-                    # Wrapping with the logger that was set before we eval'd any user code to
-                    # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
-                    with_logger(current_logger()) do
-                        start_and_manage_worker($proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $testitem_timeout, $retries, $verbose_results, $debug, $report, $logs)
+                    with_logger(original_logger) do
+                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $testitem_timeout, $retries, $verbose_results, $debug, $report, $logs)
                     end
                 end
             end
@@ -337,19 +350,49 @@ function _runtests_in_current_env(
     return nothing
 end
 
-function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
+# Start a new `Worker` with `nworker_threads` threads and evaluate `worker_init_expr` on it.
+# The provided `worker_num` is only for logging purposes, and not persisted as part of the worker.
+function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems; worker_num=nothing)
     w = Worker(; threads="$nworker_threads")
+    i = worker_num == nothing ? "" : " $worker_num"
     # remote_fetch here because we want to make sure the worker is all setup before starting to eval testitems
     remote_fetch(w, quote
         using ReTestItems, Test
         Test.TESTSET_PRINT_ENABLE[] = false
         const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)
         GLOBAL_TEST_CONTEXT.setups_evaled = ReTestItems.TestSetupModules()
-        @info "Starting test item evaluations on pid = $(Libc.getpid()), with $(Threads.nthreads()) threads"
+        @info "Starting test worker$($i) on pid = $(Libc.getpid()), with $(Threads.nthreads()) threads"
         $(worker_init_expr.args...)
         nothing
     end)
     return w
+end
+
+# Want to be somewhat robust to workers possibly terminating during start up (e.g. due to
+# the `worker_init_expr`).
+# The number of retries and delay between retries is currently arbitrary...
+# we want to retry at least once, and we give a slight delay in case there are resources
+# that need to be cleaned up before a new worker would be able to start successfully.
+const _NRETRIES = 2
+const _RETRY_DELAY_SECONDS = 1
+
+# Start a worker, retrying up to `_NRETRIES` times if it terminates unexpectedly,
+# with a delay of `_RETRY_DELAY_SECONDS` seconds between retries.
+# If we fail to start a worker successfully after `_NRETRIES` retries, or if we somehow hit
+# something other than a `WorkerTerminatedException`, then rethrow the exception.
+function robust_start_worker(args...; kwargs...)
+    f = retry(start_worker; delays=fill(_RETRY_DELAY_SECONDS, _NRETRIES), check=_worker_terminated)
+    f(args...; kwargs...)
+end
+
+function _worker_terminated(state, exception)
+    if exception isa WorkerTerminatedException
+        retry_num = state - 1
+        @error "$(exception.worker) terminated unexpectedly. Starting new worker (retry $retry_num/$_NRETRIES)."
+        return true
+    else
+        return false
+    end
 end
 
 any_non_pass(ts::DefaultTestSet) = ts.anynonpass
@@ -396,12 +439,11 @@ function record_test_error!(testitem, msg, elapsed_seconds::Real=0.0)
     return testitem
 end
 
-function start_and_manage_worker(
-    proj_name, testitems, testitem, nworker_threads, worker_init_expr,
+function manage_worker(
+    worker::Worker, proj_name, testitems, testitem, nworker_threads, worker_init_expr,
     timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
 )
     ntestitems = length(testitems.testitems)
-    worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
     run_number = 1
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
@@ -479,7 +521,7 @@ function start_and_manage_worker(
             end
             # The worker was terminated, so replace it unless there are no more testitems to run
             if testitem !== nothing
-                worker = start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
+                worker = robust_start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
             end
             # Now loop back around to reschedule the testitem
             continue

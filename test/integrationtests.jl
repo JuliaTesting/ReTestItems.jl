@@ -609,6 +609,8 @@ end
 @testset "test retrying failing testitem" begin
     file = joinpath(TEST_FILES_DIR, "_retry_tests.jl")
     # This directory must match what's set in `_retry_tests`
+    # Use `/tmp` directly instead of `mktemp` to remove chance that files are cleaned up
+    # as soon as the worker process crashes.
     tmpdir = joinpath("/tmp", "JL_RETESTITEMS_TEST_TMPDIR")
     # must run with `testitem_timeout < 20` for test to timeout as expected.
     # and must run with `nworkers > 0` for retries to be supported.
@@ -767,6 +769,62 @@ end
     ts = results.results[1]
     @assert ts.description == "Test item takes 60 seconds"
     @test ts.time_end - ts.time_start ≈ timeout
+end
+
+@testset "worker always crashes immediately" begin
+    file = joinpath(TEST_FILES_DIR, "_happy_tests.jl")
+
+    # We have occassionally seen the Process exist with the expected signal.
+    @assert typemin(Int32) == -2147483648
+    terminated_err_log_1 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker \(retry 1/2\)."
+    terminated_err_log_2 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker \(retry 2/2\)."
+
+    worker_init_expr = :(@eval ccall(:abort, Cvoid, ()))
+    # We don't use IOCapture for capturing logs as that seems to hang when the worker crashes.
+    mktemp() do io, path
+        results = redirect_stdio(stdout=io, stderr=io, stdin=devnull) do
+            encased_testset() do
+                runtests(file; nworkers=2, worker_init_expr)
+            end
+        end
+        captured = read(path, String)
+        # Test we retried starting a worker twice and saw the expected log each time.
+        @test contains(captured, terminated_err_log_1)
+        @test contains(captured, terminated_err_log_2)
+        # Test that `runtests` errored overall, before any test items were run.
+        @test n_tests(results) == 1
+        @test length(errors(results)) == 1
+    end
+end
+
+@testset "worker crashes immediately but succeeds on retry" begin
+    file = joinpath(TEST_FILES_DIR, "_happy_tests.jl")
+    mktemp() do crash_io, _
+        # At least one worker should crash, but all workers should succeed upon a retry.
+        worker_init_expr = quote
+            if isempty(read($crash_io))
+                write($crash_io, "1")
+                @eval ccall(:abort, Cvoid, ())
+            end
+        end
+        # We have occassionally seen the Process exist with the expected signal.
+        @assert typemin(Int32) == -2147483648
+        terminated_err_log_1 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker \(retry 1/2\)."
+        # We don't use IOCapture for capturing logs as that seems to hang when the worker crashes.
+        mktemp() do log_io, _
+            results = redirect_stdio(stdout=log_io, stderr=log_io, stdin=devnull) do
+                encased_testset() do
+                    runtests(file; nworkers=2, worker_init_expr)
+                end
+            end
+            captured = read(log_io, String)
+            # Test we saw a worker crash and retried starting the worker.
+            @test contains(captured, terminated_err_log_1)
+            # Test we were then able to run all tests successfully.
+            @test n_tests(results) == 3
+            @test all_passed(results) == 1
+        end
+    end
 end
 
 end # integrationtests.jl testset
