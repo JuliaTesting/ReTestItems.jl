@@ -206,6 +206,10 @@ function redirect_worker_output(io::IO, w::Worker, fn, proc)
         # @error "Error redirecting worker output $(w.pid)" exception=(e, catch_backtrace())
         terminate!(w, :redirect_worker_output)
         e isa EOFError || e isa Base.IOError || rethrow()
+    finally
+        # Making sure we read all the output from the worker process in case it was suddenly killed.
+        sleep(0.05)
+        bytesavailable(proc) > 0 && (fn(io, w.pid, String(Base.readavailable(proc))); flush(io))
     end
     true
 end
