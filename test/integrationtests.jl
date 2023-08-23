@@ -603,7 +603,7 @@ end
     # Test the error is as expected
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
-    @test err.value == string(ErrorException("Worker aborted (signal=6) evaluating test item \"Abort\" (run=1)"))
+    @test err.value == string(ErrorException("Worker process aborted (signal=6) evaluating test item \"Abort\" (run=1)"))
 end
 
 @testset "test retrying failing testitem" begin
@@ -776,8 +776,8 @@ end
 
     # We have occassionally seen the Process exist with the expected signal.
     @assert typemin(Int32) == -2147483648
-    terminated_err_log_1 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker \(retry 1/2\)."
-    terminated_err_log_2 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker \(retry 2/2\)."
+    terminated_err_log_1 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker process \(retry 1/2\)."
+    terminated_err_log_2 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker process \(retry 2/2\)."
 
     worker_init_expr = :(@eval ccall(:abort, Cvoid, ()))
     # We don't use IOCapture for capturing logs as that seems to hang when the worker crashes.
@@ -809,7 +809,7 @@ end
         end
         # We have occassionally seen the Process exist with the expected signal.
         @assert typemin(Int32) == -2147483648
-        terminated_err_log_1 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker \(retry 1/2\)."
+        terminated_err_log_1 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker process \(retry 1/2\)."
         # We don't use IOCapture for capturing logs as that seems to hang when the worker crashes.
         mktemp() do log_io, _
             results = redirect_stdio(stdout=log_io, stderr=log_io, stdin=devnull) do
