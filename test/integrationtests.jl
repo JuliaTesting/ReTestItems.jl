@@ -603,7 +603,7 @@ end
     # Test the error is as expected
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
-    @test err.value == string(ErrorException("Worker aborted evaluating test item \"Abort\" (run=1)"))
+    @test err.value == string(ErrorException("Worker aborted (signal=6) evaluating test item \"Abort\" (run=1)"))
 end
 
 @testset "test retrying failing testitem" begin

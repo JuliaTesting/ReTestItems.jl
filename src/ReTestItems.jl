@@ -413,8 +413,9 @@ function record_timeout!(testitem, run_number::Int, timeout_limit::Real)
     record_test_error!(testitem, msg, timeout_limit)
 end
 
-function record_worker_terminated!(testitem, run_number::Int)
-    msg = "Worker aborted evaluating test item $(repr(testitem.name)) (run=$run_number)"
+function record_worker_terminated!(testitem, worker::Worker, run_number::Int)
+    termsignal = worker.process.termsignal
+    msg = "Worker aborted (signal=$termsignal) evaluating test item $(repr(testitem.name)) (run=$run_number)"
     record_test_error!(testitem, msg)
 end
 
@@ -505,7 +506,7 @@ function manage_worker(
             elseif e isa WorkerTerminatedException
                 @error "$worker died evaluating test item $(repr(testitem.name)). \
                     Recording test error."
-                record_worker_terminated!(testitem, run_number)
+                record_worker_terminated!(testitem, worker, run_number)
             else
                 # We don't expect any other kind of error, so rethrow, which will propagate
                 # back up to the main coordinator task and throw to the user
