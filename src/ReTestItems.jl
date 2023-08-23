@@ -115,17 +115,17 @@ will be run.
   Defaults to 30 minutes. Can also be set using the `RETESTITEMS_TESTITEM_TIMEOUT` environment variable.
   Note timeouts are currently only applied when `nworkers > 0`.
 - `retries::Int=$DEFAULT_RETRIES`: The number of times to retry a `@testitem` if either tests
-  do not pass or, if running with multiple workers, the worker fails or hits the `testitem_timeout`
+  do not pass or, if running with multiple worker processes, the worker fails or hits the `testitem_timeout`
   while running the tests. Can also be set using the `RETESTITEMS_RETRIES` environment variable.
   If a `@testitem` sets its own `retries` keyword, then the maximum of these two retry numbers
   will be used as the retry limit for that `@testitem`. When `report=true`, the report will
   contain information for all runs of a `@testitem` that was retried.
-- `nworkers::Int`: The number of workers to use for running `@testitem`s. Default 0. Can also be set
+- `nworkers::Int`: The number of worker processes to use for running `@testitem`s. Default 0. Can also be set
   using the `RETESTITEMS_NWORKERS` environment variable.
-- `nworker_threads::Union{String,Int}`: The number of threads to use for each worker. Defaults to 2.
+- `nworker_threads::Union{String,Int}`: The number of threads to use for each worker process. Defaults to 2.
   Can also be set using the `RETESTITEMS_NWORKER_THREADS` environment variable. Interactive threads are
   supported through a string (e.g. "auto,2").
-- `worker_init_expr::Expr`: an expression that will be evaluated on each worker before any tests are run.
+- `worker_init_expr::Expr`: an expression that will be evaluated on each worker process before any tests are run.
   Can be used to load packages or set up the environment. Must be a `:block` expression.
 - `report::Bool=false`: If `true`, write a JUnit-format XML file summarising the test results.
   Can also be set using the `RETESTITEMS_REPORT` environment variable. The location at which
@@ -136,7 +136,7 @@ will be run.
   - `:eager`: Everything is printed to `stdout` immediately, like in a regular Julia session.
   - `:batched`: Logs are saved to a file and then printed when the test item is finished.
   - `:issues`: Logs are saved to a file and only printed if there were any errors or failures.
-  For interative sessions, `:eager` is the default when running with 0 or 1 workers, `:batched` otherwise.
+  For interative sessions, `:eager` is the default when running with 0 or 1 worker processes, `:batched` otherwise.
   For non-interactive sessions, `:issues` is used by default.
 - `verbose_results::Bool`: If `true`, the final test report will list each `@testitem`, otherwise
     the results are aggregated. Default is `false` for non-interactive sessions
@@ -388,7 +388,7 @@ end
 function _worker_terminated(state, exception)
     if exception isa WorkerTerminatedException
         retry_num = state - 1
-        @error "$(exception.worker) terminated unexpectedly. Starting new worker (retry $retry_num/$_NRETRIES)."
+        @error "$(exception.worker) terminated unexpectedly. Starting new worker process (retry $retry_num/$_NRETRIES)."
         return true
     else
         return false
@@ -413,8 +413,9 @@ function record_timeout!(testitem, run_number::Int, timeout_limit::Real)
     record_test_error!(testitem, msg, timeout_limit)
 end
 
-function record_worker_terminated!(testitem, run_number::Int)
-    msg = "Worker aborted evaluating test item $(repr(testitem.name)) (run=$run_number)"
+function record_worker_terminated!(testitem, worker::Worker, run_number::Int)
+    termsignal = worker.process.termsignal
+    msg = "Worker process aborted (signal=$termsignal) evaluating test item $(repr(testitem.name)) (run=$run_number)"
     record_test_error!(testitem, msg)
 end
 
@@ -505,7 +506,7 @@ function manage_worker(
             elseif e isa WorkerTerminatedException
                 @error "$worker died evaluating test item $(repr(testitem.name)). \
                     Recording test error."
-                record_worker_terminated!(testitem, run_number)
+                record_worker_terminated!(testitem, worker, run_number)
             else
                 # We don't expect any other kind of error, so rethrow, which will propagate
                 # back up to the main coordinator task and throw to the user
@@ -517,7 +518,7 @@ function manage_worker(
                 run_number = 1
             else
                 run_number += 1
-                @info "Retrying $(repr(testitem.name)) on a new worker. Run=$run_number."
+                @info "Retrying $(repr(testitem.name)) on a new worker process. Run=$run_number."
             end
             # The worker was terminated, so replace it unless there are no more testitems to run
             if testitem !== nothing
