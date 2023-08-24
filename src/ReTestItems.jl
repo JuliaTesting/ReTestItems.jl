@@ -127,6 +127,8 @@ will be run.
   supported through a string (e.g. "auto,2").
 - `worker_init_expr::Expr`: an expression that will be evaluated on each worker process before any tests are run.
   Can be used to load packages or set up the environment. Must be a `:block` expression.
+- `test_end_expr::Expr`: an expression that will be evaluated after each testitem is run.
+  Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
 - `report::Bool=false`: If `true`, write a JUnit-format XML file summarising the test results.
   Can also be set using the `RETESTITEMS_REPORT` environment variable. The location at which
   the XML report is saved can be set using the `RETESTITEMS_REPORT_LOCATION` environment variable.
@@ -182,7 +184,8 @@ function runtests(
     tags::Union{Symbol,AbstractVector{Symbol},Nothing}=nothing,
     report::Bool=parse(Bool, get(ENV, "RETESTITEMS_REPORT", "false")),
     logs::Symbol=default_log_display_mode(report, nworkers),
-    verbose_results::Bool=(logs !== :issues && isinteractive())
+    verbose_results::Bool=(logs !== :issues && isinteractive()),
+    test_end_expr::Expr=Expr(:block),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = filter(paths) do p
@@ -208,10 +211,10 @@ function runtests(
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debuglvl, report, logs)
+            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, verbose_results, debuglvl, report, logs)
         end
     else
-        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debuglvl, report, logs)
+        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, verbose_results, debuglvl, report, logs)
     end
 end
 
@@ -225,7 +228,7 @@ end
 # By tracking and reusing test environments, we can avoid this issue.
 const TEST_ENVS = Dict{String, String}()
 
-function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, testitem_timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
+function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -245,7 +248,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
         if is_running_test_runtests_jl(proj_file)
             # Assume this is `Pkg.test`, so test env already active.
             @debugv 2 "Running in current environment `$(Base.active_project())`"
-            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
+            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
         else
             @debugv 1 "Activating test environment for `$proj_file`"
             orig_proj = Base.active_project()
@@ -258,7 +261,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
                     testenv = TestEnv.activate()
                     TEST_ENVS[proj_file] = testenv
                 end
-                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
+                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
             finally
                 Base.set_active_project(orig_proj)
             end
@@ -267,7 +270,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
 end
 
 function _runtests_in_current_env(
-    shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr,
+    shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
     testitem_timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
 )
     start_time = time()
@@ -294,7 +297,7 @@ function _runtests_in_current_env(
                 run_number = 1
                 max_runs = 1 + max(retries, testitem.retries)
                 while run_number ≤ max_runs
-                    res = runtestitem(testitem, ctx; verbose_results, logs)
+                    res = runtestitem(testitem, ctx; test_end_expr, verbose_results, logs)
                     ts = res.testset
                     print_errors_and_captured_logs(testitem, run_number; logs)
                     report_empty_testsets(testitem, ts)
@@ -333,7 +336,7 @@ function _runtests_in_current_env(
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
-                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $testitem_timeout, $retries, $verbose_results, $debug, $report, $logs)
+                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $verbose_results, $debug, $report, $logs)
                     end
                 end
             end
@@ -441,7 +444,7 @@ function record_test_error!(testitem, msg, elapsed_seconds::Real=0.0)
 end
 
 function manage_worker(
-    worker::Worker, proj_name, testitems, testitem, nworker_threads, worker_init_expr,
+    worker::Worker, proj_name, testitems, testitem, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
     timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
 )
     ntestitems = length(testitems.testitems)
@@ -449,7 +452,7 @@ function manage_worker(
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
         testitem.workerid[] = worker.pid
-        fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; verbose_results=$verbose_results, logs=$(QuoteNode(logs)))))
+        fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)))))
         max_runs = 1 + max(retries, testitem.retries)
         try
             timer = Timer(timeout) do tm
@@ -823,7 +826,7 @@ end
 # when `runtestitem` called directly or `@testitem` called outside of `runtests`.
 function runtestitem(
     ti::TestItem, ctx::TestContext;
-    logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true,
+    test_end_expr::Expr=Expr(:block), logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true,
 )
     name = ti.name
     log_testitem_start(ti, ctx.ntestitems)
@@ -865,6 +868,13 @@ function runtestitem(
             push!(body.args, :(const $setup = $ts_mod))
         end
         @debugv 1 "Setup for test item $(repr(name)) done$(_on_worker())."
+
+        # add the `test_end_expr` to a module to be run after the test item
+        test_end_body = copy(body)
+        test_end_mod_expr = :(module $(gensym(name * " test_end")) end)
+        push!(test_end_body.args, test_end_expr)
+        test_end_mod_expr.args[3] = test_end_body
+
         # add our @testitem quoted code to module body expr
         append!(body.args, ti.code.args)
         mod_expr = :(module $(gensym(name)) end)
@@ -886,6 +896,7 @@ function runtestitem(
         # environment = Module()
         _, stats = @timed_with_compilation _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : logpath(ti)) do
             with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
+            with_source_path(() -> Core.eval(Main, test_end_mod_expr), ti.file)
             nothing # return nothing as the first return value of @timed_with_compilation
         end
         @debugv 1 "Done evaluating test item $(repr(name))$(_on_worker())."

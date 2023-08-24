@@ -21,7 +21,7 @@ const TEST_PKG_DIR = joinpath(_TEST_DIR, "packages")
 
 # Note "DontPass.jl" is handled specifically below, as it's the package which doesn't have
 # passing tests. Other packages should pass tests and be added here:
-const TEST_PKGS = ("NoDeps.jl", "TestsInSrc.jl", "TestProjectFile.jl")
+const TEST_PKGS = ("NoDeps.jl", "TestsInSrc.jl", "TestProjectFile.jl", "TestEndExpr.jl")
 
 include(joinpath(_TEST_DIR, "_integration_test_tools.jl"))
 
@@ -823,6 +823,85 @@ end
             # Test we were then able to run all tests successfully.
             @test n_tests(results) == 3
             @test all_passed(results) == 1
+        end
+    end
+end
+
+@testset "test_end_expr" begin
+    # `_happy_tests.jl` has 3 testitems with 1 passing test each.
+    file = joinpath(TEST_FILES_DIR, "_happy_tests.jl")
+    @testset "nworkers=$nworkers" for nworkers in (0, 1, 2)
+        @testset "post-testitem checks pass" begin
+            test_end1 = quote
+                @test 1 == 1
+            end
+            results1 = encased_testset() do
+                runtests(file; nworkers, test_end_expr=test_end1)
+            end
+            @test n_tests(results1) == 6
+            @test all_passed(results1)
+        end
+
+        @testset "post-testitem checks fail" begin
+            test_end2 = quote
+                @test 1 == 2
+            end
+            results2 = encased_testset() do
+                runtests(file; nworkers, test_end_expr=test_end2)
+            end
+            @test n_tests(results2) == 6
+            @test n_passed(results2) == 3
+        end
+    end
+    @testset "report printing" begin
+        using IOCapture
+        test_end3 = quote @test true end
+        results3 = encased_testset() do
+            runtests(file; nworkers=1, test_end_expr=test_end3)
+        end
+        c = IOCapture.capture() do
+            Test.print_test_results(results3)
+        end
+        @assert n_tests(results3) == 6
+        @assert all_passed(results3)
+        @test contains(
+            c.output,
+            r"""
+            Test Summary:                        \| Pass  Total  Time
+            ReTestItems                          \|    6      6  \d.\ds
+            """
+        )
+        test_end4 = quote
+            @testset "post-testitem" begin
+                @test false end
+            end
+        end
+        results4 = encased_testset() do
+            runtests(file; nworkers=1, test_end_expr=test_end4)
+        end
+        @assert n_tests(results4) == 6
+        @assert n_passed(results4) == 3
+        @test contains(
+            c.output,
+            r"""
+            Test Summary:                        \| Pass  Fail  Total  Time
+            ReTestItems                          \|    3     3      6  \d.\ds
+            """
+        )
+    end
+    @testset "TestEndExpr.jl package" begin
+        test_end_expr = quote
+            p = GLOBAL_PAGER[]
+            (isnothing(p) || isempty(p.pages)) && return nothing
+            @testset "no pins left at end of test" begin
+                @test count_pins(p) == 0
+            end
+        end
+        results1 = with_test_package("TestEndExpr.jl") do
+            runtests(; test_end_expr)
+        end
+        results2 = with_test_package("TestEndExpr.jl") do
+            runtests(; test_end_expr)
         end
     end
 end
