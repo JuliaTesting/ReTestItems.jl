@@ -872,7 +872,7 @@ function runtestitem(
         # add the `test_end_expr` to a module to be run after the test item
         test_end_body = copy(body)
         test_end_mod_expr = :(module $(gensym(name * " test_end")) end)
-        push!(test_end_body.args, test_end_expr)
+        append!(test_end_body.args, test_end_expr.args)
         test_end_mod_expr.args[3] = test_end_body
 
         # add our @testitem quoted code to module body expr
