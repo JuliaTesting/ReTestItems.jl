@@ -934,6 +934,7 @@ end
             runtests(; nworkers=1, worker_init_expr, test_end_expr)
         end
         @test !all_passed(results_with_end)
+        @test n_passed(results_with_end) ≥ 1
         @test length(failures(results_with_end)) ≥ 1
     end
 end
