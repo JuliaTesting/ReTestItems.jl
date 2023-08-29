@@ -42,6 +42,16 @@ function softscope(@nospecialize ex)
     return ex
 end
 
+# Call softscope on each top-level body expr
+# which has the effect of the body acting like you're at the REPL or
+# inside a testset, except imports/using/etc all still work as expected
+# more info: https://docs.julialang.org/en/v1.10-dev/manual/variables-and-scoping/#on-soft-scope
+function softscope_all!(@nospecialize ex)
+    for i = 1:length(ex.args)
+        ex.args[i] = softscope(ex.args[i])
+    end
+end
+
 include("workers.jl")
 using .Workers
 include("macros.jl")
@@ -871,21 +881,15 @@ function runtestitem(
 
         # add the `test_end_expr` to a module to be run after the test item
         test_end_body = copy(body)
-        test_end_mod_expr = :(module $(gensym(name * " test_end")) end)
         append!(test_end_body.args, test_end_expr.args)
+        softscope_all!(test_end)
+        test_end_mod_expr = :(module $(gensym(name * " test_end")) end)
         test_end_mod_expr.args[3] = test_end_body
 
         # add our @testitem quoted code to module body expr
         append!(body.args, ti.code.args)
         mod_expr = :(module $(gensym(name)) end)
-        # replace the module body with our built up expr
-        # we're being a bit sneaky here by calling softscope on each top-level body expr
-        # which has the effect of test item body acting like you're at the REPL or
-        # inside a testset, except imports/using/etc all still work as expected
-        # more info: https://docs.julialang.org/en/v1.10-dev/manual/variables-and-scoping/#on-soft-scope
-        for i = 1:length(body.args)
-            body.args[i] = softscope(body.args[i])
-        end
+        softscope_all!(body)
         mod_expr.args[3] = body
         # eval the testitem into a temporary module, so that all results can be GC'd
         # once the test is done and sent over the wire. (However, note that anonymous modules
