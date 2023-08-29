@@ -875,8 +875,8 @@ end
         @test contains(
             c3.output,
             r"""
-            Test Summary:                        \| Pass  Total  Time
-            ReTestItems                          \|    6      6  \d.\ds
+            Test Summary: \s* \| Pass  Total  Time
+            ReTestItems   \s* \|    6      6  \d.\ds
             """
         )
         # Test that for a failing `test_end_expr` we report the failing tests, including
