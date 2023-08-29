@@ -882,7 +882,7 @@ function runtestitem(
         # add the `test_end_expr` to a module to be run after the test item
         test_end_body = copy(body)
         append!(test_end_body.args, test_end_expr.args)
-        softscope_all!(test_end)
+        softscope_all!(test_end_body)
         test_end_mod_expr = :(module $(gensym(name * " test_end")) end)
         test_end_mod_expr.args[3] = test_end_body
 
