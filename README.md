@@ -107,6 +107,8 @@ By default, `Test` and the package being tested will be imported into the `@test
 
 Since a `@testitem` is the block of code that will be executed, `@testitem`s cannot be nested.
 
+#### Test setup
+
 If some test-specific code needs to be shared by multiple `@testitem`s, this code can be placed in a `module` and marked as `@testsetup`,
 and the `@testitem`s can depend on it via the `setup` keyword.
 
@@ -124,7 +126,38 @@ end
 end
 ```
 
-### Summary
+The `setup` is run once on each worker process that requires it;
+it is not run before every `@testitem` that depends on the setup.
+
+#### Post-testitem hook
+
+If there is something that should be checked after every single `@testitem`, then it's possible to pass an expression to `runtests` using the `test_end_expr` keyword.
+This expression will be run immediately after each `@testitem`.
+
+```julia
+test_end_expr = quote
+    @testset "global Foo unchanged" begin
+        foo = get_global_foo()
+        @test foo.changes == 0
+    end
+end
+runtests("frozzle_tests.jl"; test_end_expr)
+```
+
+#### Worker process start-up
+
+If there is some set-up that should be done on each worker process before it is used to evaluated test-items, then it is possible to pass an expression to `runtests` via the `worker_init_expr` keyword.
+This expression will be run on each worker process as soon as it is started.
+
+```julia
+nworkers = 3
+worker_init_expr = quote
+    set_global_foo_memory_limit!(Sys.total_memory()/nworkers)
+end
+runtests("frobble_tests.jl"; nworkers, worker_init_expr)
+```
+
+## Summary
 
 1. Write tests inside of an `@testitem` block.
     - These are like an `@testset`, except that they must contain all the code they need to run;
@@ -157,6 +190,8 @@ end
       using ReTestItems, MyPackage
       runtests(MyPackage)
       ```
+    - Pass to `runtests` any configuration you want your tests to run with, such as `retries`, `testitem_timeout`, `nworkers`, `nworker_threads`, `worker_init_expr`, `test_end_expr`.
+      See the `runtests` docstring for details.
 
 ---
 
