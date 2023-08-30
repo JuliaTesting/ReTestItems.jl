@@ -21,7 +21,7 @@ const TEST_PKG_DIR = joinpath(_TEST_DIR, "packages")
 
 # Note "DontPass.jl" is handled specifically below, as it's the package which doesn't have
 # passing tests. Other packages should pass tests and be added here:
-const TEST_PKGS = ("NoDeps.jl", "TestsInSrc.jl", "TestProjectFile.jl")
+const TEST_PKGS = ("NoDeps.jl", "TestsInSrc.jl", "TestProjectFile.jl", "TestEndExpr.jl")
 
 include(joinpath(_TEST_DIR, "_integration_test_tools.jl"))
 
@@ -182,11 +182,18 @@ end
     # `runtests` runs in this process, so allows us to actually record the test results,
     # which means we can tests that runtests ran the tests we expected it to.
     @testset "runtests() $pkg" for pkg in TEST_PKGS
-        results = with_test_package(pkg) do
-            runtests()
+        if pkg == "TestEndExpr.jl"
+            # TestEndExpr.jl requires `worker_init_expr` which isn't supported when nworkers=0.
+            @test_skip with_test_package(pkg) do
+                runtests()
+            end
+        else
+            results = with_test_package(pkg) do
+                runtests()
+            end
+            @test n_passed(results) > 0  # tests were found and ran
+            @test all_passed(results)    # no tests failed/errored
         end
-        @test n_passed(results) > 0  # tests were found and ran
-        @test all_passed(results)    # no tests failed/errored
     end
     @testset "runtests() DontPass.jl" begin
         results = with_test_package("DontPass.jl") do
