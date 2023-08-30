@@ -140,6 +140,14 @@ will be run.
   Can be used to load packages or set up the environment. Must be a `:block` expression.
 - `test_end_expr::Expr`: an expression that will be evaluated after each testitem is run.
   Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
+- `memory_threshold::Real`: Sets the fraction of memory that can be in use before a worker processes are
+  restarted to free memory. Defaults to $DEFAULT_MEMORY_THRESHOLD. Only supported with `nworkers > 0`.
+  For example, if set to 0.8, then when >80% of the available memory is in use, a worker process will be killed and
+  replaced with a new worker before the next testitem is evaluated. The testitem will then be run on the new worker
+  process, regardless of if memory pressure dropped below the threshold. If the memory pressure remains above the
+  threshold, then a worker process will again be replaced before the next testitem is evaluated.
+  Can also be set using the `RETESTITEMS_MEMORY_THRESHOLD` environment variable.
+  **Note**: the `memory_threshold` keyword is experimental and may be removed in future versions.
 - `report::Bool=false`: If `true`, write a JUnit-format XML file summarising the test results.
   Can also be set using the `RETESTITEMS_REPORT` environment variable. The location at which
   the XML report is saved can be set using the `RETESTITEMS_REPORT_LOCATION` environment variable.
