@@ -867,7 +867,7 @@ function runtestitem(
         @debugv 1 "Setup for test item $(repr(name)) done$(_on_worker())."
         # add our @testitem quoted code to module body expr
         append!(body.args, ti.code.args)
-        mod_expr = :(module $(gensym(name)) end)
+        # mod_expr = :(module $(gensym(name)) end)
         # replace the module body with our built up expr
         # we're being a bit sneaky here by calling softscope on each top-level body expr
         # which has the effect of test item body acting like you're at the REPL or
@@ -876,7 +876,8 @@ function runtestitem(
         for i = 1:length(body.args)
             body.args[i] = softscope(body.args[i])
         end
-        mod_expr.args[3] = body
+        # mod_expr.args[3] = body
+        let_expr = Expr(:let, Expr(:block), body)
         # eval the testitem into a temporary module, so that all results can be GC'd
         # once the test is done and sent over the wire. (However, note that anonymous modules
         # aren't always GC'd right now: https://github.com/JuliaLang/julia/issues/48711)
@@ -885,7 +886,7 @@ function runtestitem(
         # with things defined in an anonymous module
         # environment = Module()
         _, stats = @timed_with_compilation _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : logpath(ti)) do
-            with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
+            with_source_path(() -> Core.eval(Main, let_expr), ti.file)
             nothing # return nothing as the first return value of @timed_with_compilation
         end
         @debugv 1 "Done evaluating test item $(repr(name))$(_on_worker())."
