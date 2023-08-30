@@ -461,6 +461,12 @@ function manage_worker(
     run_number = 1
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
+        if memory_percent() > 95
+            @warn "Memory pressure is high ($(Base.Ryu.writefixed(memory_percent(), 1))%). Restarting worker process."
+            terminate!(worker)
+            wait(worker)
+            worker = robust_start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
+        end
         testitem.workerid[] = worker.pid
         fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)))))
         max_runs = 1 + max(retries, testitem.retries)
