@@ -842,13 +842,16 @@ function runtestitem(
     log_testitem_start(ti, ctx.ntestitems)
     ts = DefaultTestSet(name; verbose=verbose_results)
     stats = PerfStats()
-    # start with empty block expr and build up our @testitem module body
+    # start with empty block expr and build up our `@testitem` and `test_end_expr` module bodies
     body = Expr(:block)
+    test_end_body = Expr(:block)
     if ti.default_imports
         push!(body.args, :(using Test))
+        push!(test_end_body.args, :(using Test))
         if !isempty(ctx.projectname)
             # this obviously assumes we're in an environment where projectname is reachable
             push!(body.args, :(using $(Symbol(ctx.projectname))))
+            push!(test_end_body.args, :(using $(Symbol(ctx.projectname))))
         end
     end
     Test.push_testset(ts)
@@ -879,25 +882,25 @@ function runtestitem(
         end
         @debugv 1 "Setup for test item $(repr(name)) done$(_on_worker())."
 
+        # add our `@testitem` quoted code to module body expr
+        append!(body.args, ti.code.args)
+        mod_expr = :(module $(gensym(name)) end)
+        softscope_all!(body)
+        mod_expr.args[3] = body
+
         # add the `test_end_expr` to a module to be run after the test item
-        test_end_body = copy(body)
         append!(test_end_body.args, test_end_expr.args)
         softscope_all!(test_end_body)
         test_end_mod_expr = :(module $(gensym(name * " test_end")) end)
         test_end_mod_expr.args[3] = test_end_body
 
-        # add our @testitem quoted code to module body expr
-        append!(body.args, ti.code.args)
-        mod_expr = :(module $(gensym(name)) end)
-        softscope_all!(body)
-        mod_expr.args[3] = body
         # eval the testitem into a temporary module, so that all results can be GC'd
         # once the test is done and sent over the wire. (However, note that anonymous modules
         # aren't always GC'd right now: https://github.com/JuliaLang/julia/issues/48711)
-        @debugv 1 "Evaluating test item $(repr(name))$(_on_worker())."
         # disabled for now since there were issues when tests tried serialize/deserialize
         # with things defined in an anonymous module
         # environment = Module()
+        @debugv 1 "Evaluating test item $(repr(name))$(_on_worker())."
         _, stats = @timed_with_compilation _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : logpath(ti)) do
             with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
             with_source_path(() -> Core.eval(Main, test_end_mod_expr), ti.file)
