@@ -6,6 +6,7 @@
 # (ii) do _not_ want expected fail/errors to cause ReTestItems' tests to fail/error
 # This is not `@test_throws` etc, because we're not testing that the code fails/errors
 # we're testing that _the tests themselves_ fail/error.
+using Test
 
 """
     EncasedTestSet(desc, results) <: AbstractTestset

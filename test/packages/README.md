@@ -13,3 +13,4 @@ See `test/integrationtests.jl`.
 - *TestsInSrc.jl* - A package which has all of its `@testitems` in the `src/` directory.
 - *TestProjectFile.jl* - A package which has test-only dependencies declared in a `test/Project.toml`.
 - *MonoRepo.jl* - A package which depends on local, unregistered sub-packages. See `MonoRepo.jl/README.md`.
+- *TestEndExpr.jl* - A package which requires users to uphold an invariant which we would want to test is being upheld by all code run in the tests. This provides a use-case for the `test_end_expr` functionality.
