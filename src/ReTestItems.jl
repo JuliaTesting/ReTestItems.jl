@@ -465,7 +465,7 @@ function record_test_error!(testitem, msg, elapsed_seconds::Real=0.0)
 end
 
 function manage_worker(
-    worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::TestItem, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
+    worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
     timeout::Real, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
 )
     ntestitems = length(testitems.testitems)
