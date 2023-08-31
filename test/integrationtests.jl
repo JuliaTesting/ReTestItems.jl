@@ -946,4 +946,49 @@ end
     end
 end
 
+@testset "Replace workers when we hit memory threshold" begin
+    using IOCapture
+    file = joinpath(TEST_FILES_DIR, "_happy_tests.jl")
+    try
+        # monkey-patch the internal `memory_percent` function to return a fixed value, so we
+        # can control if we hit the `memory_threshold`.
+        @eval ReTestItems.memory_percent() = 83.1
+        expected_warning = "Warning: Memory usage (83.1%) is higher than limit (7.0%). Restarting worker process to try to free memory."
+
+        # Pass `memory_threshold` keyword, and hit the memory threshold.
+        c1 = IOCapture.capture() do
+            encased_testset(()->runtests(file; nworkers=1, memory_threshold=0.07))
+        end
+        results1 = c1.value
+        @test all_passed(results1)
+        @test contains(c1.output, expected_warning)
+
+        # Set the `RETESTITEMS_MEMORY_THRESHOLD` env variable, and hit the memory threshold.
+        c2 = IOCapture.capture() do
+            withenv("RETESTITEMS_MEMORY_THRESHOLD" => 0.07) do
+                encased_testset(()->runtests(file; nworkers=1))
+            end
+        end
+        results2 = c2.value
+        @test all_passed(results2)
+        @test contains(c2.output, expected_warning)
+
+        # Set the memory_threshold, but don't hit it.
+        c3 = IOCapture.capture() do
+            withenv("RETESTITEMS_MEMORY_THRESHOLD" => 0.9) do
+                encased_testset(()->runtests(file; nworkers=1))
+            end
+        end
+        results3 = c3.value
+        @test all_passed(results3)
+        @test !contains(c3.output, expected_warning)
+    finally
+        @eval ReTestItems.memory_percent() = 100 * Float64(Sys.maxrss()/Sys.total_memory())
+    end
+    xx = 99
+    err_msg = "ArgumentError: `memory_threshold` must be between 0 and 1, got $xx"
+    expected_err = VERSION < v"1.8" ? ArgumentError : err_msg
+    @test_throws expected_err runtests(file; nworkers=1, memory_threshold=xx)
+end
+
 end # integrationtests.jl testset
