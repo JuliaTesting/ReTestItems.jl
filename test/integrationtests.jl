@@ -953,7 +953,7 @@ end
         # monkey-patch the internal `memory_percent` function to return a fixed value, so we
         # can control if we hit the `memory_threshold`.
         @eval ReTestItems.memory_percent() = 83.1
-        expected_warning = "Warning: Memory usage (83.1%) is higher than limit (7.0%). Restarting worker process to try to free memory."
+        expected_warning = "Warning: Memory usage (83.1%) is higher than threshold (7.0%). Restarting worker process to try to free memory."
 
         # Pass `memory_threshold` keyword, and hit the memory threshold.
         c1 = IOCapture.capture() do
