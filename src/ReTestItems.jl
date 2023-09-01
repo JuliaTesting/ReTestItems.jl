@@ -474,7 +474,7 @@ function manage_worker(
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
         if memory_percent() > memory_threshold_percent
-            @warn "Memory usage ($(Base.Ryu.writefixed(memory_percent(), 1))%) is higher than limit ($(Base.Ryu.writefixed(memory_threshold_percent, 1))%). Restarting worker process to try to free memory."
+            @warn "Memory usage ($(Base.Ryu.writefixed(memory_percent(), 1))%) is higher than threshold ($(Base.Ryu.writefixed(memory_threshold_percent, 1))%). Restarting worker process to try to free memory."
             terminate!(worker)
             wait(worker)
             worker = robust_start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
