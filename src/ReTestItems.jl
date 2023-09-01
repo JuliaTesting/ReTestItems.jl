@@ -16,6 +16,7 @@ export TestSetup, TestItem, TestItemResult
 const RETESTITEMS_TEMP_FOLDER = mkpath(joinpath(tempdir(), "ReTestItemsTempLogsDirectory"))
 const DEFAULT_TESTITEM_TIMEOUT = 30*60
 const DEFAULT_RETRIES = 0
+const DEFAULT_MEMORY_THRESHOLD = 0.99
 
 if isdefined(Base, :errormonitor)
     const errmon = Base.errormonitor
@@ -139,6 +140,14 @@ will be run.
   Can be used to load packages or set up the environment. Must be a `:block` expression.
 - `test_end_expr::Expr`: an expression that will be evaluated after each testitem is run.
   Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
+- `memory_threshold::Real`: Sets the fraction of memory that can be in use before a worker processes are
+  restarted to free memory. Defaults to $DEFAULT_MEMORY_THRESHOLD. Only supported with `nworkers > 0`.
+  For example, if set to 0.8, then when >80% of the available memory is in use, a worker process will be killed and
+  replaced with a new worker before the next testitem is evaluated. The testitem will then be run on the new worker
+  process, regardless of if memory pressure dropped below the threshold. If the memory pressure remains above the
+  threshold, then a worker process will again be replaced before the next testitem is evaluated.
+  Can also be set using the `RETESTITEMS_MEMORY_THRESHOLD` environment variable.
+  **Note**: the `memory_threshold` keyword is experimental and may be removed in future versions.
 - `report::Bool=false`: If `true`, write a JUnit-format XML file summarising the test results.
   Can also be set using the `RETESTITEMS_REPORT` environment variable. The location at which
   the XML report is saved can be set using the `RETESTITEMS_REPORT_LOCATION` environment variable.
@@ -189,6 +198,7 @@ function runtests(
     worker_init_expr::Expr=Expr(:block),
     testitem_timeout::Real=parse(Float64, get(ENV, "RETESTITEMS_TESTITEM_TIMEOUT", string(DEFAULT_TESTITEM_TIMEOUT))),
     retries::Int=parse(Int, get(ENV, "RETESTITEMS_RETRIES", string(DEFAULT_RETRIES))),
+    memory_threshold::Real=parse(Float64, get(ENV, "RETESTITEMS_MEMORY_THRESHOLD", string(DEFAULT_MEMORY_THRESHOLD))),
     debug=0,
     name::Union{Regex,AbstractString,Nothing}=nothing,
     tags::Union{Symbol,AbstractVector{Symbol},Nothing}=nothing,
@@ -211,6 +221,7 @@ function runtests(
     end
     logs in LOG_DISPLAY_MODES || throw(ArgumentError("`logs` must be one of $LOG_DISPLAY_MODES, got $(repr(logs))"))
     report && logs == :eager && throw(ArgumentError("`report=true` is not compatible with `logs=:eager`"))
+    (0 ≤ memory_threshold ≤ 1) || throw(ArgumentError("`memory_threshold` must be between 0 and 1, got $(repr(memory_threshold))"))
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
     shouldrun_combined(ti) = shouldrun(ti) && _shouldrun(name, ti.name) && _shouldrun(tags, ti.tags)
@@ -221,10 +232,10 @@ function runtests(
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, verbose_results, debuglvl, report, logs)
+            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs)
         end
     else
-        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, verbose_results, debuglvl, report, logs)
+        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs)
     end
 end
 
@@ -238,7 +249,7 @@ end
 # By tracking and reusing test environments, we can avoid this issue.
 const TEST_ENVS = Dict{String, String}()
 
-function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
+function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Real, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -258,7 +269,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
         if is_running_test_runtests_jl(proj_file)
             # Assume this is `Pkg.test`, so test env already active.
             @debugv 2 "Running in current environment `$(Base.active_project())`"
-            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
+            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs)
         else
             @debugv 1 "Activating test environment for `$proj_file`"
             orig_proj = Base.active_project()
@@ -271,7 +282,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
                     testenv = TestEnv.activate()
                     TEST_ENVS[proj_file] = testenv
                 end
-                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, verbose_results, debug, report, logs)
+                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs)
             finally
                 Base.set_active_project(orig_proj)
             end
@@ -281,7 +292,7 @@ end
 
 function _runtests_in_current_env(
     shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    testitem_timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
+    testitem_timeout::Real, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
 )
     start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
@@ -346,7 +357,7 @@ function _runtests_in_current_env(
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
-                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $verbose_results, $debug, $report, $logs)
+                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs)
                     end
                 end
             end
@@ -454,13 +465,20 @@ function record_test_error!(testitem, msg, elapsed_seconds::Real=0.0)
 end
 
 function manage_worker(
-    worker::Worker, proj_name, testitems, testitem, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    timeout::Real, retries::Int, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
+    worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
+    timeout::Real, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
+    memory_threshold_percent = 100*memory_threshold
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
+        if memory_percent() > memory_threshold_percent
+            @warn "Memory usage ($(Base.Ryu.writefixed(memory_percent(), 1))%) is higher than threshold ($(Base.Ryu.writefixed(memory_threshold_percent, 1))%). Restarting worker process to try to free memory."
+            terminate!(worker)
+            wait(worker)
+            worker = robust_start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
+        end
         testitem.workerid[] = worker.pid
         fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)))))
         max_runs = 1 + max(retries, testitem.retries)

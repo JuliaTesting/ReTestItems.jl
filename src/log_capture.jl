@@ -140,11 +140,13 @@ _has_logs(ti::TestItem, i=nothing) = (path = logpath(ti, i); (isfile(path) && fi
 # Stats to help diagnose OOM issues.
 _mem_watermark() = string(
     # Tracks the peak memory usage of a process / worker
-    "maxrss ", lpad(Base.Ryu.writefixed(100 * Float64(Sys.maxrss()/Sys.total_memory()), 1), 4),
+    "maxrss ", lpad(Base.Ryu.writefixed(maxrss_percent(), 1), 4),
     # Total memory pressure on the machine
-    "% | mem ", lpad(Base.Ryu.writefixed(100 * Float64(1 - (Sys.free_memory()/Sys.total_memory())), 1), 4),
+    "% | mem ", lpad(Base.Ryu.writefixed(memory_percent(), 1), 4),
     "% | "
 )
+maxrss_percent() = 100 * Float64(Sys.maxrss()/Sys.total_memory())
+memory_percent() = 100 * Float64(1 - (Sys.free_memory()/Sys.total_memory()))
 
 """
     print_errors_and_captured_logs(ti::TestItem, run_number::Int; logs=:batched, errors_first=false)
