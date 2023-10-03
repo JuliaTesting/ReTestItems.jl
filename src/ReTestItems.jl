@@ -203,7 +203,7 @@ function runtests(
     name::Union{Regex,AbstractString,Nothing}=nothing,
     tags::Union{Symbol,AbstractVector{Symbol},Nothing}=nothing,
     report::Bool=parse(Bool, get(ENV, "RETESTITEMS_REPORT", "false")),
-    logs::Symbol=default_log_display_mode(report, nworkers),
+    logs::Symbol=Symbol(get(ENV, "RETESTITEMS_LOGS", default_log_display_mode(report, nworkers))),
     verbose_results::Bool=(logs !== :issues && isinteractive()),
     test_end_expr::Expr=Expr(:block),
 )

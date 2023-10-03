@@ -10,7 +10,7 @@ using Test
 
     @testset "$log_display" for log_display in (:eager, :batched, :issues)
         # Need to run in a separate process to force --color=yes in CI.
-        cmd = addenv(`$(Base.julia_cmd()) --project=$PROJECT_PATH --color=yes $LOG_CAPTURE_TESTS_PATH`, "LOG_DISPLAY" => log_display)
+        cmd = addenv(`$(Base.julia_cmd()) --project=$PROJECT_PATH --color=yes $LOG_CAPTURE_TESTS_PATH`, "RETESTITEMS_LOGS" => log_display)
         p = run(pipeline(ignorestatus(cmd); stdout, stderr), wait=false)
         wait(p)
         @test success(p)

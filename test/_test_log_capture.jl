@@ -1,6 +1,6 @@
 # This file defines tests that are run (under various configurations) by `test/log_capture.jl`.
 using ReTestItems, Test, Logging, IOCapture
-const log_display = Symbol(ENV["LOG_DISPLAY"])
+const log_display = Symbol(ENV["RETESTITEMS_LOGS"])
 
 @testset "log capture logs=$(repr(log_display))" begin
     @testset "TestItem" begin
