@@ -16,7 +16,8 @@ export TestSetup, TestItem, TestItemResult
 const RETESTITEMS_TEMP_FOLDER = mkpath(joinpath(tempdir(), "ReTestItemsTempLogsDirectory"))
 const DEFAULT_TESTITEM_TIMEOUT = 30*60
 const DEFAULT_RETRIES = 0
-const DEFAULT_MEMORY_THRESHOLD = 0.99
+const DEFAULT_MEMORY_THRESHOLD = Ref{Float64}(0.99)
+
 
 if isdefined(Base, :errormonitor)
     const errmon = Base.errormonitor
@@ -65,6 +66,11 @@ function __init__()
     DEFAULT_STDERR[] = stderr
     DEFAULT_LOGSTATE[] = Base.CoreLogging._global_logstate
     DEFAULT_LOGGER[] = Base.CoreLogging._global_logstate.logger
+    # Disable killing workers based on memory pressure on MacOS til calculations fixed.
+    # TODO: fix https://github.com/JuliaTesting/ReTestItems.jl/issues/113
+    @static if Sys.isapple()
+        DEFAULT_MEMORY_THRESHOLD[] = 1.0
+    end
     return nothing
 end
 
@@ -141,7 +147,7 @@ will be run.
 - `test_end_expr::Expr`: an expression that will be evaluated after each testitem is run.
   Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
 - `memory_threshold::Real`: Sets the fraction of memory that can be in use before a worker processes are
-  restarted to free memory. Defaults to $DEFAULT_MEMORY_THRESHOLD. Only supported with `nworkers > 0`.
+  restarted to free memory. Defaults to $(DEFAULT_MEMORY_THRESHOLD[]). Only supported with `nworkers > 0`.
   For example, if set to 0.8, then when >80% of the available memory is in use, a worker process will be killed and
   replaced with a new worker before the next testitem is evaluated. The testitem will then be run on the new worker
   process, regardless of if memory pressure dropped below the threshold. If the memory pressure remains above the
@@ -198,7 +204,7 @@ function runtests(
     worker_init_expr::Expr=Expr(:block),
     testitem_timeout::Real=parse(Float64, get(ENV, "RETESTITEMS_TESTITEM_TIMEOUT", string(DEFAULT_TESTITEM_TIMEOUT))),
     retries::Int=parse(Int, get(ENV, "RETESTITEMS_RETRIES", string(DEFAULT_RETRIES))),
-    memory_threshold::Real=parse(Float64, get(ENV, "RETESTITEMS_MEMORY_THRESHOLD", string(DEFAULT_MEMORY_THRESHOLD))),
+    memory_threshold::Real=parse(Float64, get(ENV, "RETESTITEMS_MEMORY_THRESHOLD", string(DEFAULT_MEMORY_THRESHOLD[]))),
     debug=0,
     name::Union{Regex,AbstractString,Nothing}=nothing,
     tags::Union{Symbol,AbstractVector{Symbol},Nothing}=nothing,
