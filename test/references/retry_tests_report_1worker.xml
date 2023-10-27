@@ -244,7 +244,7 @@ No Captured Logs for test item "Has retries=1 and always fails" at test/testfile
 		<error message="Error during test at test/testfiles/_retry_tests.jl:54">Error in testset "Timeout always" on worker 72554:
 Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:54
   Got exception outside of a @test
-  Timed out after 5s evaluating test item "Timeout always" (run=1)
+  Timed out after 5s running test item "Timeout always" (run=1)
 Captured Logs for test item "Timeout always" at test/testfiles/_retry_tests.jl:54 on worker 72554
 
 signal (15): Terminated: 15
@@ -269,7 +269,7 @@ Allocations: 5231943 (Pool: 5229611; Big: 2332); GC: 30
 		<error message="Error during test at test/testfiles/_retry_tests.jl:54">Error in testset "Timeout always" on worker 72554:
 Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:54
   Got exception outside of a @test
-  Timed out after 5s evaluating test item "Timeout always" (run=2)
+  Timed out after 5s running test item "Timeout always" (run=2)
 Captured Logs for test item "Timeout always" at test/testfiles/_retry_tests.jl:54 on worker 72554
 
 signal (15): Terminated: 15
@@ -294,7 +294,7 @@ Allocations: 3068888 (Pool: 3067775; Big: 1113); GC: 3
 		<error message="Error during test at test/testfiles/_retry_tests.jl:54">Error in testset "Timeout always" on worker 72554:
 Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:54
   Got exception outside of a @test
-  Timed out after 5s evaluating test item "Timeout always" (run=3)
+  Timed out after 5s running test item "Timeout always" (run=3)
 Captured Logs for test item "Timeout always" at test/testfiles/_retry_tests.jl:54 on worker 72554
 
 signal (15): Terminated: 15
@@ -319,7 +319,7 @@ Allocations: 3068845 (Pool: 3067734; Big: 1111); GC: 3
 		<error message="Error during test at test/testfiles/_retry_tests.jl:64">Error in testset "Timeout first, pass after" on worker 72859:
 Error During Test at /Users/nickr/repos/ReTestItems.jl/test/testfiles/_retry_tests.jl:64
   Got exception outside of a @test
-  Timed out after 5s evaluating test item "Timeout first, pass after" (run=1)
+  Timed out after 5s running test item "Timeout first, pass after" (run=1)
 Captured Logs for test item "Timeout first, pass after" at test/testfiles/_retry_tests.jl:64 on worker 72859
 
 signal (15): Terminated: 15

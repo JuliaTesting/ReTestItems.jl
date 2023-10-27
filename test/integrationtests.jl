@@ -573,7 +573,7 @@ end
     """,
     replace(c.output, r" on worker \d+" => ""))
 
-    # Since the test setup never succeeds it will be evaluated mutliple times. Here we test
+    # Since the test setup never succeeds it will be run mutliple times. Here we test
     # that we don't accumulate logs from all previous failed attempts (which would get
     # really spammy if the test setup is used by 100 test items).
     @test !occursin("""
@@ -610,7 +610,7 @@ end
     # Test the error is as expected
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
-    @test err.value == string(ErrorException("Worker process aborted (signal=6) evaluating test item \"Abort\" (run=1)"))
+    @test err.value == string(ErrorException("Worker process aborted (signal=6) running test item \"Abort\" (run=1)"))
 end
 
 @testset "test retrying failing testitem" begin
@@ -665,7 +665,7 @@ end
     # Test the error is as expected
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
-    @test err.value == string(ErrorException("Timed out after 4s evaluating test item \"Test item takes 60 seconds\" (run=1)"))
+    @test err.value == string(ErrorException("Timed out after 4s running test item \"Test item takes 60 seconds\" (run=1)"))
 end
 
 @testset "testitem timeout set via env variable" begin
@@ -682,7 +682,7 @@ end
     # Test the error is as expected
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
-    @test err.value == string(ErrorException("Timed out after 4s evaluating test item \"Test item takes 60 seconds\" (run=1)"))
+    @test err.value == string(ErrorException("Timed out after 4s running test item \"Test item takes 60 seconds\" (run=1)"))
 end
 
 @testset "Error outside `@testitem`" begin
