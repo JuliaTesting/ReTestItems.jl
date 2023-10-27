@@ -142,16 +142,16 @@ will be run.
 - `nworker_threads::Union{String,Int}`: The number of threads to use for each worker process. Defaults to 2.
   Can also be set using the `RETESTITEMS_NWORKER_THREADS` environment variable. Interactive threads are
   supported through a string (e.g. "auto,2").
-- `worker_init_expr::Expr`: an expression that will be evaluated on each worker process before any tests are run.
+- `worker_init_expr::Expr`: an expression that will be run on each worker process before any tests are run.
   Can be used to load packages or set up the environment. Must be a `:block` expression.
-- `test_end_expr::Expr`: an expression that will be evaluated after each testitem is run.
+- `test_end_expr::Expr`: an expression that will be run after each testitem is run.
   Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
 - `memory_threshold::Real`: Sets the fraction of memory that can be in use before a worker processes are
   restarted to free memory. Defaults to $(DEFAULT_MEMORY_THRESHOLD[]). Only supported with `nworkers > 0`.
   For example, if set to 0.8, then when >80% of the available memory is in use, a worker process will be killed and
-  replaced with a new worker before the next testitem is evaluated. The testitem will then be run on the new worker
+  replaced with a new worker before the next testitem is run. The testitem will then be run on the new worker
   process, regardless of if memory pressure dropped below the threshold. If the memory pressure remains above the
-  threshold, then a worker process will again be replaced before the next testitem is evaluated.
+  threshold, then a worker process will again be replaced before the next testitem is run.
   Can also be set using the `RETESTITEMS_MEMORY_THRESHOLD` environment variable.
   **Note**: the `memory_threshold` keyword is experimental and may be removed in future versions.
 - `report::Bool=false`: If `true`, write a JUnit-format XML file summarising the test results.
@@ -357,7 +357,7 @@ function _runtests_in_current_env(
                 end
             end
             # Now all workers are started, we can begin processing test items.
-            @info "Starting evaluating test items"
+            @info "Starting running test items"
             starting = get_starting_testitems(testitems, nworkers)
             @sync for (i, w) in enumerate(workers)
                 ti = starting[i]
@@ -380,7 +380,7 @@ function _runtests_in_current_env(
     return nothing
 end
 
-# Start a new `Worker` with `nworker_threads` threads and evaluate `worker_init_expr` on it.
+# Start a new `Worker` with `nworker_threads` threads and run `worker_init_expr` on it.
 # The provided `worker_num` is only for logging purposes, and not persisted as part of the worker.
 function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems; worker_num=nothing)
     w = Worker(; threads="$nworker_threads")
@@ -439,13 +439,13 @@ function record_timeout!(testitem, run_number::Int, timeout_limit::Real)
             string(mins, "m", lpad(secs, 2, "0"), "s")
         end
     end
-    msg = "Timed out after $time_str evaluating test item $(repr(testitem.name)) (run=$run_number)"
+    msg = "Timed out after $time_str running test item $(repr(testitem.name)) (run=$run_number)"
     record_test_error!(testitem, msg, timeout_limit)
 end
 
 function record_worker_terminated!(testitem, worker::Worker, run_number::Int)
     termsignal = worker.process.termsignal
-    msg = "Worker process aborted (signal=$termsignal) evaluating test item $(repr(testitem.name)) (run=$run_number)"
+    msg = "Worker process aborted (signal=$termsignal) running test item $(repr(testitem.name)) (run=$run_number)"
     record_test_error!(testitem, msg)
 end
 
@@ -537,11 +537,11 @@ function manage_worker(
                 @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker"
                 terminate!(worker)
                 wait(worker)
-                @error "$worker timed out evaluating test item $(repr(testitem.name)) after $timeout seconds. \
+                @error "$worker timed out running test item $(repr(testitem.name)) after $timeout seconds. \
                     Recording test error."
                 record_timeout!(testitem, run_number, timeout)
             elseif e isa WorkerTerminatedException
-                @error "$worker died evaluating test item $(repr(testitem.name)). \
+                @error "$worker died running test item $(repr(testitem.name)). \
                     Recording test error."
                 record_worker_terminated!(testitem, worker, run_number)
             else
@@ -924,13 +924,13 @@ function runtestitem(
         # disabled for now since there were issues when tests tried serialize/deserialize
         # with things defined in an anonymous module
         # environment = Module()
-        @debugv 1 "Evaluating test item $(repr(name))$(_on_worker())."
+        @debugv 1 "Running test item $(repr(name))$(_on_worker())."
         _, stats = @timed_with_compilation _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : logpath(ti)) do
             with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
             with_source_path(() -> Core.eval(Main, test_end_mod_expr), ti.file)
             nothing # return nothing as the first return value of @timed_with_compilation
         end
-        @debugv 1 "Done evaluating test item $(repr(name))$(_on_worker())."
+        @debugv 1 "Done running test item $(repr(name))$(_on_worker())."
     catch err
         err isa InterruptException && rethrow()
         # Handle exceptions thrown outside a `@test` in the body of the @testitem:

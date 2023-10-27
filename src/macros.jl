@@ -7,7 +7,7 @@ gettls(k, d) = get(task_local_storage(), k, d)
 """
     TestSetup(name, code)
 
-A module that a `TestItem` can require to be evaluated before that `TestItem` is run.
+A module that a `TestItem` can require to be run before that `TestItem` is run.
 Used for declaring code that multiple `TestItem`s rely on.
 Should only be created via the `@testsetup` macro.
 """
@@ -32,7 +32,7 @@ A module only used for tests, and which `@testitem`s can depend on.
 
 Useful for setup logic that is used across multiple test items.
 The setup will run once, before any `@testitem` that requires it is executed.
-If running with multiple processes, each test-setup with be evaluated once on each process.
+If running with multiple processes, each test-setup with be run once on each process.
 
 Each test-setup module will live for the lifetime of the tests.
 Mutable state should be avoided, since the order in which test items run is non-deterministic,
@@ -125,9 +125,9 @@ struct TestItem
     code::Any
     testsetups::Vector{TestSetup} # populated by runtests coordinator
     workerid::Base.RefValue{Int} # populated when the test item is scheduled
-    testsets::Vector{DefaultTestSet} # populated when the test item is finished evaluating
-    eval_number::Base.RefValue{Int} # to keep track of how many items have been evaluated so far
-    stats::Vector{PerfStats} # populated when the test item is finished evaluating
+    testsets::Vector{DefaultTestSet} # populated when the test item is finished running
+    eval_number::Base.RefValue{Int} # to keep track of how many items have been run so far
+    stats::Vector{PerfStats} # populated when the test item is finished running
     scheduled_for_evaluation::ScheduledForEvaluation # to keep track of whether the test item has been scheduled for evaluation
 end
 function TestItem(number, name, id, tags, default_imports, setups, retries, file, line, project_root, code)
@@ -182,7 +182,7 @@ A `@testitem` is wrapped into a module when run, so must import any additional p
         end
     end
 
-The test item's code is evaluated as top-level code in a new module, so it can include imports, define new structs or helper functions, and declare tests and testsets.
+The test item's code is run as top-level code in a new module, so it can include imports, define new structs or helper functions, and declare tests and testsets.
 
     @testitem "DoCoolStuff" begin
         function do_really_cool_stuff()
