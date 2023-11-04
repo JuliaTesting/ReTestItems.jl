@@ -861,6 +861,36 @@ end
 const GLOBAL_TEST_CONTEXT_FOR_TESTING = TestContext("ReTestItems", 0)
 const GLOBAL_TEST_SETUPS_FOR_TESTING = Dict{Symbol, TestSetup}()
 
+function should_skip(ti::TestItem)
+    ti.skip isa Bool && return ti.skip
+    # `skip` is an expression. Run in a new module, to not pollute `Main`.
+    skip_body = ti.skip::Expr
+    skip_mod_expr = :(module $(gensym(Symbol(:skip_, ti.name))) end)
+    softscope_all!(skip_body)
+    # Store the result of evaluating the `skip` expression, so we can check it.
+    _skip = gensym(:skip)
+    skip_body.args[end] = Expr(:(=), _skip, skip_body.args[end])
+    skip_mod_expr.args[3] = skip_body
+    skip_mod = Core.eval(Main, skip_mod_expr)
+    # Can use `getglobal` when we drop support for v1.8
+    skip = getfield(skip_mod, _skip)
+    if !isa(skip, Bool)
+        throw("Test item $(repr(ti.name)) `skip` keyword does not return a `Bool`, got `skip=$(repr(should_skip))`")
+    end
+    return skip
+end
+
+function skiptestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=true)
+    ts = DefaultTestSet(ti.name; verbose=verbose_results)
+    Test.record(ts, Test.Broken(:skipped, ti.name))
+    push!(ti.testsets, ts)
+    stats = PerfStats()
+    push!(ti.stats, stats)
+    log_testitem_skipped(ti, ctx.ntestitems)
+    return TestItemResult(ts, stats)
+end
+
+
 # assumes any required setups were expanded outside of a runtests context
 function runtestitem(ti::TestItem; kw...)
     # make a fresh TestSetupModules for each testitem run
@@ -879,6 +909,9 @@ function runtestitem(
     ti::TestItem, ctx::TestContext;
     test_end_expr::Expr=Expr(:block), logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true,
 )
+    if should_skip(ti)
+        return skiptestitem(ti, ctx; verbose_results)
+    end
     name = ti.name
     log_testitem_start(ti, ctx.ntestitems)
     ts = DefaultTestSet(name; verbose=verbose_results)
