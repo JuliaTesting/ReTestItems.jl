@@ -1,4 +1,3 @@
-using AutoHashEquals
 using ReTestItems
 using Test
 
@@ -295,9 +294,13 @@ end
 
 @testset "testitem `skip` keyword" begin
     function test_skipped(ti_result)
-        @test n_passed(ti_result) == 0
         ts = ti_result.testset
+        # No tests should have been run
+        @test n_passed(ts) == 0
+        # A single "skipped" result should be recorded. Test uses `Broken` for skipped.
         @test only(ts.results) isa Test.Broken
+        # Since no test was run, the stats should be empty / zeroed.
+        @test ti_result.stats == ReTestItems.PerfStats()
     end
     # test case `skip` is a `Bool`
     ti = @testitem "skip isa bool" skip=true _run=false begin

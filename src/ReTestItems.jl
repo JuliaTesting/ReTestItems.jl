@@ -883,6 +883,7 @@ function should_skip(ti::TestItem)
 end
 _throw_not_bool(ti, skip) = throw("Test item $(repr(ti.name)) `skip` keyword must be a `Bool`, got `skip=$(repr(skip))`")
 
+# Log that we skipped the testitem, and record a "skipped" test result with empty stats.
 function skiptestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=true)
     ts = DefaultTestSet(ti.name; verbose=verbose_results)
     Test.record(ts, Test.Broken(:skipped, ti.name))
