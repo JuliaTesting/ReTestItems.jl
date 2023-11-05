@@ -268,7 +268,6 @@ macro testitem(nm, exs...)
             elseif kw == :skip
                 skip = ex.args[2]
                 # If the `Expr` doesn't evaluate to a Bool, throws at runtime.
-                @show skip
                 @assert skip isa Union{Bool,Expr} "`skip` keyword must be passed a `Bool`"
             elseif kw == :_id
                 _id = ex.args[2]
@@ -292,7 +291,6 @@ macro testitem(nm, exs...)
     end
     q = QuoteNode(exs[end])
     ti = gensym(:ti)
-    @show skip
     esc(quote
         let $ti = $TestItem(
             $Ref(0), $nm, $_id, $tags, $default_imports, $setup, $retries, $timeout, $skip,

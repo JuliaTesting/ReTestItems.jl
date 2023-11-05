@@ -866,23 +866,18 @@ const GLOBAL_TEST_SETUPS_FOR_TESTING = Dict{Symbol, TestSetup}()
 # If the `skip` expression doesn't return a Bool, throw an informative error.
 function should_skip(ti::TestItem)
     ti.skip isa Bool && return ti.skip
-    # `skip` is an expression. Give same scope as testitem body, e.g. imports should work.
+    # `skip` is an expression.
+    # Give same scope as testitem body, e.g. imports should work.
     skip_body = deepcopy(ti.skip::Expr)
     softscope_all!(skip_body)
-    # Store the result of the `skip` expression so we can check it.
-    _skip = gensym(:skip)
-    if skip_body.head == :block
-        skip_body.args[end] = Expr(:(=), _skip, skip_body.args[end])
-    else
-        skip_body = Expr(:(=), _skip, skip_body)
-        skip_body = Expr(:block, skip_body) # module expr requires a `block`
-    end
     # Run in a new module to not pollute `Main`.
-    skip_mod_expr = :(module $(gensym(Symbol(:skip_, ti.name))) end)
-    skip_mod_expr.args[3] = skip_body
+    # Need to store the result of the `skip` expression so we can check it.
+    mod_name = gensym(Symbol(:skip_, ti.name))
+    skip_var = gensym(:skip)
+    skip_mod_expr = :(module $mod_name; $skip_var = $skip_body; end)
     skip_mod = Core.eval(Main, skip_mod_expr)
-    # Now check what the expression evaluated to.
-    skip = getfield(skip_mod, _skip)
+    # Check what the expression evaluated to.
+    skip = getfield(skip_mod, skip_var)
     !isa(skip, Bool) && _throw_not_bool(ti, skip)
     return skip::Bool
 end
@@ -917,7 +912,7 @@ function runtestitem(
     ti::TestItem, ctx::TestContext;
     test_end_expr::Expr=Expr(:block), logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true,
 )
-    if should_skip(ti)
+    if should_skip(ti)::Bool
         return skiptestitem(ti, ctx; verbose_results)
     end
     name = ti.name
