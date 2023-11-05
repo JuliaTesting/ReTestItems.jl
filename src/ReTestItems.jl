@@ -861,24 +861,32 @@ end
 const GLOBAL_TEST_CONTEXT_FOR_TESTING = TestContext("ReTestItems", 0)
 const GLOBAL_TEST_SETUPS_FOR_TESTING = Dict{Symbol, TestSetup}()
 
+# Check the `skip` keyword, and return a `Bool` indicating if we should skip the testitem.
+# If `skip` is an expression, run it in a new module just like how we run testitems.
+# If the `skip` expression doesn't return a Bool, throw an informative error.
 function should_skip(ti::TestItem)
     ti.skip isa Bool && return ti.skip
-    # `skip` is an expression. Run in a new module, to not pollute `Main`.
-    skip_body = ti.skip::Expr
-    skip_mod_expr = :(module $(gensym(Symbol(:skip_, ti.name))) end)
+    # `skip` is an expression. Give same scope as testitem body, e.g. imports should work.
+    skip_body = deepcopy(ti.skip::Expr)
     softscope_all!(skip_body)
-    # Store the result of evaluating the `skip` expression, so we can check it.
+    # Store the result of the `skip` expression so we can check it.
     _skip = gensym(:skip)
-    skip_body.args[end] = Expr(:(=), _skip, skip_body.args[end])
+    if skip_body.head == :block
+        skip_body.args[end] = Expr(:(=), _skip, skip_body.args[end])
+    else
+        skip_body = Expr(:(=), _skip, skip_body)
+        skip_body = Expr(:block, skip_body) # module expr requires a `block`
+    end
+    # Run in a new module to not pollute `Main`.
+    skip_mod_expr = :(module $(gensym(Symbol(:skip_, ti.name))) end)
     skip_mod_expr.args[3] = skip_body
     skip_mod = Core.eval(Main, skip_mod_expr)
-    # Can use `getglobal` when we drop support for v1.8
+    # Now check what the expression evaluated to.
     skip = getfield(skip_mod, _skip)
-    if !isa(skip, Bool)
-        throw("Test item $(repr(ti.name)) `skip` keyword does not return a `Bool`, got `skip=$(repr(should_skip))`")
-    end
-    return skip
+    !isa(skip, Bool) && _throw_not_bool(ti, skip)
+    return skip::Bool
 end
+_throw_not_bool(ti, skip) = throw("Test item $(repr(ti.name)) `skip` keyword must be a `Bool`, got `skip=$(repr(skip))`")
 
 function skiptestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=true)
     ts = DefaultTestSet(ti.name; verbose=verbose_results)

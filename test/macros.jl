@@ -293,6 +293,102 @@ end
     end
 end
 
+@testset "testitem `skip` keyword" begin
+    function test_skipped(ti_result)
+        @test n_passed(ti_result) == 0
+        ts = ti_result.testset
+        @test only(ts.results) isa Test.Broken
+    end
+    # test case `skip` is a `Bool`
+    ti = @testitem "skip isa bool" skip=true _run=false begin
+        @test true
+    end
+    @test ti.skip
+    res = ReTestItems.runtestitem(ti)
+    test_skipped(res)
+
+    # test no code in the test item is run when `skip=true`
+    ti = @testitem "test contains error" skip=true _run=false begin
+        @test error("err")
+    end
+    @test ti.skip
+    res = ReTestItems.runtestitem(ti)
+    test_skipped(res)
+
+    # test case `skip` is a `Expr` evaluating to a `Bool`
+    ti = @testitem "skip isa expr 1" skip=:(1+1 == 2) _run=false begin
+        @test true
+    end
+    # want to test a case where `skip` is not a `:block`
+    @assert ti.skip.head != :block
+    @test ti.skip == :(1+1 == 2)
+    res = ReTestItems.runtestitem(ti)
+    test_skipped(res)
+
+    # test case `skip` is a `Expr` evaluating to a `Bool`
+    ti = @testitem "skip isa expr 2" skip=(quote 1+1 == 2 end) _run=false begin
+        @test true
+    end
+    # want to test a case where `skip` is a `:block`
+    @assert ti.skip.head == :block
+    @test Base.remove_linenums!(ti.skip) == quote 1+1 == 2 end
+    res = ReTestItems.runtestitem(ti)
+    test_skipped(res)
+
+    # test that no code is evaluated until `runtestitem` is called
+    ti = @testitem "skip expr has error" skip=:(throw("oops")) _run=false begin
+        @test true
+    end
+    @test ti.skip == :(throw("oops"))
+    @test_throws "oops" ReTestItems.runtestitem(ti)
+
+    # test that skip expression can load modules
+    ti = @testitem "skip expr loads module" skip=:(using AutoHashEquals; AutoHashEquals isa Module) _run=false begin
+        @test true
+    end
+    @test ti.skip isa Expr
+    res = ReTestItems.runtestitem(ti)
+    test_skipped(res)
+
+    # test that skip expression does not pollute Main
+    var = gensym(:skip_var)
+    ti = @testitem "skip expr defines variable" skip=:($var=1; $var==1) _run=false begin
+        @test true
+    end
+    @test ti.skip isa Expr
+    res = ReTestItems.runtestitem(ti)
+    test_skipped(res)
+    @test !isdefined(Main, var)
+
+    # test that skip expression does not get modified
+    @testitem "skip not modified" skip=(x=1; x==1) _run=false begin
+        @test true
+    end
+    @assert ti.skip isa Expr
+    before = deepcopy(ti.skip)
+    @assert ti.skip !== before
+    res = ReTestItems.runtestitem(ti)
+    test_skipped(res)
+    @test ti.skip == before
+
+    @testset "skipping is logged" begin
+        old = ReTestItems.DEFAULT_STDOUT[]
+        try
+            io = IOBuffer()
+            ReTestItems.DEFAULT_STDOUT[] = io
+            line = @__LINE__() + 1
+            ti = @testitem "skip this" skip=true _run=false begin
+                @test true
+            end
+            file = relpath(@__FILE__(), ti.project_root)
+            ReTestItems.runtestitem(ti)
+            output = String(take!(io))
+            @test contains(output, "SKIPPED test item \"skip this\" at $file:$line")
+        finally
+            ReTestItems.DEFAULT_STDOUT[] = old
+        end
+    end
+end
 
 #=
 NOTE:

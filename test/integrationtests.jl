@@ -1032,4 +1032,8 @@ end
     @test_throws expected_err runtests(file; nworkers=1, memory_threshold=xx)
 end
 
+@testset "skipping testitems" begin
+    # TODO: test report printing has test items as "skipped"
+end
+
 end # integrationtests.jl testset
