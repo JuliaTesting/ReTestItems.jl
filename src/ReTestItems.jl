@@ -881,7 +881,7 @@ function should_skip(ti::TestItem)
     !isa(skip, Bool) && _throw_not_bool(ti, skip)
     return skip::Bool
 end
-_throw_not_bool(ti, skip) = throw("Test item $(repr(ti.name)) `skip` keyword must be a `Bool`, got `skip=$(repr(skip))`")
+_throw_not_bool(ti, skip) = error("Test item $(repr(ti.name)) `skip` keyword must be a `Bool`, got `skip=$(repr(skip))`")
 
 # Log that we skipped the testitem, and record a "skipped" test result with empty stats.
 function skiptestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=true)

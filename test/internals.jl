@@ -298,4 +298,29 @@ end
     @test test_res.test_type == :skipped
 end
 
+@testset "should_skip" begin
+    should_skip = ReTestItems.should_skip
+
+    ti = @testitem("x", skip=true, _run=false, begin end)
+    @test should_skip(ti)
+    ti = @testitem("x", skip=false, _run=false, begin end)
+    @test !should_skip(ti)
+
+    ti = @testitem("x", skip=:(1 == 1), _run=false, begin end)
+    @test should_skip(ti)
+    ti = @testitem("x", skip=:(1 != 1), _run=false, begin end)
+    @test !should_skip(ti)
+
+    ti = @testitem("x", skip=:(x = 1; x + x == 2), _run=false, begin end)
+    @test should_skip(ti)
+    ti = @testitem("x", skip=:(x = 1; x + x != 2), _run=false, begin end)
+    @test !should_skip(ti)
+
+    ti = @testitem("x", skip=:(x = 1; x + x), _run=false, begin end)
+    @test_throws "Test item \"x\" `skip` keyword must be a `Bool`, got `skip=2`" should_skip(ti)
+
+    ti = @testitem("x", skip=:(x = 1; x + y), _run=false, begin end)
+    @test_throws UndefVarError(:y) should_skip(ti)
+end
+
 end # internals.jl testset

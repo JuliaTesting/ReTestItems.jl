@@ -318,6 +318,19 @@ end
     res = ReTestItems.runtestitem(ti)
     test_skipped(res)
 
+    # test case `skip` given a literal that's not a `Bool`
+    expected = "`skip` keyword must be passed a `Bool`"
+    @test_throws expected (
+        @eval @testitem "bad 1" skip=123 begin
+            @test true
+        end
+    )
+    @test_throws expected (
+        @eval @testitem "bad 2" skip=foo begin
+            @test true
+        end
+    )
+
     # test case `skip` is a `Expr` evaluating to a `Bool`
     ti = @testitem "skip isa expr 1" skip=:(1+1 == 2) _run=false begin
         @test true
