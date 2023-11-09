@@ -1033,7 +1033,20 @@ end
 end
 
 @testset "skipping testitems" begin
-    # TODO: test report printing has test items as "skipped"
+    # Test report printing has test items as "skipped" (which appear under "Broken")
+    using IOCapture
+    file = joinpath(TEST_FILES_DIR, "_skip_tests.jl")
+    results = encased_testset(()->runtests(file; nworkers=1))
+    c = IOCapture.capture() do
+        Test.print_test_results(results)
+    end
+    @test contains(
+        c.output,
+        r"""
+        Test Summary: \s*     \| Pass  Fail  Broken  Total  Time
+        ReTestItems   \s*     \|    4     1       3      8  \s*\d*.\ds
+        """
+    )
 end
 
 end # integrationtests.jl testset

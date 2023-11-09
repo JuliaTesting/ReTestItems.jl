@@ -281,4 +281,21 @@ end
     @test_throws ArgumentError("\"$nontest_file\" is not a test file") _validated_paths((nontest_file,), true)
 end
 
+@testset "skiptestitem" begin
+    # Test that `skiptestitem` unconditionally skips a testitem
+    # and returns `TestItemResult` with a single "skipped" `Test.Result`
+    ti = @testitem "skip" _run=false begin
+        @test true
+        @test false
+        @test error()
+    end
+    ctx = ReTestItems.TestContext("test_ctx", 1)
+    ti_res = ReTestItems.skiptestitem(ti, ctx)
+    @test ti_res isa TestItemResult
+    test_res = only(ti_res.testset.results)
+    @test test_res isa Test.Result
+    @test test_res isa Test.Broken
+    @test test_res.test_type == :skipped
+end
+
 end # internals.jl testset
