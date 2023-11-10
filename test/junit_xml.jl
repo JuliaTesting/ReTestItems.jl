@@ -126,7 +126,7 @@ end
     @testset "skipped testitems" begin
         mktempdir() do dir
             withenv("RETESTITEMS_REPORT_LOCATION" => dir) do
-                try # Ignore the fact that the `_junit_xml_test.jl` testset has failures/errors.
+                try # Ignore the fact that the `_skip_tests.jl` testset has failures/errors.
                     run(`$(Base.julia_cmd()) --project -e 'using ReTestItems; runtests("testfiles/_skip_tests.jl"; report=true)'`)
                 catch
                 end

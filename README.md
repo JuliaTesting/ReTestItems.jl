@@ -133,7 +133,7 @@ it is not run before every `@testitem` that depends on the setup.
 #### Skipping tests
 
 The `skip` keyword can be used to skip a `@testitem`, meaning no code inside that test-item will run.
-A skipped test-item logs that it is being skipped and records a single "skipped" test result.
+A skipped test-item logs that it is being skipped and records a single "skipped" test result, similar to `@test_skip`.
 
 ```julia
 @testitem "skipped" skip=true begin
@@ -141,16 +141,15 @@ A skipped test-item logs that it is being skipped and records a single "skipped"
 end
 ```
 
-If `skip` is an given an `Expr`, it will be run in a new module similar to a test-item, and must return a `Bool`.
+If `skip` is an given an `Expr`, it must return a `Bool` indicating whether or not to skip the test-item.
+This expression will be run in a new module similar to a test-item immediately before the test-item would be run.
 
 ```julia
-# Don't run "orc v1" tests if we don't have orc v2
+# Don't run "orc v1" tests if we don't have orc v1
 @testitem "orc v1" skip=:(using LLVM; !LLVM.has_orc_v1()) begin
     # tests
 end
 ```
-
-Skipped test-items appear in the test results as a single skipped test, similar to `@test_skip`.
 
 #### Post-testitem hook
 
