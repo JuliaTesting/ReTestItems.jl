@@ -535,7 +535,8 @@ function manage_worker(
             # Handle the exception
             if e isa TimeoutException
                 @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker"
-                terminate!(worker)
+                trigger_profile(worker, :timeout)
+                terminate!(worker, :timeout)
                 wait(worker)
                 @error "$worker timed out running test item $(repr(testitem.name)) after $timeout seconds. \
                     Recording test error."
