@@ -249,4 +249,56 @@ end
     end
 end
 
+@testset "convert_results_to_be_transferrable" begin
+    convert_results_to_be_transferrable = ReTestItems.convert_results_to_be_transferrable
+    line_info = LineNumberNode(42, "x.jl")
+    msg_only = false
+
+    p_data = :(2 == 2)
+    p_value = true
+    pass = Test.Pass(:test, :(1 + 1 == 2), p_data, p_value, line_info, msg_only)
+    @testset "Pass `@test`" begin
+        @assert pass.data == p_data
+        pass2 = convert_results_to_be_transferrable(pass)
+        @test pass2.data == nothing
+        @test pass2.value == p_value
+    end
+
+    tp_data = MethodError
+    tp_value = MethodError(+, (1, []))
+    throws_pass = Test.Pass(:test_throws, :(1 + [] == 2), tp_data, tp_value, line_info, msg_only)
+    @testset "Pass `@test_throws`" begin
+        @assert throws_pass.data == tp_data
+        @assert throws_pass.value == tp_value
+        throws_pass2 = convert_results_to_be_transferrable(pass)
+        @test throws_pass2.data == nothing
+        @test throws_pass2.value == nothing
+    end
+
+    error = Test.Error()
+    @testset "Error" begin
+        # There are many possible `test_type` values for `Test.Error`, but
+        # `convert_results_to_be_transferrable` should be the same (a no-op) on all of them
+    end
+
+    f_data = :(2 == 3)
+    f_value = false
+    fail = Test.Fail(:test, :(1 + 1 == 3), f_data, f_value, line_info, msg_only)
+    @testset "Fail" begin
+    end
+
+    broken = Test.Broken(:test, :(2 + 2 == 5))
+    @testset "Broken `@test`" begin
+    end
+
+    skip = Test.Broken(:skipped, :(1 + 1 == 2))
+    @testset "Broken `@test_skip`" begin
+    end
+
+    @testset "Testset" begin
+        testset = Test.DefaultTestSet()
+        testset.results = [pass, throws_pass, error, broken, skip]
+    end
+end
+
 end # internals.jl testset
