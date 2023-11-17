@@ -391,7 +391,8 @@ function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems; 
         Test.TESTSET_PRINT_ENABLE[] = false
         const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)
         GLOBAL_TEST_CONTEXT.setups_evaled = ReTestItems.TestSetupModules()
-        @info "Starting test worker$($i) on pid = $(Libc.getpid()), with $(Threads.nthreads()) threads"
+        nthreads_str = $nworker_threads
+        @info "Starting test worker$($i) on pid = $(Libc.getpid()), with $nthreads_str threads"
         $(worker_init_expr.args...)
         nothing
     end)
