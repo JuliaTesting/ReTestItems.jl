@@ -57,8 +57,6 @@ end
 
 Base.push!(f::FileNode, ti::TestItem) = push!(f.testitems, ti)
 
-duration(ts::DefaultTestSet) = ts.time_end - ts.time_start
-
 walk(f, fn::FileNode) = foreach(f, fn.testitems)
 
 struct DirNode
