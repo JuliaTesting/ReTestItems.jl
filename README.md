@@ -38,7 +38,8 @@ julia> runtests("test/arithmetic_tests.jl"; nworkers=2)
 
 ## Running tests
 
-You can run tests using the `runtests` function, which will run all tests for the current active project.
+You can run tests using the [`runtests`](https://docs.juliahub.com/General/ReTestItems/stable/autodocs/#ReTestItems.runtests) function,
+which will run all tests for the current active project.
 
 ```julia
 julia> using ReTestItems
@@ -79,7 +80,7 @@ julia> runtests("test/Database/"; logs=:issues)
 
 ## Writing tests
 
-Tests must be wrapped in a `@testitem`.
+Tests must be wrapped in a [`@testitem`](https://docs.juliahub.com/General/ReTestItems/stable/autodocs/#ReTestItems.@testitem-Tuple{Any,%20Vararg{Any}}).
 In most cases, a `@testitem` can just be used instead of a `@testset`, wrapping together a bunch of related tests:
 ```julia
 @testitem "min/max" begin
@@ -109,7 +110,7 @@ Since a `@testitem` is the block of code that will be executed, `@testitem`s can
 
 #### Test setup
 
-If some test-specific code needs to be shared by multiple `@testitem`s, this code can be placed in a `module` and marked as `@testsetup`,
+If some test-specific code needs to be shared by multiple `@testitem`s, this code can be placed in a `module` and marked as [`@testsetup`](https://docs.juliahub.com/General/ReTestItems/stable/autodocs/#ReTestItems.@testsetup-Tuple{Any})
 and the `@testitem`s can depend on it via the `setup` keyword.
 
 ```julia
