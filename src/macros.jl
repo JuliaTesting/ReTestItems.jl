@@ -119,7 +119,7 @@ struct TestItem
     default_imports::Bool
     setups::Vector{Symbol}
     retries::Int
-    timeout::Union{Float64,Nothing} # in seconds
+    timeout::Union{Int,Nothing} # in seconds
     file::String
     line::Int
     project_root::String
@@ -259,9 +259,10 @@ macro testitem(nm, exs...)
                 retries = ex.args[2]
                 @assert retries isa Integer "`default_imports` keyword must be passed an `Integer`"
             elseif kw == :timeout
-                timeout = ex.args[2]
-                @assert timeout isa Real "`timeout` keyword must be passed a `Real`"
-                @assert timeout > 0 "`timeout` keyword must be passed a positive number. Got `timeout=$timeout`"
+                t = ex.args[2]
+                @assert t isa Real "`timeout` keyword must be passed a `Real`"
+                @assert t > 0 "`timeout` keyword must be passed a positive number. Got `timeout=$timeout`"
+                timout = ceil(Int, t)
             elseif kw == :_id
                 _id = ex.args[2]
                 # This will always be written to the JUnit XML as a String, require the user

@@ -131,6 +131,7 @@ will be run.
 - `testitem_timeout::Real`: The number of seconds to wait until a `@testitem` is marked as failed.
   Defaults to 30 minutes. Can also be set using the `RETESTITEMS_TESTITEM_TIMEOUT` environment variable.
   If a `@testitem` sets its own `timeout` keyword, then that takes precedence.
+  Fractional values are rounded up to the nearest second.
   Note timeouts are currently only applied when `nworkers > 0`.
 - `retries::Int=$DEFAULT_RETRIES`: The number of times to retry a `@testitem` if either tests
   do not pass or, if running with multiple worker processes, the worker fails or hits the timeout limit
@@ -237,7 +238,7 @@ function runtests(
     save_current_stdio()
     nworkers = max(0, nworkers)
     retries = max(0, retries)
-    timeout = convert(Float64, testitem_timeout)
+    timeout = ceil(Int, testitem_timeout)
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
@@ -258,7 +259,7 @@ end
 # By tracking and reusing test environments, we can avoid this issue.
 const TEST_ENVS = Dict{String, String}()
 
-function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Float64, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
+function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -301,7 +302,7 @@ end
 
 function _runtests_in_current_env(
     shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    testitem_timeout::Float64, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
+    testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
 )
     start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
@@ -431,8 +432,7 @@ end
 
 any_non_pass(ts::DefaultTestSet) = ts.anynonpass
 
-function record_timeout!(testitem, run_number::Int, timeout_limit::Float64)
-    timeout_s = round(Int, timeout_limit)
+function record_timeout!(testitem, run_number::Int, timeout_s::Int)
     time_str = if timeout_s < 60
         string(timeout_s, "s")
     else
@@ -476,7 +476,7 @@ end
 
 function manage_worker(
     worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    default_timeout::Float64, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
+    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
