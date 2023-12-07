@@ -444,7 +444,7 @@ function record_timeout!(testitem, run_number::Int, timeout_s::Int)
         end
     end
     msg = "Timed out after $time_str running test item $(repr(testitem.name)) (run=$run_number)"
-    record_test_error!(testitem, msg, timeout_limit)
+    record_test_error!(testitem, msg, timeout_s)
 end
 
 function record_worker_terminated!(testitem, worker::Worker, run_number::Int)

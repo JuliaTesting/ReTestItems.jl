@@ -262,7 +262,7 @@ macro testitem(nm, exs...)
                 t = ex.args[2]
                 @assert t isa Real "`timeout` keyword must be passed a `Real`"
                 @assert t > 0 "`timeout` keyword must be passed a positive number. Got `timeout=$timeout`"
-                timout = ceil(Int, t)
+                timeout = ceil(Int, t)
             elseif kw == :_id
                 _id = ex.args[2]
                 # This will always be written to the JUnit XML as a String, require the user
