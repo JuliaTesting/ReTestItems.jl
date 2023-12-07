@@ -192,7 +192,7 @@ runtests("frobble_tests.jl"; nworkers, worker_init_expr)
       runtests(MyPackage)
       ```
     - Pass to `runtests` any configuration you want your tests to run with, such as `retries`, `testitem_timeout`, `nworkers`, `nworker_threads`, `worker_init_expr`, `test_end_expr`.
-      See the `runtests` docstring for details.
+      See the [`runtests`](https://docs.juliahub.com/General/ReTestItems/stable/autodocs/#ReTestItems.runtests) docstring for details.
 
 ---
 

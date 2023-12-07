@@ -252,6 +252,46 @@ end
     @test_throws expected (@eval @testitem("five", _id=hash("five"), _run=false, begin end))
 end
 
+# Here we are just testing how the `timeout` keyword is parsed.
+# The actual timeout functionality is tested in `integrationtests.jl`,
+# because we need to call `runtests` with multiple workers to test timeout functionality.
+# See https://github.com/JuliaTesting/ReTestItems.jl/issues/87
+@testset "testitem `timeout` keyword" begin
+    expected(t) = "`timeout` keyword must be passed a positive number. Got `timeout=$t`"
+    for t in (0, -1.1)
+        @test_throws expected(t) (
+            @eval @testitem "Bad" timeout=$t begin
+                @test true
+            end
+        )
+    end
+
+    @test_throws "`timeout` keyword must be passed a `Real`" (
+        @eval @testitem "Bad" timeout=1im begin
+            @test true
+        end
+    )
+
+    no_run() do
+        ti = @testitem "TI" timeout=1 begin
+            @test true
+        end
+        @test ti.timeout isa Float64
+        @test ti.timeout == 1
+
+        ti = @testitem "TI" timeout=1.1 begin
+            @test true
+        end
+        @test ti.timeout isa Float64
+        @test ti.timeout == 1.1
+
+        ti = @testitem "TI" begin
+            @test true
+        end
+        @test ti.timeout == nothing
+    end
+end
+
 
 #=
 NOTE:

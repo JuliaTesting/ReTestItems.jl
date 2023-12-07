@@ -653,7 +653,7 @@ end
     rm(tmpdir; force=true)
 end
 
-@testset "testitem timeout" begin
+@testset "testitem_timeout" begin
     file = joinpath(TEST_FILES_DIR, "_timeout_tests.jl")
     # NOTE: this test must run with exactly 1 worker, so that we can test that the worker
     # is replaced after the timeout and subsequent testitems still run.
@@ -666,9 +666,14 @@ end
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
     @test err.value == string(ErrorException("Timed out after 4s running test item \"Test item takes 60 seconds\" (run=1)"))
+
+    for t in (0, -1.1)
+        expected = ArgumentError("`testitem_timeout` must be a postive number, got $t")
+        @test_throws expected runtests(file; nworkers, testitem_timeout=t)
+    end
 end
 
-@testset "testitem timeout set via env variable" begin
+@testset "testitem_timeout set via env variable" begin
     file = joinpath(TEST_FILES_DIR, "_timeout_tests.jl")
     # NOTE: this test must run with exactly 1 worker, so that we can test that the worker
     # is replaced after the timeout and subsequent testitems still run.
@@ -683,6 +688,27 @@ end
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
     @test err.value == string(ErrorException("Timed out after 4s running test item \"Test item takes 60 seconds\" (run=1)"))
+end
+
+@testset "@testitem `timeout`" begin
+    # NOTE: this test must run with >0 worker
+    # https://github.com/JuliaTesting/ReTestItems.jl/issues/87
+    nworkers = 1
+    # This file contains a single test that sets `timeout=6` and sleeps for 10 seconds.
+    file = joinpath(TEST_FILES_DIR, "_timeout2_tests.jl")
+    # The @testitem's own `timeout=6` should take precedence.
+    # The test is partly relying on the error message accurately reflecting the actual behaviour...
+    # so we test with a really big timeout so it would be obvious if the larger of the two
+    # timeouts were to be used (in which case the test would fail as the testitem would pass).
+    for testitem_timeout in (4, 8, 1_000_000)
+        results = encased_testset(()->runtests(file; nworkers, testitem_timeout))
+        @test n_tests(results) == 1
+        @test n_passed(results) == 0
+        # Test the error is as expected, namely that the timeout is 6 seconds.
+        err = only(non_passes(results))
+        @test err.test_type == :nontest_error
+        @test err.value == string(ErrorException("Timed out after 6s running test item \"Sets timeout=6\" (run=1)"))
+    end
 end
 
 @testset "Error outside `@testitem`" begin
