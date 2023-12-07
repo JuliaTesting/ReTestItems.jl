@@ -490,8 +490,6 @@ function manage_worker(
             worker = robust_start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
         end
         testitem.workerid[] = worker.pid
-        # TODO: should the testitem's own timeout take precedence or should we just take the `max`?
-        # timeout = max(something(testitem.timeout, 0.0), default_timeout)
         timeout = something(testitem.timeout, default_timeout)
         fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)))))
         max_runs = 1 + max(retries, testitem.retries)
