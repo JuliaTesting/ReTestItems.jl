@@ -276,14 +276,15 @@ end
         ti = @testitem "TI" timeout=1 begin
             @test true
         end
-        @test ti.timeout isa Float64
+        @test ti.timeout isa Int
         @test ti.timeout == 1
 
+        # We round up to the nearest second.
         ti = @testitem "TI" timeout=1.1 begin
             @test true
         end
-        @test ti.timeout isa Float64
-        @test ti.timeout == 1.1
+        @test ti.timeout isa Int
+        @test ti.timeout == 2
 
         ti = @testitem "TI" begin
             @test true

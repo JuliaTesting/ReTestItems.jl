@@ -261,7 +261,7 @@ macro testitem(nm, exs...)
             elseif kw == :timeout
                 t = ex.args[2]
                 @assert t isa Real "`timeout` keyword must be passed a `Real`"
-                @assert t > 0 "`timeout` keyword must be passed a positive number. Got `timeout=$timeout`"
+                @assert t > 0 "`timeout` keyword must be passed a positive number. Got `timeout=$t`"
                 timeout = ceil(Int, t)
             elseif kw == :_id
                 _id = ex.args[2]
