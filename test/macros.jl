@@ -347,7 +347,7 @@ end
     end
     # want to test a case where `skip` is a `:block`
     @assert ti.skip.head == :block
-    @test Base.remove_linenums!(ti.skip) == quote 1+1 == 2 end
+    @test Base.remove_linenums!(ti.skip) == Base.remove_linenums!(quote 1+1 == 2 end)
     res = ReTestItems.runtestitem(ti)
     test_skipped(res)
 
