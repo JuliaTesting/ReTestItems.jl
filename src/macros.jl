@@ -119,6 +119,7 @@ struct TestItem
     default_imports::Bool
     setups::Vector{Symbol}
     retries::Int
+    timeout::Union{Int,Nothing} # in seconds
     file::String
     line::Int
     project_root::String
@@ -130,10 +131,10 @@ struct TestItem
     stats::Vector{PerfStats} # populated when the test item is finished running
     scheduled_for_evaluation::ScheduledForEvaluation # to keep track of whether the test item has been scheduled for evaluation
 end
-function TestItem(number, name, id, tags, default_imports, setups, retries, file, line, project_root, code)
+function TestItem(number, name, id, tags, default_imports, setups, retries, timeout, file, line, project_root, code)
     _id = @something(id, repr(hash(name, hash(relpath(file, project_root)))))
     return TestItem(
-        number, name, _id, tags, default_imports, setups, retries, file, line, project_root, code,
+        number, name, _id, tags, default_imports, setups, retries, timeout, file, line, project_root, code,
         TestSetup[],
         Ref{Int}(0),
         DefaultTestSet[],
@@ -219,10 +220,19 @@ If a `@testitem` passes on retry, then it will be recorded as passing in the tes
     @testitem "Flaky test" retries=1 begin
         @test rand() < 1e-4
     end
+
+If a `@testitem` should be aborted after a certain period of time, e.g. the test is known
+to occassionally hang, then you can set a timeout (in seconds) by passing the `timeout` keyword.
+Note that `timeout` currently only works when tests are run with multiple workers.
+
+    @testitem "Sometimes too slow" timeout=10 begin
+        @test sleep(rand(1:100))
+    end
 """
 macro testitem(nm, exs...)
     default_imports = true
     retries = 0
+    timeout = nothing
     tags = Symbol[]
     setup = Any[]
     _id = nothing
@@ -248,6 +258,11 @@ macro testitem(nm, exs...)
             elseif kw == :retries
                 retries = ex.args[2]
                 @assert retries isa Integer "`default_imports` keyword must be passed an `Integer`"
+            elseif kw == :timeout
+                t = ex.args[2]
+                @assert t isa Real "`timeout` keyword must be passed a `Real`"
+                @assert t > 0 "`timeout` keyword must be passed a positive number. Got `timeout=$t`"
+                timeout = ceil(Int, t)
             elseif kw == :_id
                 _id = ex.args[2]
                 # This will always be written to the JUnit XML as a String, require the user
@@ -272,7 +287,7 @@ macro testitem(nm, exs...)
     ti = gensym(:ti)
     esc(quote
         let $ti = $TestItem(
-            $Ref(0), $nm, $_id, $tags, $default_imports, $setup, $retries,
+            $Ref(0), $nm, $_id, $tags, $default_imports, $setup, $retries, $timeout,
             $String($_source.file), $_source.line,
             $gettls(:__RE_TEST_PROJECT__, "."),
             $q,

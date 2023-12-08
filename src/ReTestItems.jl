@@ -130,9 +130,11 @@ will be run.
 ## Configuring `runtests`
 - `testitem_timeout::Real`: The number of seconds to wait until a `@testitem` is marked as failed.
   Defaults to 30 minutes. Can also be set using the `RETESTITEMS_TESTITEM_TIMEOUT` environment variable.
+  If a `@testitem` sets its own `timeout` keyword, then that takes precedence.
+  Fractional values are rounded up to the nearest second.
   Note timeouts are currently only applied when `nworkers > 0`.
 - `retries::Int=$DEFAULT_RETRIES`: The number of times to retry a `@testitem` if either tests
-  do not pass or, if running with multiple worker processes, the worker fails or hits the `testitem_timeout`
+  do not pass or, if running with multiple worker processes, the worker fails or hits the timeout limit
   while running the tests. Can also be set using the `RETESTITEMS_RETRIES` environment variable.
   If a `@testitem` sets its own `retries` keyword, then the maximum of these two retry numbers
   will be used as the retry limit for that `@testitem`. When `report=true`, the report will
@@ -228,6 +230,7 @@ function runtests(
     logs in LOG_DISPLAY_MODES || throw(ArgumentError("`logs` must be one of $LOG_DISPLAY_MODES, got $(repr(logs))"))
     report && logs == :eager && throw(ArgumentError("`report=true` is not compatible with `logs=:eager`"))
     (0 ≤ memory_threshold ≤ 1) || throw(ArgumentError("`memory_threshold` must be between 0 and 1, got $(repr(memory_threshold))"))
+    testitem_timeout > 0 || throw(ArgumentError("`testitem_timeout` must be a postive number, got $(repr(testitem_timeout))"))
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
     shouldrun_combined(ti) = shouldrun(ti) && _shouldrun(name, ti.name) && _shouldrun(tags, ti.tags)
@@ -235,13 +238,14 @@ function runtests(
     save_current_stdio()
     nworkers = max(0, nworkers)
     retries = max(0, retries)
+    timeout = ceil(Int, testitem_timeout)
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs)
+            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs)
         end
     else
-        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs)
+        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs)
     end
 end
 
@@ -255,7 +259,7 @@ end
 # By tracking and reusing test environments, we can avoid this issue.
 const TEST_ENVS = Dict{String, String}()
 
-function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Real, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
+function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -298,7 +302,7 @@ end
 
 function _runtests_in_current_env(
     shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    testitem_timeout::Real, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
+    testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
 )
     start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
@@ -428,8 +432,7 @@ end
 
 any_non_pass(ts::DefaultTestSet) = ts.anynonpass
 
-function record_timeout!(testitem, run_number::Int, timeout_limit::Real)
-    timeout_s = round(Int, timeout_limit)
+function record_timeout!(testitem, run_number::Int, timeout_s::Int)
     time_str = if timeout_s < 60
         string(timeout_s, "s")
     else
@@ -441,7 +444,7 @@ function record_timeout!(testitem, run_number::Int, timeout_limit::Real)
         end
     end
     msg = "Timed out after $time_str running test item $(repr(testitem.name)) (run=$run_number)"
-    record_test_error!(testitem, msg, timeout_limit)
+    record_test_error!(testitem, msg, timeout_s)
 end
 
 function record_worker_terminated!(testitem, worker::Worker, run_number::Int)
@@ -473,7 +476,7 @@ end
 
 function manage_worker(
     worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    timeout::Real, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
+    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
@@ -487,6 +490,7 @@ function manage_worker(
             worker = robust_start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
         end
         testitem.workerid[] = worker.pid
+        timeout = something(testitem.timeout, default_timeout)
         fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)))))
         max_runs = 1 + max(retries, testitem.retries)
         try
