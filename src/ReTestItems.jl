@@ -216,15 +216,11 @@ function runtests(
     test_end_expr::Expr=Expr(:block),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
-    paths′ = filter(paths) do p
+    foreach(paths) do p
         if !ispath(p)
-            @warn "No such path $(repr(p))"
-            return false
+            throw(ArgumentError("No such path $(repr(p))"))
         elseif !(is_test_file(p) || is_testsetup_file(p)) && isfile(p)
-            @warn "$(repr(p)) is not a test file"
-            return false
-        else
-            return true
+            throw(ArgumentError("$(repr(p)) is not a test file"))
         end
     end
     logs in LOG_DISPLAY_MODES || throw(ArgumentError("`logs` must be one of $LOG_DISPLAY_MODES, got $(repr(logs))"))
