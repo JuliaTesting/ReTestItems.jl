@@ -99,6 +99,22 @@ function _validated_nworker_threads(str)
     return replace(str, "auto" => string(Sys.CPU_THREADS))
 end
 
+function _validated_paths(paths, should_throw::Bool)
+    return filter(paths) do p
+        if !ispath(p)
+            msg = "No such path $(repr(p))"
+            should_throw ? throw(ArgumentError(msg)) : @warn msg
+            return false
+        elseif !(is_test_file(p) || is_testsetup_file(p)) && isfile(p)
+            msg = "$(repr(p)) is not a test file"
+            should_throw ? throw(ArgumentError(msg)) : @warn msg
+            return false
+        else
+            return true
+        end
+    end
+end
+
 """
     ReTestItems.runtests()
     ReTestItems.runtests(mod::Module)
@@ -221,19 +237,7 @@ function runtests(
     validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
-    paths′ = filter(paths) do p
-        if !ispath(p)
-            msg = "No such path $(repr(p))"
-            validate_paths ? throw(ArgumentError(msg)) : @warn msg
-            return false
-        elseif !(is_test_file(p) || is_testsetup_file(p)) && isfile(p)
-            msg = "$(repr(p)) is not a test file"
-            validate_paths ? throw(ArgumentError(msg)) : @warn msg
-            return false
-        else
-            return true
-        end
-    end
+    paths′ = _validated_paths(paths, validate_paths)
 
     logs in LOG_DISPLAY_MODES || throw(ArgumentError("`logs` must be one of $LOG_DISPLAY_MODES, got $(repr(logs))"))
     report && logs == :eager && throw(ArgumentError("`report=true` is not compatible with `logs=:eager`"))
