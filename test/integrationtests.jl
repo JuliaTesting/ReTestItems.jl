@@ -79,26 +79,39 @@ end
     @test n_passed(results) == 1
 end
 
-@testset "Warn when not test file" begin
+@testset "Warn or error when not test file" begin
     pkg = joinpath(TEST_PKG_DIR, "TestsInSrc.jl")
 
     # warn if the path does not exist
     dne = joinpath(pkg, "does_not_exist")
-    @test_logs (:warn, "No such path \"$dne\"") match_mode=:any begin
+    dne_msg = "No such path \"$dne\""
+    @test_logs (:warn, dne_msg) match_mode=:any begin
         runtests(dne)
+    end
+    # throw if `validate_paths`
+    @test_throws ArgumentError(dne_msg) runtests(dne; validate_paths=true)
+    # test setting `validate_paths` via environment variable
+    withenv("RETESTITEMS_VALIDATE_PATHS" => 1) do
+        @test_throws ArgumentError(dne_msg) runtests(dne)
     end
 
     # warn if the file is not a test file
     file = joinpath(pkg, "src", "foo.jl")
     @assert isfile(file)
-    @test_logs (:warn, "\"$file\" is not a test file") match_mode=:any begin
+    file_msg = "\"$file\" is not a test file"
+    @test_logs (:warn, file_msg) match_mode=:any begin
         runtests(file)
     end
+    # throw if `validate_paths`
+    @test_throws ArgumentError(file_msg) runtests(file; validate_paths=true)
 
     # Warn for each invalid path
-    @test_logs (:warn, "No such path \"$dne\"") (:warn, "\"$file\" is not a test file") match_mode=:any begin
+    @test_logs (:warn, dne_msg) (:warn, file_msg) match_mode=:any begin
         runtests(dne, file)
     end
+    # Throw on first invalid path if `validate_paths`
+    @test_throws ArgumentError(dne_msg) runtests(dne, file; validate_paths=true)
+    @test_throws ArgumentError(file_msg) runtests(file, dne; validate_paths=true)
 
     # Warn for each invalid path and still run valid ones
     test_file = joinpath(pkg, "src", "foo_test.jl")
@@ -109,6 +122,8 @@ end
         end
     end
     @test n_tests(results) == 2 # foo_test.jl has 2 tests
+    # Throw on first invalid path, even if some are valid, if `validate_paths`
+    @test_throws ArgumentError(dne_msg) runtests(test_file, dne, file; validate_paths=true)
 end
 
 @testset "filter `runtests(func, x)`" begin

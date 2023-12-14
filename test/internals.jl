@@ -249,4 +249,36 @@ end
     end
 end
 
+@testset "_validated_paths" begin
+    _validated_paths = ReTestItems._validated_paths
+    testfiles_dir = joinpath(pkgdir(ReTestItems), "test", "testfiles")
+
+    test_file = joinpath(testfiles_dir, "_happy_tests.jl")
+    @assert isfile(test_file)
+    for _throw in (false, true)
+        @test _validated_paths((test_file,), _throw) == (test_file,)
+        @test_logs _validated_paths((test_file,), _throw) # test nothing is logged
+    end
+
+    @assert !ispath("foo")
+    @test _validated_paths(("foo",), false) == ()
+    @test_logs (:warn, "No such path \"foo\"") _validated_paths(("foo",), false)
+    @test_throws ArgumentError("No such path \"foo\"") _validated_paths(("foo",), true)
+
+    @assert isfile(test_file)
+    @assert !ispath("foo")
+    paths = (test_file, "foo",)
+    @test _validated_paths(paths, false) == (test_file,)
+    @test_logs (:warn, "No such path \"foo\"") _validated_paths(paths, false)
+    @test_throws ArgumentError("No such path \"foo\"") _validated_paths(paths, true)
+
+    nontest_file = joinpath(testfiles_dir, "_empty_file.jl")
+    @assert isfile(nontest_file)
+    @assert !ReTestItems.is_test_file(nontest_file)
+    @assert !ReTestItems.is_testsetup_file(nontest_file)
+    @test _validated_paths((nontest_file,), false) == ()
+    @test_logs (:warn, "\"$nontest_file\" is not a test file") _validated_paths((nontest_file,), false)
+    @test_throws ArgumentError("\"$nontest_file\" is not a test file") _validated_paths((nontest_file,), true)
+end
+
 end # internals.jl testset
