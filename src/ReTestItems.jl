@@ -168,8 +168,12 @@ will be run.
   For interative sessions, `:eager` is the default when running with 0 or 1 worker processes, `:batched` otherwise.
   For non-interactive sessions, `:issues` is used by default.
 - `verbose_results::Bool`: If `true`, the final test report will list each `@testitem`, otherwise
-    the results are aggregated. Default is `false` for non-interactive sessions
-    or when `logs=:issues`, `true` otherwise.
+  the results are aggregated. Default is `false` for non-interactive sessions
+  or when `logs=:issues`, `true` otherwise.
+- `validate_paths::Bool=false`: If `true`, `runtests` will throw an error if any of the
+  `paths` passed to it cannot contain test files, either because the path doesn't exist or
+  the path points to a file which is not a test file. Default is `false`.
+  Can also be set using the `RETESTITEMS_VALIDATE_PATHS` environment variable.
 """
 function runtests end
 
@@ -214,15 +218,23 @@ function runtests(
     logs::Symbol=Symbol(get(ENV, "RETESTITEMS_LOGS", default_log_display_mode(report, nworkers))),
     verbose_results::Bool=(logs !== :issues && isinteractive()),
     test_end_expr::Expr=Expr(:block),
+    validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
-    foreach(paths) do p
+    paths′ = filter(paths) do p
         if !ispath(p)
-            throw(ArgumentError("No such path $(repr(p))"))
+            msg = "No such path $(repr(p))"
+            validate_paths ? throw(ArgumentError(msg)) : @warn msg
+            return false
         elseif !(is_test_file(p) || is_testsetup_file(p)) && isfile(p)
-            throw(ArgumentError("$(repr(p)) is not a test file"))
+            msg = "$(repr(p)) is not a test file"
+            validate_paths ? throw(ArgumentError(msg)) : @warn msg
+            return false
+        else
+            return true
         end
     end
+
     logs in LOG_DISPLAY_MODES || throw(ArgumentError("`logs` must be one of $LOG_DISPLAY_MODES, got $(repr(logs))"))
     report && logs == :eager && throw(ArgumentError("`report=true` is not compatible with `logs=:eager`"))
     (0 ≤ memory_threshold ≤ 1) || throw(ArgumentError("`memory_threshold` must be between 0 and 1, got $(repr(memory_threshold))"))
