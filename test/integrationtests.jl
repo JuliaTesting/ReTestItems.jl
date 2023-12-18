@@ -1049,4 +1049,14 @@ end
     )
 end
 
+@testset "logs are aligned" begin
+    file = joinpath(TEST_FILES_DIR, "_skip_tests.jl")
+    c1 = IOCapture.capture() do
+        encased_testset(()->runtests(file))
+    end
+    @test contains(c1.output, r"\d\d:\d\d:\d\d \| START \(1/6\) test item \"no skip, 1 pass\"")
+    @test contains(c1.output, r"\d\d:\d\d:\d\d \| DONE  \(1/6\) test item \"no skip, 1 pass\"")
+    @test contains(c1.output, r"\d\d:\d\d:\d\d \| SKIP  \(3/6\) test item \"skip true\"")
+end
+
 end # integrationtests.jl testset

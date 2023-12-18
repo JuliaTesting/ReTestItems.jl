@@ -399,7 +399,7 @@ end
             file = relpath(@__FILE__(), ti.project_root)
             ReTestItems.runtestitem(ti)
             output = String(take!(io))
-            @test contains(output, "SKIPPED test item \"skip this\" at $file:$line")
+            @test contains(output, "SKIP test item \"skip this\" at $file:$line")
         finally
             ReTestItems.DEFAULT_STDOUT[] = old
         end
