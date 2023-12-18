@@ -1054,9 +1054,9 @@ end
     c1 = IOCapture.capture() do
         encased_testset(()->runtests(file))
     end
-    @test contains(c1.output, r"\d\d:\d\d:\d\d \| START \(1/6\) test item \"no skip, 1 pass\"")
-    @test contains(c1.output, r"\d\d:\d\d:\d\d \| DONE  \(1/6\) test item \"no skip, 1 pass\"")
-    @test contains(c1.output, r"\d\d:\d\d:\d\d \| SKIP  \(3/6\) test item \"skip true\"")
+    @test contains(c1.output, r"START \(1/6\) test item \"no skip, 1 pass\"")
+    @test contains(c1.output, r"DONE  \(1/6\) test item \"no skip, 1 pass\"")
+    @test contains(c1.output, r"SKIP  \(3/6\) test item \"skip true\"")
 end
 
 end # integrationtests.jl testset
