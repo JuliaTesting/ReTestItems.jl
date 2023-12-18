@@ -169,7 +169,7 @@ end
 ```
 
 The `skip` keyword allows you to define the condition under which a test needs to be skipped,
-for example if is only expected to run on a certain platform.
+for example if it can only be run on a certain platform.
 See [filtering tests](#filtering-tests) for controlling which tests run in a particular `runtests` call.
 
 #### Post-testitem hook
