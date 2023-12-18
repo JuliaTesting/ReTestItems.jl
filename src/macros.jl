@@ -234,7 +234,7 @@ If a `@testitem` needs to be skipped, then you can set the `skip` keyword.
 Either pass `skip=true` to unconditionally skip the test item, or pass `skip` an
 expression that returns a `Bool` to determine if the testitem should be skipped.
 
-    @testitem "Skip on old Julia" skip=VERSION < v"1.9" begin
+    @testitem "Skip on old Julia" skip=(VERSION < v"1.9") begin
         v = [1]
         @test 0 == @allocations sum(v)
     end
