@@ -141,7 +141,7 @@ A skipped test-item logs that it is being skipped and records a single "skipped"
 end
 ```
 
-If `skip` is an given an `Expr`, it must return a `Bool` indicating whether or not to skip the test-item.
+If `skip` is given as an `Expr`, it must return a `Bool` indicating whether or not to skip the test-item.
 This expression will be run in a new module similar to a test-item immediately before the test-item would be run.
 
 ```julia
