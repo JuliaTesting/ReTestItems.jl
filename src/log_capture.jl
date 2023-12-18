@@ -241,13 +241,13 @@ function _print_test_errors(report_iob, ts::DefaultTestSet, worker_info)
     return nothing
 end
 
-function print_state(io, state, ti, ntestitems)
+function print_state(io, state, ti, ntestitems; color=:default)
     interactive = parse(Bool, get(ENV, "RETESTITEMS_INTERACTIVE", string(Base.isinteractive())))
     print(io, format(now(), "HH:MM:SS | "))
     !interactive && print(io, _mem_watermark())
     if ntestitems > 0
         # rpad/lpad so that the eval numbers are all vertically aligned
-        printstyled(io, rpad(uppercase(state), 5); bold=true)
+        printstyled(io, rpad(uppercase(state), 5); bold=true, color)
         print(io, " (", lpad(ti.eval_number[], ndigits(ntestitems)), "/", ntestitems, ")")
     else
         printstyled(io, uppercase(state); bold=true)
@@ -262,7 +262,7 @@ end
 
 function log_testitem_skipped(ti::TestItem, ntestitems=0)
     io = IOContext(IOBuffer(), :color => get(DEFAULT_STDOUT[], :color, false)::Bool)
-    print_state(io, "SKIP", ti, ntestitems)
+    print_state(io, "SKIP", ti, ntestitems; color=Base.warn_color())
     print_file_info(io, ti)
     println(io)
     write(DEFAULT_STDOUT[], take!(io.io))
