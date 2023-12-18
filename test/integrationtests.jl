@@ -1032,4 +1032,31 @@ end
     @test_throws expected_err runtests(file; nworkers=1, memory_threshold=xx)
 end
 
+@testset "skipping testitems" begin
+    # Test report printing has test items as "skipped" (which appear under "Broken")
+    using IOCapture
+    file = joinpath(TEST_FILES_DIR, "_skip_tests.jl")
+    results = encased_testset(()->runtests(file; nworkers=1))
+    c = IOCapture.capture() do
+        Test.print_test_results(results)
+    end
+    @test contains(
+        c.output,
+        r"""
+        Test Summary: \s*     \| Pass  Fail  Broken  Total  Time
+        ReTestItems   \s*     \|    4     1       3      8  \s*\d*.\ds
+        """
+    )
+end
+
+@testset "logs are aligned" begin
+    file = joinpath(TEST_FILES_DIR, "_skip_tests.jl")
+    c1 = IOCapture.capture() do
+        encased_testset(()->runtests(file))
+    end
+    @test contains(c1.output, r"START \(1/6\) test item \"no skip, 1 pass\"")
+    @test contains(c1.output, r"DONE  \(1/6\) test item \"no skip, 1 pass\"")
+    @test contains(c1.output, r"SKIP  \(3/6\) test item \"skip true\"")
+end
+
 end # integrationtests.jl testset

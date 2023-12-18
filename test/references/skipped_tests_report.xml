@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites timestamp="2023-11-10T00:17:44.801" time="0.14" tests="8" skipped="3" failures="1" errors="0">
+<testsuite name="test/testfiles/_skip_tests.jl" timestamp="2023-11-10T00:17:44.801" time="0.14" tests="8" skipped="3" failures="1" errors="0">
+	<testcase name="no skip, 1 pass" timestamp="2023-11-10T00:17:44.801" time="0.127" tests="1" skipped="0" failures="0" errors="0">
+		<properties>
+		<property name="dd_tags[test.id]" value="0x04d3252d6a7fdb17"></property>
+		<property name="dd_tags[perf.bytes]" value="3657363"></property>
+		<property name="dd_tags[perf.allocs]" value="51432"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.104367209"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.005871585999999998"></property>
+		</properties>
+	</testcase>
+	<testcase name="skip false, 1 pass, 1 fail" timestamp="2023-11-10T00:17:45.112" time="0.006" tests="2" skipped="0" failures="1" errors="0">
+		<properties>
+		<property name="dd_tags[test.id]" value="0xfcc7c83adf97a662"></property>
+		<property name="dd_tags[perf.bytes]" value="123768"></property>
+		<property name="dd_tags[perf.allocs]" value="1782"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="9.63e-7"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.0058758890000000005"></property>
+		</properties>
+		<error message="Test failed at test/testfiles/_skip_tests.jl:8">Error in testset "skip false, 1 pass, 1 fail" on worker 18026:
+Test Failed at /Users/nick/repos/ReTestItems.jl/test/testfiles/_skip_tests.jl:8
+  Expression: false
+
+No Captured Logs for test item "skip false, 1 pass, 1 fail" at test/testfiles/_skip_tests.jl:6 on worker 18026
+		</error>
+	</testcase>
+	<testcase name="skip true" timestamp="2023-11-10T00:17:45.43" time="0.0" tests="1" skipped="1" failures="0" errors="0">
+		<properties>
+		<property name="dd_tags[test.id]" value="0xc2c3f64fb700e9bf"></property>
+		<property name="dd_tags[perf.bytes]" value="0"></property>
+		<property name="dd_tags[perf.allocs]" value="0"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.0"></property>
+		</properties>
+	</testcase>
+	<testcase name="skip expr false, 2 pass" timestamp="2023-11-10T00:17:45.544" time="0.007" tests="2" skipped="0" failures="0" errors="0">
+		<properties>
+		<property name="dd_tags[test.id]" value="0x9f4a27088ba73b2d"></property>
+		<property name="dd_tags[perf.bytes]" value="123656"></property>
+		<property name="dd_tags[perf.allocs]" value="1782"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="8.73e-7"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.006702201"></property>
+		</properties>
+	</testcase>
+	<testcase name="skip expr true" timestamp="2023-11-10T00:17:45.672" time="0.0" tests="1" skipped="1" failures="0" errors="0">
+		<properties>
+		<property name="dd_tags[test.id]" value="0x3bb5bfcf9afed559"></property>
+		<property name="dd_tags[perf.bytes]" value="0"></property>
+		<property name="dd_tags[perf.allocs]" value="0"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.0"></property>
+		</properties>
+	</testcase>
+	<testcase name="skip expr block true" timestamp="2023-11-10T00:17:46.721" time="0.0" tests="1" skipped="1" failures="0" errors="0">
+		<properties>
+		<property name="dd_tags[test.id]" value="0xad27729405f65095"></property>
+		<property name="dd_tags[perf.bytes]" value="0"></property>
+		<property name="dd_tags[perf.allocs]" value="0"></property>
+		<property name="dd_tags[perf.gctime]" value="0.0"></property>
+		<property name="dd_tags[perf.compile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.recompile_time]" value="0.0"></property>
+		<property name="dd_tags[perf.eval_time]" value="0.0"></property>
+		</properties>
+	</testcase>
+</testsuite>
+</testsuites>

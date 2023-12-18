@@ -55,7 +55,7 @@ function _print_scaled_one_dec(io, value, scale, label="")
     end
     print(io, label)
 end
-function time_print(io; elapsedtime, bytes=0, gctime=0, allocs=0, compile_time=0, recompile_time=0)
+function print_time(io; elapsedtime, bytes=0, gctime=0, allocs=0, compile_time=0, recompile_time=0)
     _print_scaled_one_dec(io, elapsedtime, 1e9, " secs")
     if  gctime > 0 || compile_time > 0
         print(io, " (")
@@ -241,35 +241,47 @@ function _print_test_errors(report_iob, ts::DefaultTestSet, worker_info)
     return nothing
 end
 
-# Marks the start of each test item
-function log_testitem_start(ti::TestItem, ntestitems=0)
-    io = IOContext(IOBuffer(), :color => get(DEFAULT_STDOUT[], :color, false)::Bool)
+function print_state(io, state, ti, ntestitems; color=:default)
     interactive = parse(Bool, get(ENV, "RETESTITEMS_INTERACTIVE", string(Base.isinteractive())))
     print(io, format(now(), "HH:MM:SS | "))
     !interactive && print(io, _mem_watermark())
-    printstyled(io, "START"; bold=true)
     if ntestitems > 0
+        # rpad/lpad so that the eval numbers are all vertically aligned
+        printstyled(io, rpad(uppercase(state), 5); bold=true, color)
         print(io, " (", lpad(ti.eval_number[], ndigits(ntestitems)), "/", ntestitems, ")")
+    else
+        printstyled(io, uppercase(state); bold=true)
     end
-    print(io, " test item $(repr(ti.name)) at ")
+    print(io, " test item $(repr(ti.name)) ")
+end
+
+function print_file_info(io, ti)
+    print(io, "at ")
     printstyled(io, _file_info(ti); bold=true, color=:default)
+end
+
+function log_testitem_skipped(ti::TestItem, ntestitems=0)
+    io = IOContext(IOBuffer(), :color => get(DEFAULT_STDOUT[], :color, false)::Bool)
+    print_state(io, "SKIP", ti, ntestitems; color=Base.warn_color())
+    print_file_info(io, ti)
     println(io)
     write(DEFAULT_STDOUT[], take!(io.io))
 end
 
-# mostly copied from timing.jl
+# Marks the start of each test item
+function log_testitem_start(ti::TestItem, ntestitems=0)
+    io = IOContext(IOBuffer(), :color => get(DEFAULT_STDOUT[], :color, false)::Bool)
+    print_state(io, "START", ti, ntestitems)
+    print_file_info(io, ti)
+    println(io)
+    write(DEFAULT_STDOUT[], take!(io.io))
+end
+
 function log_testitem_done(ti::TestItem, ntestitems=0)
     io = IOContext(IOBuffer(), :color => get(DEFAULT_STDOUT[], :color, false)::Bool)
-    interactive = parse(Bool, get(ENV, "RETESTITEMS_INTERACTIVE", string(Base.isinteractive())))
-    print(io, format(now(), "HH:MM:SS | "))
-    !interactive && print(io, _mem_watermark())
-    printstyled(io, "DONE "; bold=true)
-    if ntestitems > 0
-        print(io, " (", lpad(ti.eval_number[], ndigits(ntestitems)), "/", ntestitems, ")")
-    end
-    print(io, " test item $(repr(ti.name)) ")
+    print_state(io, "DONE", ti, ntestitems)
     x = last(ti.stats) # always print stats for most recent run
-    time_print(io; x.elapsedtime, x.bytes, x.gctime, x.allocs, x.compile_time, x.recompile_time)
+    print_time(io; x.elapsedtime, x.bytes, x.gctime, x.allocs, x.compile_time, x.recompile_time)
     println(io)
     write(DEFAULT_STDOUT[], take!(io.io))
 end

@@ -26,6 +26,7 @@ function remove_variables(str)
         # Ignore the full path the test file.
         r" at .*/testfiles/_junit_xml_test" => " at path/to/testfiles/_junit_xml_test",
         r" at .*/testfiles/_retry_tests" => " at path/to/testfiles/_retry_tests",
+        r" at .*/testfiles/_skip_tests" => " at path/to/testfiles/_skip_tests",
         # Ignore worker pid
         r"on worker [0-9]*" => "on worker 0",
         # Remove backticks (because backticks were added to some error messages in v1.9+).
@@ -69,7 +70,7 @@ end
 
 @testset "junit_xml.jl" verbose=true begin
 
-@testset "JUnit reference tests" begin
+@testset "JUnit reference tests" verbose=true begin
     REF_DIR = joinpath(pkgdir(ReTestItems), "test", "references")
     @testset "retries=0, nworkers=$nworkers" for nworkers in (0, 1)
         mktempdir() do dir
@@ -119,6 +120,18 @@ end
                     joinpath(REF_DIR, "retry_tests_report_1worker.xml")
                 end
                 test_reference(ref, report)
+            end
+        end
+    end
+    @testset "skipped testitems" begin
+        mktempdir() do dir
+            withenv("RETESTITEMS_REPORT_LOCATION" => dir) do
+                try # Ignore the fact that the `_skip_tests.jl` testset has failures/errors.
+                    run(`$(Base.julia_cmd()) --project -e 'using ReTestItems; runtests("testfiles/_skip_tests.jl"; report=true)'`)
+                catch
+                end
+                report = only(filter(endswith("xml"), readdir(dir, join=true)))
+                test_reference(joinpath(REF_DIR, "skipped_tests_report.xml"), report)
             end
         end
     end
