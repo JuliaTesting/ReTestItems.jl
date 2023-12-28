@@ -95,6 +95,13 @@ Filtering by `name` and `tags` can be combined to run only test-items that match
 julia> runtests("test/Database/"; tags=:regression, name=r"^issue")
 ```
 
+#### Stopping tests early
+
+You can set `runtests` to stop on the first test failure by passing `failfast=true`.
+Note this prevents any new test-items starting to run after the first test failure, but
+tests that were already running on another worker in parallel with the failing test will complete and appear in the test report.
+Tests that were not run will not appear in the test report.
+
 ## Writing tests
 
 Tests must be wrapped in a [`@testitem`](https://docs.juliahub.com/General/ReTestItems/stable/autodocs/#ReTestItems.@testitem-Tuple{Any,%20Vararg{Any}}).
