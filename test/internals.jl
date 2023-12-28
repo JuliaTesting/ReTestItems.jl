@@ -12,7 +12,7 @@ using ReTestItems
     for nworkers in 1:10
         for nitems in 1:10
             testitems = [@testitem("ti-$i", _run=false, begin end) for i in 1:nitems]
-            starts = get_starting_testitems(TestItems(graph, testitems, 0), nworkers)
+            starts = get_starting_testitems(TestItems(graph, testitems), nworkers)
             startitems = [x for x in starts if !isnothing(x)]
             @test length(starts) == nworkers
             @test length(startitems) == min(nworkers, nitems)

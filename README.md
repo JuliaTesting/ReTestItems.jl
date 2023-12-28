@@ -95,7 +95,6 @@ Filtering by `name` and `tags` can be combined to run only test-items that match
 julia> runtests("test/Database/"; tags=:regression, name=r"^issue")
 ```
 
-
 #### Running tests in parallel
 
 You can run tests in parallel on multiple worker processes using the `nworkers` keyword.
@@ -116,6 +115,13 @@ thread
 threadpools](https://docs.julialang.org/en/v1/manual/multi-threading/#man-threadpools)).
 
 Note ReTestItems.jl uses distributed parallelism, not multi-threading, to run test-items in parallel.
+
+#### Stopping tests early
+
+You can set `runtests` to stop on the first test failure by passing `failfast=true`.
+Note this prevents any new test-items starting to run after the first test failure, but
+tests that were already running on another worker in parallel with the failing test will complete and appear in the test report.
+Tests that were not run will not appear in the test report.
 
 ## Writing tests
 

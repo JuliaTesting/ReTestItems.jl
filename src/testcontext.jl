@@ -82,6 +82,14 @@ function prune!(dn::DirNode)
     return nothing
 end
 
+mutable struct Cancellation
+    cancel::Bool
+    const lock::ReentrantLock
+end
+Cancellation() = Cancellation(false, ReentrantLock())
+check(c::Cancellation) = @lock c.lock c.cancel
+cancel(c::Cancellation) = @lock c.lock c.cancel = true
+
 mutable struct TestItems
     graph::Union{DirNode, FileNode}
     # testitems are stored in a flat list for easy iteration
@@ -89,10 +97,13 @@ mutable struct TestItems
     # they are populated once the full graph is done by doing
     # a depth-first traversal of the graph
     testitems::Vector{TestItem} # frozen once flatten_testitems! is called
+    cancellation::Cancellation
     @atomic count::Int # number of testitems that have been taken for eval so far
 end
 
-TestItems(graph) = TestItems(graph, TestItem[], 0)
+TestItems(graph) = TestItems(graph, TestItem[])
+TestItems(graph, testitems) = TestItems(graph, testitems, Cancellation(), 0)
+cancel(t::TestItems) = cancel(t.cancellation)
 
 ###
 ### record results
@@ -124,9 +135,12 @@ end
 
 function record_results!(file::FileNode, ti::TestItem)
     @debugv 1 "Recording TestItem $(repr(ti.name)) to file $(repr(file.path))"
-    # Always record last try as the final status, so a pass-on-retry is a pass.
-    Test.record(file.testset, last(ti.testsets))
-    junit_record!(file.junit, ti)
+    # If `failfast`, this testitem might never have been run, so nothing to record.
+    if ti.eval_number[] != 0
+        # Always record last try as the final status, so a pass-on-retry is a pass.
+        Test.record(file.testset, last(ti.testsets))
+        junit_record!(file.junit, ti)
+    end
 end
 
 # DirNode and FileNode have `junit=nothing` when no report is needed.
@@ -160,6 +174,7 @@ end
 
 # i is the index of the last test item that was run
 function next_testitem(ti::TestItems, i::Int)
+    check(ti.cancellation) && return nothing
     len = length(ti.testitems)
     n = len
     while n > 0
