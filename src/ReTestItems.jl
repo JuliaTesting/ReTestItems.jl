@@ -18,7 +18,6 @@ const DEFAULT_TESTITEM_TIMEOUT = 30*60
 const DEFAULT_RETRIES = 0
 const DEFAULT_MEMORY_THRESHOLD = Ref{Float64}(0.99)
 
-
 if isdefined(Base, :errormonitor)
     const errmon = Base.errormonitor
 else
@@ -199,6 +198,9 @@ will be run.
    Zero means no profile will be taken. Can also be set using the `RETESTITEMS_TIMEOUT_PROFILE_WAIT`
    environment variable. See the [Profile documentation](https://docs.julialang.org/en/v1/stdlib/Profile/#Triggered-During-Execution)
    for more information on triggered profiles. Note you can use `worker_init_expr` to tweak the profile settings on workers.
+- `failfast::Bool=false`: If true, no additional testitems are run after a testitem fails.
+  A testitem is considered to have failed if it does not pass after retries.
+  Note that testitems already running on other workers in parallel with the failing testitem are allowed to complete.
 """
 function runtests end
 
@@ -245,6 +247,7 @@ function runtests(
     test_end_expr::Expr=nworkers>1 ? :(GC.gc(true)) : Expr(:block),
     validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
     timeout_profile_wait::Real=parse(Int, get(ENV, "RETESTITEMS_TIMEOUT_PROFILE_WAIT", "0")),
+    failfast::Bool=false,
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = _validated_paths(paths, validate_paths)
@@ -267,10 +270,10 @@ function runtests(
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait)
+            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, failfast)
         end
     else
-        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait)
+        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, failfast)
     end
 end
 
@@ -284,7 +287,7 @@ end
 # By tracking and reusing test environments, we can avoid this issue.
 const TEST_ENVS = Dict{String, String}()
 
-function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int)
+function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int, failfast::Bool)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -304,7 +307,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
         if is_running_test_runtests_jl(proj_file)
             # Assume this is `Pkg.test`, so test env already active.
             @debugv 2 "Running in current environment `$(Base.active_project())`"
-            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait)
+            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, failfast)
         else
             @debugv 1 "Activating test environment for `$proj_file`"
             orig_proj = Base.active_project()
@@ -317,7 +320,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
                     testenv = TestEnv.activate()
                     TEST_ENVS[proj_file] = testenv
                 end
-                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait)
+                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, failfast)
             finally
                 Base.set_active_project(orig_proj)
             end
@@ -328,7 +331,7 @@ end
 function _runtests_in_current_env(
     shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
     testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
-    timeout_profile_wait::Int,
+    timeout_profile_wait::Int, failfast::Bool,
 )
     start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
@@ -354,17 +357,23 @@ function _runtests_in_current_env(
                 testitem.eval_number[] = i
                 run_number = 1
                 max_runs = 1 + max(retries, testitem.retries)
+                is_non_pass = false
                 while run_number ≤ max_runs
                     res = runtestitem(testitem, ctx; test_end_expr, verbose_results, logs)
                     ts = res.testset
+                    is_non_pass = any_non_pass(ts)
                     print_errors_and_captured_logs(testitem, run_number; logs)
                     report_empty_testsets(testitem, ts)
-                    if any_non_pass(ts) && run_number != max_runs
+                    if is_non_pass && run_number != max_runs
                         run_number += 1
                         @info "Retrying $(repr(testitem.name)). Run=$run_number."
                     else
                         break
                     end
+                end
+                if failfast && is_non_pass
+                    @error "Test item $(repr(testitem.name)) didn't pass and `failfast=true`, cancelling tests."
+                    break
                 end
             end
         elseif !isempty(testitems.testitems)
@@ -503,7 +512,7 @@ end
 
 function manage_worker(
     worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int
+    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int, failfast::Bool,
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
@@ -551,6 +560,11 @@ function manage_worker(
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
                 else
+                    if failfast && is_non_pass
+                        # @show "failure"
+                        @error "Test item $(repr(testitem.name)) didn't pass and `failfast=true`, cancelling tests."
+                        cancel(testitems)
+                    end
                     testitem = next_testitem(testitems, testitem.number[])
                     run_number = 1
                 end
@@ -592,6 +606,11 @@ function manage_worker(
             end
             # Handle retries
             if run_number == max_runs
+                if failfast
+                    # @show "crash or timeout"
+                    @error "Test item $(repr(testitem.name)) didn't pass and `failfast=true`, cancelling tests."
+                    cancel(testitems)
+                end
                 testitem = next_testitem(testitems, testitem.number[])
                 run_number = 1
             else
@@ -715,7 +734,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, verbose
         for file in files
             startswith(file, hidden_re) && continue # skip hidden files
             filepath = joinpath(root, file)
-            # We filter here, rather than the tesitem level, to make sure we don't
+            # We filter here, rather than the testitem level, to make sure we don't
             # `include` a file that isn't supposed to be a test-file at all, e.g. its
             # not on a path the user requested but it happens to have a test-file suffix.
             # We always include testsetup-files so users don't need to request them,
