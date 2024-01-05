@@ -295,6 +295,16 @@ end
             @test true
         end
         @test ti.timeout == nothing
+
+        ti = @testitem "TI" timeout=nothing begin
+            @test true
+        end
+        @test ti.timeout == nothing
+
+        ti = @testitem "TI" timeout=(1+2; nothing) begin
+            @test true
+        end
+        @test ti.timeout == nothing
     end
 end
 

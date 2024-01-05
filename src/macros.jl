@@ -277,10 +277,14 @@ macro testitem(nm, exs...)
                 # since @testitem should only ever run at the top-level. But we still eval in a
                 # new anonymous module, because we don't want to risk polluting the global scope,
                 # and nothing from global scope should need to be available here.
-                t = ex.args[2] isa Expr ? Core.eval(Module(), ex.args[2]) : ex.args[2]
-                @assert t isa Real "`timeout` keyword must be passed a `Real`, got `timeout=$t`"
-                @assert t > 0 "`timeout` keyword must be passed a positive number. Got `timeout=$t`"
-                timeout = ceil(Int, t)
+                t = ex.args[2] isa Union{Expr,Symbol} ? Core.eval(Module(), ex.args[2]) : ex.args[2]
+                @assert t isa Union{Nothing,Real} "`timeout` keyword must be passed `nothing` or a `Real`, got `timeout=$t`"
+                if isnothing(t)
+                    timeout = nothing
+                else
+                    @assert t > 0 "`timeout` keyword must be passed a positive number. Got `timeout=$t`"
+                    timeout = ceil(Int, t)
+                end
             elseif kw == :skip
                 skip = ex.args[2]
                 # If the `Expr` doesn't evaluate to a Bool, throws at runtime.
