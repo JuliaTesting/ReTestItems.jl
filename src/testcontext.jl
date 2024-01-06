@@ -104,6 +104,7 @@ end
 TestItems(graph) = TestItems(graph, TestItem[])
 TestItems(graph, testitems) = TestItems(graph, testitems, Cancellation(), 0)
 cancel(t::TestItems) = cancel(t.cancellation)
+is_cancelled(t::TestItems) = check(t.cancellation)
 
 ###
 ### record results
@@ -174,7 +175,7 @@ end
 
 # i is the index of the last test item that was run
 function next_testitem(ti::TestItems, i::Int)
-    check(ti.cancellation) && return nothing
+    is_cancelled(ti) && return nothing
     len = length(ti.testitems)
     n = len
     while n > 0
