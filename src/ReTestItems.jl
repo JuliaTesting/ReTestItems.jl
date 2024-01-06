@@ -192,6 +192,7 @@ will be run.
 - `failfast::Bool=false`: If true, no additional testitems are run after a testitem fails.
   A testitem is considered to have failed if it does not pass after retries.
   Note that testitems already running on other workers in parallel with the failing testitem are allowed to complete.
+  Can also be set using the `RETESTITEMS_FAILFAST` environment variable.
 """
 function runtests end
 
@@ -237,7 +238,7 @@ function runtests(
     verbose_results::Bool=(logs !== :issues && isinteractive()),
     test_end_expr::Expr=Expr(:block),
     validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
-    failfast::Bool=false,
+    failfast::Bool=parse(Bool, get(ENV, "RETESTITEMS_FAILFAST", "false")),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = _validated_paths(paths, validate_paths)
