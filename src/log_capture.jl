@@ -12,8 +12,8 @@ function save_current_stdio()
     DEFAULT_LOGGER[] = Base.CoreLogging._global_logstate.logger
 end
 
-# A lock that helps to stagger prints to DEFAULT_STDOUT, used in `print_errors_and_captured_logs`
-# which is called by multiple tasks on the coordinator
+# A lock that helps to stagger prints to DEFAULT_STDOUT, used in functions that print and
+# are called by multiple tasks on the coordinator, e.g. `print_errors_and_captured_logs`
 const LogCaptureLock = ReentrantLock()
 macro loglock(expr)
     return :(@lock LogCaptureLock $(esc(expr)))
@@ -286,6 +286,26 @@ function log_testitem_done(ti::TestItem, ntestitems=0)
     print_time(io; x.elapsedtime, x.bytes, x.gctime, x.allocs, x.compile_time, x.recompile_time)
     println(io)
     write(DEFAULT_STDOUT[], take!(io.io))
+end
+
+# So that the user is warned that we're cancelling the rest of the run.
+# Use loglock here as this is called when multiple tasks are running tests and printing output.
+function print_failfast_cancellation(ti::TestItem)
+    io = IOContext(IOBuffer(), :color => get(DEFAULT_STDOUT[], :color, false)::Bool)
+    printstyled(io, "FailFast: "; bold=true, color=Base.warn_color())
+    println(io, "Test item $(repr(ti.name)) at $(_file_info(ti)) failed. Cancelling tests.")
+    @loglock write(DEFAULT_STDOUT[], take!(io.io))
+    return nothing
+end
+
+# So that the user is warned that not all tests were run.
+# We don't use loglock here, because this is only called once on the coordinator after all
+# tasks running tests have stopped and we're printing the final test report.
+function print_failfast_summary(t::TestItems)
+    io = DEFAULT_STDOUT[]
+    printstyled(io, "FailFast: "; bold=true, color=Base.warn_color())
+    println(io, "$(t.count)/$(length(t.testitems)) tests were run.")
+    return nothing
 end
 
 function report_empty_testsets(ti::TestItem, ts::DefaultTestSet)
