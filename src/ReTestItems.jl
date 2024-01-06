@@ -341,6 +341,7 @@ function _runtests_in_current_env(
             for (i, testitem) in enumerate(testitems.testitems)
                 testitem.workerid[] = Libc.getpid()
                 testitem.eval_number[] = i
+                @atomic :monotonic testitems.count += 1
                 run_number = 1
                 max_runs = 1 + max(retries, testitem.retries)
                 is_non_pass = false
@@ -362,7 +363,8 @@ function _runtests_in_current_env(
                     end
                 end
                 if failfast && is_non_pass
-                    @error "Test item $(repr(testitem.name)) didn't pass and `failfast=true`, cancelling tests."
+                    print_failfast_cancellation(testitem)
+                    cancel(testitems)
                     break
                 end
             end
@@ -389,7 +391,7 @@ function _runtests_in_current_env(
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
-                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs)
+                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs, $failfast)
                     end
                 end
             end
@@ -397,6 +399,12 @@ function _runtests_in_current_env(
         Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
         record_results!(testitems)
         report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
+        if failfast && is_cancelled(testitems)
+            # Print this with the test report so users know if not all tests were run;
+            # there might have been other logs from already running testitems since the
+            # cancellation was printed.
+            print_failfast_summary(testitems)
+        end
         Test.finish(testitems) # print summary of total passes/failures/errors
     finally
         Test.TESTSET_PRINT_ENABLE[] = true
@@ -550,9 +558,9 @@ function manage_worker(
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
                 else
-                    if failfast && is_non_pass
+                    if failfast && is_non_pass && !is_cancelled(testitems)
                         # @show "failure"
-                        @error "Test item $(repr(testitem.name)) didn't pass and `failfast=true`, cancelling tests."
+                        print_failfast_cancellation(testitem)
                         cancel(testitems)
                     end
                     testitem = next_testitem(testitems, testitem.number[])
@@ -584,9 +592,9 @@ function manage_worker(
             end
             # Handle retries
             if run_number == max_runs
-                if failfast
+                if failfast && !is_cancelled(testitems)
                     # @show "crash or timeout"
-                    @error "Test item $(repr(testitem.name)) didn't pass and `failfast=true`, cancelling tests."
+                    print_failfast_cancellation(testitem)
                     cancel(testitems)
                 end
                 testitem = next_testitem(testitems, testitem.number[])
@@ -677,6 +685,7 @@ function _throw_not_macrocall(expr)
 end
 
 # for each directory, kick off a recursive test-finding task
+# Returns (testitems::TestItems, setups::Dict{Symbol,TestSetup})
 function include_testfiles!(project_name, projectfile, paths, shouldrun, verbose_results::Bool, report::Bool)
     project_root = dirname(projectfile)
     subproject_root = nothing  # don't recurse into directories with their own Project.toml.
