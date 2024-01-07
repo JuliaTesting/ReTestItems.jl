@@ -304,7 +304,7 @@ end
 function print_failfast_summary(t::TestItems)
     io = DEFAULT_STDOUT[]
     printstyled(io, "FailFast: "; bold=true, color=Base.warn_color())
-    println(io, "$(t.count)/$(length(t.testitems)) tests were run.")
+    println(io, "$(t.count)/$(length(t.testitems)) test items were run.")
     return nothing
 end
 
