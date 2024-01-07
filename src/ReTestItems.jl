@@ -350,13 +350,13 @@ function _runtests_in_current_env(
                 while run_number ≤ max_runs
                     res = runtestitem(testitem, ctx; test_end_expr, verbose_results, logs)
                     ts = res.testset
-                    is_non_pass = any_non_pass(ts)
                     print_errors_and_captured_logs(testitem, run_number; logs)
                     report_empty_testsets(testitem, ts)
                     # It takes 2 GCs to do a full mark+sweep
                     # (the first one is a partial mark, full sweep, the next one is a full mark).
                     GC.gc(true)
                     GC.gc(false)
+                    is_non_pass = any_non_pass(ts)
                     if is_non_pass && run_number != max_runs
                         run_number += 1
                         @info "Retrying $(repr(testitem.name)). Run=$run_number."
@@ -365,8 +365,8 @@ function _runtests_in_current_env(
                     end
                 end
                 if failfast && is_non_pass
-                    print_failfast_cancellation(testitem)
                     cancel(testitems)
+                    print_failfast_cancellation(testitem)
                     break
                 end
             end
@@ -402,9 +402,8 @@ function _runtests_in_current_env(
         record_results!(testitems)
         report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
         if failfast && is_cancelled(testitems)
-            # Print this with the test report so users know if not all tests were run;
-            # there might have been other logs from already running testitems since the
-            # cancellation was printed.
+            # Let users know if not all tests ran. Print this just above the final report as
+            # there might have been other logs printed since the cancellation was printed.
             print_failfast_summary(testitems)
         end
         Test.finish(testitems) # print summary of total passes/failures/errors
@@ -464,7 +463,22 @@ function _worker_terminated(state, exception)
     end
 end
 
-any_non_pass(ts::DefaultTestSet) = ts.anynonpass
+# Can't just check `ts.anynonpass` because that only gets set when `finish` is called, which
+# won't have happened if the testset wasn't the "root" testset -- e.g. `runtests` is being
+# called with nworkers=0 from within a testset -- instead we have to check all the results.
+function any_non_pass(ts::DefaultTestSet)
+    for res in ts.results
+        if res isa Union{Test.Fail, Test.Error}
+            return true
+        elseif res isa DefaultTestSet
+            if any_non_pass(res::DefaultTestSet)
+                return true
+            end
+        end
+    end
+    return false
+end
+
 
 function record_timeout!(testitem, run_number::Int, timeout_s::Int)
     time_str = if timeout_s < 60
@@ -562,10 +576,9 @@ function manage_worker(
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
                 else
-                    if failfast && is_non_pass && !is_cancelled(testitems)
-                        # @show "failure"
-                        print_failfast_cancellation(testitem)
+                    if is_non_pass && failfast && !is_cancelled(testitems)
                         cancel(testitems)
+                        print_failfast_cancellation(testitem)
                     end
                     testitem = next_testitem(testitems, testitem.number[])
                     run_number = 1
@@ -597,9 +610,8 @@ function manage_worker(
             # Handle retries
             if run_number == max_runs
                 if failfast && !is_cancelled(testitems)
-                    # @show "crash or timeout"
-                    print_failfast_cancellation(testitem)
                     cancel(testitems)
+                    print_failfast_cancellation(testitem)
                 end
                 testitem = next_testitem(testitems, testitem.number[])
                 run_number = 1
