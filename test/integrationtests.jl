@@ -714,6 +714,28 @@ end
     rm(tmpdir; force=true)
 end
 
+# There was previously a bug where if `runtests` were called from inside another `@testset`
+# and `nworkers=0`, then `retries` and `failfast` were ignored, i.e. failing testitems were
+# not retried and did not cause the tests to stop, due to how we were checking whether or
+# not a test had failed. Running `runtests` inside `encased_testset` was sufficient to
+# reproduce this bug.
+@testset "bugfix: `runtests` in a testset" begin
+    using IOCapture
+    # test `retries` works
+    file = joinpath(TEST_FILES_DIR, "_failing_test.jl")
+    c = IOCapture.capture() do
+        encased_testset(() -> runtests(file, nworkers=0, retries=1))
+    end
+    @test contains(c.output, "Retrying")
+    # test `failfast` works
+    file = joinpath(TEST_FILES_DIR, "_failfast_failure_tests.jl")
+    c = IOCapture.capture() do
+        encased_testset(() -> runtests(file, nworkers=0, failfast=true))
+    end
+    @test contains(c.output, "FailFast: 2/3 test items were run.")
+end
+
+
 @testset "testitem_timeout" begin
     file = joinpath(TEST_FILES_DIR, "_timeout_tests.jl")
     # NOTE: this test must run with exactly 1 worker, so that we can test that the worker
@@ -1287,5 +1309,79 @@ end
     p = run(pipeline(ignorestatus(cmd); stdout, stderr), wait=true)
     @test !success(p)
 end
+
+@testset "failfast" begin
+    using IOCapture
+    # Each file has 3 testitems, with the second test item "bad" failing in some way.
+    @testset "$case" for (case, filename) in (
+        :failure => "_failfast_failure_tests.jl",
+        :error   => "_failfast_error_tests.jl",
+        :timeout => "_failfast_timeout_tests.jl",
+        :crash   => "_failfast_crash_tests.jl",
+    )
+        testitem_timeout = 3
+        file = joinpath(TEST_FILES_DIR, filename)
+        # For 0 or 1 workers, we expect to fail on the second testitem out of 3.
+        # If running with 3 workers, then all 3 testitems will be running in parallel,
+        # so we expect to see all 3 testitems run, even though one fails.
+        @testset "nworkers=$nworkers" for nworkers in (0, 1, 3)
+            # println("$case, $nworkers")
+            if case in (:crash, :timeout) && nworkers == 0
+                # if no workers, can't recover from a crash, and timeout not supported.
+                @test_skip case
+                continue
+            end
+            c = IOCapture.capture() do
+                encased_testset(() -> runtests(file; nworkers, testitem_timeout, retries=1, failfast=true))
+            end
+            results = c.value
+            if nworkers == 3
+                @test n_tests(results) == 3
+                @test n_passed(results) == 2
+            else
+                @test n_tests(results) == 2
+                @test n_passed(results) == 1
+            end
+            # @show c.output
+            @test contains(c.output, "Retrying")
+            @test count(r"FailFast:", c.output) == 2
+            msg = "FailFast: Test item \"bad\" at test/testfiles/$filename:4 failed. Cancelling tests."
+            @test contains(c.output, msg)
+            if nworkers == 3
+                @test contains(c.output, "FailFast: 3/3 test items were run.")
+            else
+                @test contains(c.output, "FailFast: 2/3 test items were run.")
+            end
+        end # nworkers
+    end # case
+    # When there are failing test items running in parallel on 2 different workers, both
+    # failure should be reported, but there should only ever be one "Cancelling" message.
+    @testset "multiple failures" begin
+        file = joinpath(TEST_FILES_DIR, "_failfast_multiple_failure_tests.jl")
+        c = IOCapture.capture() do
+            encased_testset(() -> runtests(file; nworkers=2, failfast=true))
+        end
+        results = c.value
+        @test n_tests(results) == 2
+        @test n_passed(results) == 0
+        @test count(r"Cancelling tests.", c.output) == 1
+        @test count(r"FailFast:", c.output) == 2
+        @test contains(c.output, "FailFast: 2/3 test items were run.")
+    end
+    # test setting `failfast` via environment variable
+    @testset "ENV var" begin
+        file = joinpath(TEST_FILES_DIR, "_failfast_failure_tests.jl")
+        c = withenv("RETESTITEMS_FAILFAST" => "true") do
+            IOCapture.capture() do
+                encased_testset(()->runtests(file))
+            end
+        end
+        results = c.value
+        @test n_tests(results) == 2
+        @test n_passed(results) == 1
+        @test contains(c.output, "FailFast: 2/3 test items were run.")
+    end
+end
+
 
 end # integrationtests.jl testset
