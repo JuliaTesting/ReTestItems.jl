@@ -8,6 +8,7 @@ using Pkg: Pkg
 using TestEnv
 using Logging
 using LoggingExtras
+import JET
 
 export runtests, runtestitem
 export @testsetup, @testitem
@@ -400,7 +401,7 @@ end
 # The provided `worker_num` is only for logging purposes, and not persisted as part of the worker.
 function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems; worker_num=nothing)
     w = Worker(; threads="$nworker_threads")
-    i = worker_num == nothing ? "" : " $worker_num"
+    i = worker_num === nothing ? "" : " $worker_num"
     # remote_fetch here because we want to make sure the worker is all setup before starting to eval testitems
     remote_fetch(w, quote
         using ReTestItems, Test
@@ -980,7 +981,7 @@ function runtestitem(
         # environment = Module()
         @debugv 1 "Running test item $(repr(name))$(_on_worker())."
         _, stats = @timed_with_compilation _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : logpath(ti)) do
-            with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
+            with_source_path(() -> (Core.eval(Main, mod_expr); jet_test(ti, mod_expr)), ti.file)
             with_source_path(() -> Core.eval(Main, test_end_mod_expr), ti.file)
             nothing # return nothing as the first return value of @timed_with_compilation
         end
@@ -1033,6 +1034,16 @@ function convert_results_to_be_transferrable(res::Test.Pass)
         return Test.Pass(res.test_type, res.orig_expr, nothing, res.value, res.source, res.message_only)
     end
     return res
+end
+
+function jet_test(ti, mod_expr)
+    if ti.jet !== :none
+        # TODO: Don't round-trip through string, we need to figure out what sort of transformations JET does to a string to produce an Expr
+        # and use that directly.
+        Test.@testset "JET $(repr(ti.jet)) mode" begin
+            JET.test_text(replace(string(mod_expr), "\$(Expr(:softscope, true))" => "eval(Expr(:softscope, true))"), ti.file; mode=ti.jet)
+        end
+    end
 end
 
 convert_results_to_be_transferrable(x) = x
