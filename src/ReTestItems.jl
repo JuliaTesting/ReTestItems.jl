@@ -24,6 +24,12 @@ else
     const errmon = identity
 end
 
+if isdefined(Test, :FailFastError)
+    TestFailFastError = Test.FailFastError
+else
+    TestFailFastError = Base.Bottom
+end
+
 # copyied from REPL.jl
 function softscope(@nospecialize ex)
     if ex isa Expr
@@ -1048,9 +1054,11 @@ function runtestitem(
         err isa InterruptException && rethrow()
         # Handle exceptions thrown outside a `@test` in the body of the @testitem:
         # Copied from Test.@testset's catch block:
-        Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
-            (Test.Base).current_exceptions(),
-            LineNumberNode(ti.line, ti.file)))
+        if !isa(err, TestFailFastError)
+            Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
+                (Test.Base).current_exceptions(),
+                LineNumberNode(ti.line, ti.file)))
+        end
     finally
         # Make sure all test setup logs are commited to file
         foreach(ts->isassigned(ts.logstore) && flush(ts.logstore[]), ti.testsetups)

@@ -1383,5 +1383,19 @@ end
     end
 end
 
+# In Julia v1.9, `@testset` supports its own `failfast` keyword
+# See https://github.com/JuliaLang/julia/commit/88def1afe16acdfe41b15dc956742359d837ce04
+# Test that we are not rethrowing a `Test.FailFastError`.
+if VERSION >= v"1.9"
+    @testset "Handle `@testset failfast=true`" begin
+        file = joinpath(TEST_FILES_DIR, "_testset_failfast_tests.jl")
+        results = encased_testset(()->runtests(file))
+        # We should only see that a single test-item ran and had a single test failure,
+        # we should not see a `Test.FailFastError` error.
+        @test n_tests(results) == 1
+        @test length(non_passes(results)) == 1
+        @test length(errors(results)) == 0
+    end
+end
 
 end # integrationtests.jl testset
