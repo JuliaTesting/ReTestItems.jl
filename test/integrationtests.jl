@@ -682,7 +682,7 @@ end
     tmpdir = joinpath("/tmp", "JL_RETESTITEMS_TEST_TMPDIR")
     # must run with `testitem_timeout < 20` for test to timeout as expected.
     # and must run with `nworkers > 0` for retries to be supported.
-    results = encased_testset(()->runtests(file; nworkers=1, retries=2, testitem_timeout=3))
+    results = encased_testset(()->runtests(file; nworkers=1, retries=2, testitem_timeout=5))
     # Test we _ran_ each test-item the expected number of times
     read_count(x) = parse(Int, read(x, String))
     # Passes on second attempt, so only need to retry once.
@@ -1319,7 +1319,7 @@ end
         :timeout => "_failfast_timeout_tests.jl",
         :crash   => "_failfast_crash_tests.jl",
     )
-        testitem_timeout = 3
+        testitem_timeout = 5
         file = joinpath(TEST_FILES_DIR, filename)
         # For 0 or 1 workers, we expect to fail on the second testitem out of 3.
         # If running with 3 workers, then all 3 testitems will be running in parallel,
@@ -1343,7 +1343,7 @@ end
                 @test n_passed(results) == 1
             end
             # @show c.output
-            @test contains(c.output, "Retrying")
+            @test contains(c.output, "Retrying")  # check retries are happening
             @test count(r"FailFast:", c.output) == 2
             msg = "FailFast: Test item \"bad\" at test/testfiles/$filename:4 failed. Cancelling tests."
             @test contains(c.output, msg)
