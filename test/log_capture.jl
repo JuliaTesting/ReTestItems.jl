@@ -33,7 +33,7 @@ end
 @testset "log capture -- reporting" begin
     setup1 = @testsetup module TheTestSetup1 end
     setup2 = @testsetup module TheTestSetup2 end
-    ti = TestItem(Ref(42), "TheTestItem", "ID007", [], false, [], 0, nothing, false, "source/path", 42, ".", nothing)
+    ti = TestItem(Ref(42), "TheTestItem", "ID007", [], false, [], 0, nothing, false, nothing, "source/path", 42, ".", nothing)
     push!(ti.testsetups, setup1)
     push!(ti.testsetups, setup2)
     push!(ti.testsets, Test.DefaultTestSet("dummy"))
