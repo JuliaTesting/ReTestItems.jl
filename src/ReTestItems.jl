@@ -8,7 +8,6 @@ using Pkg: Pkg
 using TestEnv
 using Logging
 using LoggingExtras
-import JET
 
 export runtests, runtestitem
 export @testsetup, @testitem
@@ -1036,16 +1035,15 @@ function convert_results_to_be_transferrable(res::Test.Pass)
     return res
 end
 
-function jet_test(ti, mod_expr)
-    if ti.jet !== :none
-        # TODO: Don't round-trip through string, we need to figure out what sort of transformations JET does to a string to produce an Expr
-        # and use that directly.
-        Test.@testset "JET $(repr(ti.jet)) mode" begin
-            JET.test_text(replace(string(mod_expr), "\$(Expr(:softscope, true))" => "eval(Expr(:softscope, true))"), ti.file; mode=ti.jet)
-        end
-    end
-end
-
 convert_results_to_be_transferrable(x) = x
+
+# This method signature must be less specific than the overload in ext/JETExt.jl
+function jet_test(ti::Any, mod_expr::Expr)
+    ti.jet == :none && return nothing
+    Test.@testset "JET package extension failure: JET not loaded, ignoring \"jet=$(repr(ti.jet))\"" begin
+        Test.@test_broken false
+    end
+    return nothing
+end
 
 end # module ReTestItems
