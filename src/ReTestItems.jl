@@ -26,9 +26,28 @@ end
 
 if isdefined(Test, :FailFastError)
     TestFailFastError = Test.FailFastError
-else
+    if isdefined(Base, :get_bool_env)
+        env_test_failfast() = Base.get_bool_env("JULIA_TEST_FAILFAST", false)
+    else
+        function env_test_failfast()
+            ff = get(ENV, "JULIA_TEST_FAILFAST", nothing)
+            if ff == "true" || ff == 1
+                return true
+            elseif ff == "false"|| ff == 0
+                return false
+            else
+                return nothing
+            end
+        end
+    end
+    CompatDefaultTestSet(a...; kw...) = DefaultTestSet(a...; kw...)
+else # @testset does not yet support `failfast`
     TestFailFastError = Base.Bottom
+    env_test_failfast() = false
+    # ignore `failfast` argument to DefaultTestSet
+    CompatDefaultTestSet(a...; failfast::Bool=false, kw...) = DefaultTestSet(a...; kw...)
 end
+
 
 # copyied from REPL.jl
 function softscope(@nospecialize ex)
@@ -361,7 +380,7 @@ function _runtests_in_current_env(
                 max_runs = 1 + max(retries, testitem.retries)
                 is_non_pass = false
                 while run_number ≤ max_runs
-                    res = runtestitem(testitem, ctx; test_end_expr, verbose_results, logs)
+                    res = runtestitem(testitem, ctx; test_end_expr, verbose_results, logs, failfast)
                     ts = res.testset
                     print_errors_and_captured_logs(testitem, run_number; logs)
                     report_empty_testsets(testitem, ts)
@@ -555,7 +574,7 @@ function manage_worker(
         end
         testitem.workerid[] = worker.pid
         timeout = something(testitem.timeout, default_timeout)
-        fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)))))
+        fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)), failfast=$failfast)))
         max_runs = 1 + max(retries, testitem.retries)
         try
             timer = Timer(timeout) do tm
@@ -966,6 +985,7 @@ end
 function runtestitem(
     ti::TestItem, ctx::TestContext;
     test_end_expr::Union{Nothing,Expr}=nothing, logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true, catch_test_error::Bool=true,
+    failfast::Bool=false,
 )
     if should_skip(ti)::Bool
         return skiptestitem(ti, ctx; verbose_results)
@@ -978,7 +998,9 @@ function runtestitem(
     end
     name = ti.name
     log_testitem_start(ti, ctx.ntestitems)
-    ts = DefaultTestSet(name; verbose=verbose_results)
+    # @show (ti.failfast, env_test_failfast(), failfast)
+    _failfast = something(ti.failfast, env_test_failfast(), failfast)
+    ts = CompatDefaultTestSet(name; verbose=verbose_results, failfast=_failfast)
     stats = PerfStats()
     # start with empty block expr and build up our `@testitem` and `test_end_expr` module bodies
     body = Expr(:block)
@@ -1054,10 +1076,23 @@ function runtestitem(
         err isa InterruptException && rethrow()
         # Handle exceptions thrown outside a `@test` in the body of the @testitem:
         # Copied from Test.@testset's catch block:
+        # @show err, isa(err, TestFailFastError)
+        # If an inner testset had `failfast=true` and there was a failure/error, then the root
+        # testset will throw a `TestFailFastError` to force the root testset to stop running.
+        # We don't need to record that `TestFailFastError`, since its not itself a test
+        # error, it is just the mechanism used to interrupt tests.
         if !isa(err, TestFailFastError)
-            Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
-                (Test.Base).current_exceptions(),
-                LineNumberNode(ti.line, ti.file)))
+            try
+                # If the root testset had `failfast=true` and itself threw an error outside
+                # of a test, then `record` will throw a `TestFailFastError`...
+                # maybe that's important for Test.jl, but it's useless here, so ignore it.
+                Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
+                    (Test.Base).current_exceptions(),
+                    LineNumberNode(ti.line, ti.file)))
+            catch err2
+                # @show err2, isa(err2, TestFailFastError)
+                err2 isa TestFailFastError || rethrow()
+            end
         end
     finally
         # Make sure all test setup logs are commited to file
