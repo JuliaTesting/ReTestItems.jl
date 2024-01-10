@@ -1398,4 +1398,20 @@ if VERSION >= v"1.9"
     end
 end
 
+# In earlier versions of ReTestItems, if the testitem threw an error (outside of an `@test`)
+# we would report the time taken as `"0 secs"` in the DONE log message, because we didn't
+# have any timing info in `@timed_wth_compilation`. Now we should fallback to the timing
+# info in the testset, which for this tests should be non-zero.
+@testset "DONE time reported when testitem throws" begin
+    using IOCapture
+    file = joinpath(TEST_FILES_DIR, "_error_test.jl")
+    c = IOCapture.capture() do
+        encased_testset(()->runtests(file))
+    end
+    expected = r"DONE  \(1/1\) test item \"Test that throws outside of a @test\" (\d.\d) secs"
+    m = match(expected, c.output)
+    @test m != nothing
+    @test parse(Float64, only(m)) > 0
+end
+
 end # integrationtests.jl testset

@@ -283,8 +283,16 @@ function log_testitem_done(ti::TestItem, ntestitems=0; failedfast::Bool=false)
     io = IOContext(IOBuffer(), :color => get(DEFAULT_STDOUT[], :color, false)::Bool)
     print_state(io, "DONE", ti, ntestitems)
     x = last(ti.stats) # always print stats for most recent run
-    print_time(io; x.elapsedtime, x.bytes, x.gctime, x.allocs, x.compile_time, x.recompile_time)
-    failedfast && printstyled(io, " [Failed Fast]"; color=Base.warn_color())
+    if x == PerfStats() # no `@timed` stats if tests threw, fallback on testset timing
+        ts = last(ti.testsets)
+        if !isnothing(ts.time_end)
+            secs_taken = ts.time_end - ts.time_start
+            _print_scaled_one_dec(io, secs_taken, 1, " secs")
+        end
+    else
+        print_time(io; x.elapsedtime, x.bytes, x.gctime, x.allocs, x.compile_time, x.recompile_time)
+    end
+    failedfast && print(io, " (Failed Fast)")
     println(io)
     write(DEFAULT_STDOUT[], take!(io.io))
 end
