@@ -278,6 +278,12 @@ end
         @test ti.timeout isa Int
         @test ti.timeout == 1
 
+        ti = @testitem "TI" timeout=1*2 begin
+            @test true
+        end
+        @test ti.timeout isa Int
+        @test ti.timeout == 2
+
         # We round up to the nearest second.
         ti = @testitem "TI" timeout=1.1 begin
             @test true
@@ -286,6 +292,16 @@ end
         @test ti.timeout == 2
 
         ti = @testitem "TI" begin
+            @test true
+        end
+        @test ti.timeout == nothing
+
+        ti = @testitem "TI" timeout=nothing begin
+            @test true
+        end
+        @test ti.timeout == nothing
+
+        ti = @testitem "TI" timeout=(1+2; nothing) begin
             @test true
         end
         @test ti.timeout == nothing

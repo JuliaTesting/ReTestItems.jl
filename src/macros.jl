@@ -146,7 +146,7 @@ function TestItem(number, name, id, tags, default_imports, setups, retries, time
 end
 
 """
-    @testitem "name" [tags=[] setup=[] retries=0 skip=false default_imports=true] begin
+    @testitem "name" [tags=[] setup=[] retries=0 skip=false timeout=nothing default_imports=true] begin
         # code that will be run as tests
     end
 
@@ -273,10 +273,18 @@ macro testitem(nm, exs...)
                 retries = ex.args[2]
                 @assert retries isa Integer "`retries` keyword must be passed an `Integer`"
             elseif kw == :timeout
-                t = ex.args[2]
-                @assert t isa Real "`timeout` keyword must be passed a `Real`"
-                @assert t > 0 "`timeout` keyword must be passed a positive number. Got `timeout=$t`"
-                timeout = ceil(Int, t)
+                # `eval` allows us to support `timeout=60*2`. Calling `eval` should be okay here,
+                # since @testitem should only ever run at the top-level. But we still eval in a
+                # new anonymous module, because we don't want to risk polluting the global scope,
+                # and nothing from global scope should need to be available here.
+                t = ex.args[2] isa Union{Expr,Symbol} ? Core.eval(Module(), ex.args[2]) : ex.args[2]
+                @assert t isa Union{Nothing,Real} "`timeout` keyword must be passed `nothing` or a `Real`, got `timeout=$t`"
+                if isnothing(t)
+                    timeout = nothing
+                else
+                    @assert t > 0 "`timeout` keyword must be passed a positive number. Got `timeout=$t`"
+                    timeout = ceil(Int, t)
+                end
             elseif kw == :skip
                 skip = ex.args[2]
                 # If the `Expr` doesn't evaluate to a Bool, throws at runtime.
