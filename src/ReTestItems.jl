@@ -24,26 +24,14 @@ else
     const errmon = identity
 end
 
+# We use the Test.jl stdlib `failfast` mechanism to implement `testitem_failfast`, but that
+# feature was only added in Julia v1.9, so we define these shims so our code can be
+# compatible with earlier Julia versions, with `testitem_failfast` just having no effect.
 if isdefined(Test, :FailFastError)
     TestFailFastError = Test.FailFastError
-    if isdefined(Base, :get_bool_env)
-        env_test_failfast() = Base.get_bool_env("JULIA_TEST_FAILFAST", false)
-    else
-        function env_test_failfast()
-            ff = get(ENV, "JULIA_TEST_FAILFAST", nothing)
-            if ff == "true" || ff == 1
-                return true
-            elseif ff == "false"|| ff == 0
-                return false
-            else
-                return nothing
-            end
-        end
-    end
     CompatDefaultTestSet(a...; kw...) = DefaultTestSet(a...; kw...)
 else # @testset does not yet support `failfast`
     TestFailFastError = Base.Bottom
-    env_test_failfast() = false
     # ignore `failfast` argument to DefaultTestSet
     CompatDefaultTestSet(a...; failfast::Bool=false, kw...) = DefaultTestSet(a...; kw...)
 end
@@ -234,6 +222,11 @@ will be run.
   A testitem is considered to have failed if it does not pass after retries.
   Note that testitems already running on other workers in parallel with the failing testitem are allowed to complete.
   Can also be set using the `RETESTITEMS_FAILFAST` environment variable.
+- `testitem_failfast::Bool=false`: If true, a testitem stops as soon as there is a test failure or error.
+  Can also be set using the `RETESTITEMS_TESTITEM_FAILFAST` environment variable.
+  If a `@testitem` sets its own `failfast` keyword, then that takes precedence.
+  The `testitem_failfast` keyword only takes effect in Julia v1.9+ and is ignored in earlier
+  Julia versions.
 """
 function runtests end
 
@@ -268,6 +261,7 @@ function runtests(
     timeout_profile_wait::Real=parse(Int, get(ENV, "RETESTITEMS_TIMEOUT_PROFILE_WAIT", "0")),
     gc_between_testitems::Bool=parse(Bool, get(ENV, "RETESTITEMS_GC_BETWEEN_TESTITEMS", string(nworkers > 1))),
     failfast::Bool=parse(Bool, get(ENV, "RETESTITEMS_FAILFAST", "false")),
+    testitem_failfast::Bool=parse(Bool, get(ENV, "RETESTITEMS_TESTITEM_FAILFAST", "false")),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = _validated_paths(paths, validate_paths)
@@ -290,10 +284,10 @@ function runtests(
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(ti_filter, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, gc_between_testitems, failfast)
+            _runtests(ti_filter, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, gc_between_testitems, failfast, testitem_failfast)
         end
     else
-        return _runtests(ti_filter, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, gc_between_testitems, failfast)
+        return _runtests(ti_filter, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, gc_between_testitems, failfast, testitem_failfast)
     end
 end
 
@@ -307,7 +301,7 @@ end
 # By tracking and reusing test environments, we can avoid this issue.
 const TEST_ENVS = Dict{String, String}()
 
-function _runtests(ti_filter, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int, gc_between_testitems::Bool, failfast::Bool)
+function _runtests(ti_filter, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int, gc_between_testitems::Bool, failfast::Bool, testitem_failfast::Bool)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -327,7 +321,7 @@ function _runtests(ti_filter, paths, nworkers::Int, nworker_threads::String, wor
         if is_running_test_runtests_jl(proj_file)
             # Assume this is `Pkg.test`, so test env already active.
             @debugv 2 "Running in current environment `$(Base.active_project())`"
-            return _runtests_in_current_env(ti_filter, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, gc_between_testitems, failfast)
+            return _runtests_in_current_env(ti_filter, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, gc_between_testitems, failfast, testitem_failfast)
         else
             @debugv 1 "Activating test environment for `$proj_file`"
             orig_proj = Base.active_project()
@@ -340,7 +334,7 @@ function _runtests(ti_filter, paths, nworkers::Int, nworker_threads::String, wor
                     testenv = TestEnv.activate()
                     TEST_ENVS[proj_file] = testenv
                 end
-                _runtests_in_current_env(ti_filter, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, gc_between_testitems, failfast)
+                _runtests_in_current_env(ti_filter, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, gc_between_testitems, failfast, testitem_failfast)
             finally
                 Base.set_active_project(orig_proj)
             end
@@ -351,7 +345,7 @@ end
 function _runtests_in_current_env(
     ti_filter, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
     testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
-    timeout_profile_wait::Int, gc_between_testitems::Bool, failfast::Bool,
+    timeout_profile_wait::Int, gc_between_testitems::Bool, failfast::Bool, testitem_failfast::Bool,
 )
     start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
@@ -380,7 +374,7 @@ function _runtests_in_current_env(
                 max_runs = 1 + max(retries, testitem.retries)
                 is_non_pass = false
                 while run_number ≤ max_runs
-                    res = runtestitem(testitem, ctx; test_end_expr, verbose_results, logs, failfast)
+                    res = runtestitem(testitem, ctx; test_end_expr, verbose_results, logs, failfast=testitem_failfast)
                     ts = res.testset
                     print_errors_and_captured_logs(testitem, run_number; logs)
                     report_empty_testsets(testitem, ts)
@@ -427,7 +421,7 @@ function _runtests_in_current_env(
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
-                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs, $timeout_profile_wait, $gc_between_testitems, $failfast)
+                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs, $timeout_profile_wait, $gc_between_testitems, $failfast, $testitem_failfast)
                     end
                 end
             end
@@ -559,7 +553,7 @@ end
 function manage_worker(
     worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
     default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int,
-    gc_between_testitems::Bool, failfast::Bool,
+    gc_between_testitems::Bool, failfast::Bool, testitem_failfast::Bool,
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
@@ -574,7 +568,7 @@ function manage_worker(
         end
         testitem.workerid[] = worker.pid
         timeout = something(testitem.timeout, default_timeout)
-        fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)), failfast=$failfast)))
+        fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)), failfast=$testitem_failfast)))
         max_runs = 1 + max(retries, testitem.retries)
         try
             timer = Timer(timeout) do tm
@@ -982,6 +976,9 @@ end
 
 # Default to verbose output for running an individual test-item by itself, i.e.
 # when `runtestitem` called directly or `@testitem` called outside of `runtests`.
+# The `failfast` keyword implements the `testitem_failfast` mechanism. We name it "failfast"
+# here rather than "testitem_failfast" (the name we use for it in `runtests`), so as to give
+# `runtestitem` a nicer API... regrettably `runtestitem` is exported so best it has an okay API.
 function runtestitem(
     ti::TestItem, ctx::TestContext;
     test_end_expr::Union{Nothing,Expr}=nothing, logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true, catch_test_error::Bool=true,
@@ -998,9 +995,8 @@ function runtestitem(
     end
     name = ti.name
     log_testitem_start(ti, ctx.ntestitems)
-    # @show (ti.failfast, env_test_failfast(), failfast)
-    _failfast = something(ti.failfast, env_test_failfast(), failfast)
-    ts = CompatDefaultTestSet(name; verbose=verbose_results, failfast=_failfast)
+    # @show (ti.failfast, failfast)
+    ts = CompatDefaultTestSet(name; verbose=verbose_results, failfast=something(ti.failfast, failfast))
     stats = PerfStats()
     # start with empty block expr and build up our `@testitem` and `test_end_expr` module bodies
     body = Expr(:block)
