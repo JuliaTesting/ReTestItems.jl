@@ -994,8 +994,8 @@ function runtestitem(
         has_test_end_expr = true
     end
     name = ti.name
+    failedfast = false
     log_testitem_start(ti, ctx.ntestitems)
-    # @show (ti.failfast, failfast)
     ts = CompatDefaultTestSet(name; verbose=verbose_results, failfast=something(ti.failfast, failfast))
     stats = PerfStats()
     # start with empty block expr and build up our `@testitem` and `test_end_expr` module bodies
@@ -1072,22 +1072,22 @@ function runtestitem(
         err isa InterruptException && rethrow()
         # Handle exceptions thrown outside a `@test` in the body of the @testitem:
         # Copied from Test.@testset's catch block:
-        # @show err, isa(err, TestFailFastError)
         # If an inner testset had `failfast=true` and there was a failure/error, then the root
         # testset will throw a `TestFailFastError` to force the root testset to stop running.
         # We don't need to record that `TestFailFastError`, since its not itself a test
         # error, it is just the mechanism used to interrupt tests.
-        if !isa(err, TestFailFastError)
+        if isa(err, TestFailFastError)
+            failedfast = true
+        else
             try
-                # If the root testset had `failfast=true` and itself threw an error outside
-                # of a test, then `record` will throw a `TestFailFastError`...
-                # maybe that's important for Test.jl, but it's useless here, so ignore it.
                 Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
                     (Test.Base).current_exceptions(),
                     LineNumberNode(ti.line, ti.file)))
             catch err2
-                # @show err2, isa(err2, TestFailFastError)
+                # If the root testset had `failfast=true` and itself threw an error outside
+                # of a test, then `record` will throw a `TestFailFastError`.
                 err2 isa TestFailFastError || rethrow()
+                failedfast = true
             end
         end
     finally
@@ -1113,7 +1113,7 @@ function runtestitem(
     push!(ti.stats, stats)
     @debugv 2 "Converting results for test item $(repr(name))$(_on_worker())."
     res = convert_results_to_be_transferrable(ts)
-    log_testitem_done(ti, ctx.ntestitems)
+    log_testitem_done(ti, ctx.ntestitems; failedfast)
     return TestItemResult(res, stats)
 end
 

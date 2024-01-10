@@ -732,7 +732,7 @@ end
     c = IOCapture.capture() do
         encased_testset(() -> runtests(file, nworkers=0, failfast=true))
     end
-    @test contains(c.output, "FailFast: 2/3 test items were run.")
+    @test contains(c.output, "[ Fail Fast: 2/3 test items were run.")
 end
 
 
@@ -1344,13 +1344,13 @@ end
             end
             # @show c.output
             @test contains(c.output, "Retrying")  # check retries are happening
-            @test count(r"FailFast:", c.output) == 2
-            msg = "FailFast: Test item \"bad\" at test/testfiles/$filename:4 failed. Cancelling tests."
+            @test count(r"\[ Fail Fast:", c.output) == 2
+            msg = "[ Fail Fast: Test item \"bad\" at test/testfiles/$filename:4 failed. Cancelling tests."
             @test contains(c.output, msg)
             if nworkers == 3
-                @test contains(c.output, "FailFast: 3/3 test items were run.")
+                @test contains(c.output, "[ Fail Fast: 3/3 test items were run.")
             else
-                @test contains(c.output, "FailFast: 2/3 test items were run.")
+                @test contains(c.output, "[ Fail Fast: 2/3 test items were run.")
             end
         end # nworkers
     end # case
@@ -1365,8 +1365,8 @@ end
         @test n_tests(results) == 2
         @test n_passed(results) == 0
         @test count(r"Cancelling tests.", c.output) == 1
-        @test count(r"FailFast:", c.output) == 2
-        @test contains(c.output, "FailFast: 2/3 test items were run.")
+        @test count(r"\[ Fail Fast:", c.output) == 2
+        @test contains(c.output, "[ Fail Fast: 2/3 test items were run.")
     end
     # test setting `failfast` via environment variable
     @testset "ENV var" begin
@@ -1379,7 +1379,7 @@ end
         results = c.value
         @test n_tests(results) == 2
         @test n_passed(results) == 1
-        @test contains(c.output, "FailFast: 2/3 test items were run.")
+        @test contains(c.output, "[ Fail Fast: 2/3 test items were run.")
     end
 end
 
