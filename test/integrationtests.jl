@@ -1310,7 +1310,7 @@ end
     @test !success(p)
 end
 
-@testset "failfast" begin
+@testset "runtests `failfast` keyword" begin
     using IOCapture
     # Each file has 3 testitems, with the second test item "bad" failing in some way.
     @testset "$case" for (case, filename) in (
