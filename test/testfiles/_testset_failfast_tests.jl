@@ -1,5 +1,5 @@
 # Testitem containing `@testset failfast=true`
-@testitem "Test.jl failfast=true" begin
+@testitem "Test.jl failfast=true keyword" begin
     @testset failfast=true begin
         @test false
         @test error("ERROR AFTER FAILURE")
