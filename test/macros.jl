@@ -406,6 +406,20 @@ end
     end
 end
 
+# Actual `@testitem failfast` behaviour tested in test/integrationtests.jl
+@testset "tesitem `failfast` keyword" begin
+    ti = @testitem "foo" failfast=true _run=false begin
+        @test false
+        @test true
+    end
+    @test ti.failfast == true
+    @test_throws "`failfast` keyword must be passed a `Bool`" (
+        @eval @testitem "bad 1" failfast=nothing begin
+            @test true
+        end
+    )
+end
+
 #=
 NOTE:
     These tests are disabled as we stopped using anonymous modules;

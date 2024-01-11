@@ -1414,4 +1414,71 @@ end
     @test parse(Float64, only(m)) > 0
 end
 
+# `testitem_failfast` only support in Julia v1.9+ because it relies on the
+# `Test.DefaultTestSet` having `failfast`, which was added in v1.9.
+@testset "runtests `testitem_failfast` keyword" begin
+if VERSION < v"1.9.0-"
+    @test_skip :testitem_failfast
+else
+    using IOCapture
+    file = joinpath(TEST_FILES_DIR, "_testitem_failfast_tests.jl")
+    c = IOCapture.capture() do
+        encased_testset(()->runtests(file; testitem_failfast=true))
+    end
+    d1 = r"DONE  \(1/2\) test item \"Failure at toplevel\" \d.\d secs \(Failed Fast\)"
+    d2 = r"DONE  \(2/2\) test item \"Failure in nested testset\" \d.\d secs \(Failed Fast\)"
+    @test contains(c.output, d1)
+    @test contains(c.output, d2)
+    results = c.value
+    # 1st testitem should have a test failure, then not run the other tests
+    # 2nd testitem should have a test pass then a test failure, then not run the other tests
+    @test n_tests(results) == 3
+    @test n_passed(results) == 1
+    @test length(failures(results)) == 2
+
+    # Same tests, but this time each `@testitem` set `failfast=true`
+    file = joinpath(TEST_FILES_DIR, "_testitem_failfast_set_tests.jl")
+    c = IOCapture.capture() do
+        # `@testitem failfast=true` takes precedence over `testitem_failfast=false`
+        encased_testset(()->runtests(file; testitem_failfast=false))
+    end
+    d1 = r"DONE  \(1/2\) test item \"Failure at toplevel\" \d.\d secs \(Failed Fast\)"
+    d2 = r"DONE  \(2/2\) test item \"Failure in nested testset\" \d.\d secs \(Failed Fast\)"
+    @test contains(c.output, d1)
+    @test contains(c.output, d2)
+    results = c.value
+    # 1st testitem should have a test failure, then not run the other tests
+    # 2nd testitem should have a test pass then a test failure, then not run the other tests
+    @test n_tests(results) == 3
+    @test n_passed(results) == 1
+    @test length(failures(results)) == 2
+    @testset "ENV var" begin
+        file = joinpath(TEST_FILES_DIR, "_testitem_failfast_tests.jl")
+        results = withenv("RETESTITEMS_TESTITEM_FAILFAST" => "true") do
+            encased_testset(()->runtests(file))
+        end
+        @test n_tests(results) == 3
+        @test n_passed(results) == 1
+        @test length(failures(results)) == 2
+    end
+    @testset "testitem_failfast + failfast" begin
+        file = joinpath(TEST_FILES_DIR, "_testitem_failfast_tests.jl")
+        c = IOCapture.capture() do
+            encased_testset(()->runtests(file; testitem_failfast=true, failfast=true))
+        end
+        d1 = r"DONE  \(1/2\) test item \"Failure at toplevel\" \d.\d secs \(Failed Fast\)"
+        d2 = r"DONE  \(2/2\)"
+        @test contains(c.output, d1)
+        @test !contains(c.output, d2)
+        @test contains(c.output, "[ Fail Fast: 1/2 test items were run.")
+        results = c.value
+        # 1st testitem should have a test failure, then not run the other tests
+        # 2nd testitem should not run
+        @test n_tests(results) == 1
+        @test n_passed(results) == 0
+        @test length(failures(results)) == 1
+    end
+end # VERSION
+end
+
 end # integrationtests.jl testset
