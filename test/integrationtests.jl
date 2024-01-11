@@ -1081,7 +1081,7 @@ end
     @test contains(c1.output, r"SKIP  \(3/6\) test item \"skip true\"")
 end
 
-@testset "failfast" begin
+@testset "runtests `failfast` keyword" begin
     using IOCapture
     # Each file has 3 testitems, with the second test item "bad" failing in some way.
     @testset "$case" for (case, filename) in (
