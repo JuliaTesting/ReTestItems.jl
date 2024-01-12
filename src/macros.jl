@@ -242,6 +242,14 @@ expression that returns a `Bool` to determine if the testitem should be skipped.
 
 The `skip` expression is run in its own module, just like a test-item.
 No code inside a `@testitem` is run when a test-item is skipped.
+
+If a `@testitem` should stop running on the first test failure, then you can set the `failfast` keyword.
+
+    @testitem "stop early" failfast=true begin
+        @test false
+        @test true
+        @test error("oops")
+    end
 """
 macro testitem(nm, exs...)
     default_imports = true
