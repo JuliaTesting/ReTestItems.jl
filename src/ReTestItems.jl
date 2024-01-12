@@ -929,7 +929,9 @@ function runtestitem(
     if should_skip(ti)::Bool
         return skiptestitem(ti, ctx; verbose_results)
     end
-    jet = jet == :none ? ti.jet : jet
+    jet = (jet == :skip || ti.jet == :skip) ? :skip :
+        ti.jet == :none ? jet : ti.jet
+
     retryable_failure = true
     name = ti.name
     log_testitem_start(ti, ctx.ntestitems)

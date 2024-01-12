@@ -298,7 +298,7 @@ macro testitem(nm, exs...)
             elseif kw == :jet
                 jet = ex.args[2]
                 @assert isa(jet, QuoteNode)
-                @assert jet in QuoteNode.((:none, :typo, :basic, :sound))
+                @assert jet in QuoteNode.((:none, :skip, :typo, :basic, :sound))
             else
                 error("unknown `@testitem` keyword arg `$(ex.args[1])`")
             end
