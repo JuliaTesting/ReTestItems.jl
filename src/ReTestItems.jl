@@ -17,6 +17,7 @@ const RETESTITEMS_TEMP_FOLDER = mkpath(joinpath(tempdir(), "ReTestItemsTempLogsD
 const DEFAULT_TESTITEM_TIMEOUT = 30*60
 const DEFAULT_RETRIES = 0
 const DEFAULT_MEMORY_THRESHOLD = Ref{Float64}(0.99)
+const DEFAULT_JET = :none # only do a JET pass if a test item explicitly requests it
 
 
 if isdefined(Base, :errormonitor)
@@ -190,6 +191,15 @@ will be run.
   `paths` passed to it cannot contain test files, either because the path doesn't exist or
   the path points to a file which is not a test file. Default is `false`.
   Can also be set using the `RETESTITEMS_VALIDATE_PATHS` environment variable.
+- `jet::Symbol=:none`: The JET mode to use to analyze test items. Can be one of:
+  - `:skip`: disable JET analysis even for test items that have an explicit `jet` mode set
+  - `:none`: don't analyze test items without an explicit `jet` mode set
+  - `:typo`, `:basic`, `:sound`: the JET mode to use for test items without an explicit `jet` mode
+  Default is `:none`. Can also be set using the `RETESTITEMS_JET` environment variable.
+  **Note** that this functionality assumes the JET package is installed and available in the test evironment.
+  When `nworkers > 0`, we'll try to preload the JET for the user on each worker to activate the JET extension,
+  for `nworkers == 0`, the user is expected to import JET themselves if they want to use it.
+  Failure to activate the extension will result in a broken test for test items that explicitly set a `jet` mode.
 """
 function runtests end
 
@@ -235,6 +245,7 @@ function runtests(
     verbose_results::Bool=(logs !== :issues && isinteractive()),
     test_end_expr::Expr=Expr(:block),
     validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
+    jet::Symbol=Symbol(get(ENV, "RETESTITEMS_JET", string(DEFAULT_JET))),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = _validated_paths(paths, validate_paths)
@@ -243,6 +254,7 @@ function runtests(
     report && logs == :eager && throw(ArgumentError("`report=true` is not compatible with `logs=:eager`"))
     (0 ≤ memory_threshold ≤ 1) || throw(ArgumentError("`memory_threshold` must be between 0 and 1, got $(repr(memory_threshold))"))
     testitem_timeout > 0 || throw(ArgumentError("`testitem_timeout` must be a postive number, got $(repr(testitem_timeout))"))
+    jet in (:skip, :none, :typo, :basic, :sound) || throw(ArgumentError("`jet` must be one of :none, :skip, :typo, :basic, :sound, got $(repr(jet))"))
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
     shouldrun_combined(ti) = shouldrun(ti) && _shouldrun(name, ti.name) && _shouldrun(tags, ti.tags)
@@ -254,10 +266,10 @@ function runtests(
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs)
+            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, jet)
         end
     else
-        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs)
+        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, jet)
     end
 end
 
@@ -271,7 +283,7 @@ end
 # By tracking and reusing test environments, we can avoid this issue.
 const TEST_ENVS = Dict{String, String}()
 
-function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
+function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, jet::Symbol)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -291,7 +303,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
         if is_running_test_runtests_jl(proj_file)
             # Assume this is `Pkg.test`, so test env already active.
             @debugv 2 "Running in current environment `$(Base.active_project())`"
-            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs)
+            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, jet)
         else
             @debugv 1 "Activating test environment for `$proj_file`"
             orig_proj = Base.active_project()
@@ -304,7 +316,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
                     testenv = TestEnv.activate()
                     TEST_ENVS[proj_file] = testenv
                 end
-                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs)
+                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, jet)
             finally
                 Base.set_active_project(orig_proj)
             end
@@ -314,7 +326,7 @@ end
 
 function _runtests_in_current_env(
     shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
+    testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, jet::Symbol
 )
     start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
@@ -340,7 +352,7 @@ function _runtests_in_current_env(
                 run_number = 1
                 max_runs = 1 + max(retries, testitem.retries)
                 while run_number ≤ max_runs
-                    res = runtestitem(testitem, ctx; test_end_expr, verbose_results, logs)
+                    res = runtestitem(testitem, ctx; test_end_expr, verbose_results, logs, jet)
                     ts = res.testset
                     print_errors_and_captured_logs(testitem, run_number; logs)
                     report_empty_testsets(testitem, ts)
@@ -348,7 +360,7 @@ function _runtests_in_current_env(
                     # (the first one is a partial mark, full sweep, the next one is a full mark).
                     GC.gc(true)
                     GC.gc(false)
-                    if any_non_pass(ts) && run_number != max_runs
+                    if res.is_retryable && any_non_pass(ts) && run_number != max_runs
                         run_number += 1
                         @info "Retrying $(repr(testitem.name)). Run=$run_number."
                     else
@@ -379,7 +391,7 @@ function _runtests_in_current_env(
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
-                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs)
+                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs, $jet)
                     end
                 end
             end
@@ -404,6 +416,7 @@ function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems; 
     # remote_fetch here because we want to make sure the worker is all setup before starting to eval testitems
     remote_fetch(w, quote
         using ReTestItems, Test
+        Core.eval(Module(), :(try import JET catch end))
         Test.TESTSET_PRINT_ENABLE[] = false
         const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)
         GLOBAL_TEST_CONTEXT.setups_evaled = ReTestItems.TestSetupModules()
@@ -488,7 +501,7 @@ end
 
 function manage_worker(
     worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
+    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, jet::Symbol
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
@@ -503,7 +516,7 @@ function manage_worker(
         end
         testitem.workerid[] = worker.pid
         timeout = something(testitem.timeout, default_timeout)
-        fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)))))
+        fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)), jet=$(QuoteNode(jet)))))
         max_runs = 1 + max(retries, testitem.retries)
         try
             timer = Timer(timeout) do tm
@@ -535,7 +548,7 @@ function manage_worker(
                 # Run GC to free memory on the worker before next testitem.
                 @debugv 2 "Running GC on $worker"
                 remote_fetch(worker, :(GC.gc(true); GC.gc(false)))
-                if any_non_pass(ts) && run_number != max_runs
+                if testitem_result.is_retryable && any_non_pass(ts) && run_number != max_runs
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
                 else
@@ -891,7 +904,7 @@ function skiptestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=true
     stats = PerfStats()
     push!(ti.stats, stats)
     log_testitem_skipped(ti, ctx.ntestitems)
-    return TestItemResult(ts, stats)
+    return TestItemResult(ts, stats, false)
 end
 
 
@@ -911,11 +924,13 @@ end
 # when `runtestitem` called directly or `@testitem` called outside of `runtests`.
 function runtestitem(
     ti::TestItem, ctx::TestContext;
-    test_end_expr::Expr=Expr(:block), logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true,
+    test_end_expr::Expr=Expr(:block), logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true, jet::Symbol=:none
 )
     if should_skip(ti)::Bool
         return skiptestitem(ti, ctx; verbose_results)
     end
+    jet = jet == :none ? ti.jet : jet
+    retryable_failure = true
     name = ti.name
     log_testitem_start(ti, ctx.ntestitems)
     ts = DefaultTestSet(name; verbose=verbose_results)
@@ -980,8 +995,10 @@ function runtestitem(
         # environment = Module()
         @debugv 1 "Running test item $(repr(name))$(_on_worker())."
         _, stats = @timed_with_compilation _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : logpath(ti)) do
-            with_source_path(() -> (Core.eval(Main, mod_expr); jet_test(ti, mod_expr)), ti.file)
+            with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
             with_source_path(() -> Core.eval(Main, test_end_mod_expr), ti.file)
+            retryable_failure = any_non_pass(ts) # only failures from actual tests constitute a reson to retry
+            jet_test(ti, mod_expr, jet)          # if JET tests fail, a retry won't help
             nothing # return nothing as the first return value of @timed_with_compilation
         end
         @debugv 1 "Done running test item $(repr(name))$(_on_worker())."
@@ -1010,7 +1027,7 @@ function runtestitem(
     @debugv 2 "Converting results for test item $(repr(name))$(_on_worker())."
     res = convert_results_to_be_transferrable(ts)
     log_testitem_done(ti, ctx.ntestitems)
-    return TestItemResult(res, stats)
+    return TestItemResult(res, stats, retryable_failure)
 end
 
 function convert_results_to_be_transferrable(ts::Test.AbstractTestSet)
@@ -1038,9 +1055,9 @@ end
 convert_results_to_be_transferrable(x) = x
 
 # This method signature must be less specific than the overload in ext/JETExt.jl
-function jet_test(ti::Any, mod_expr::Expr)
-    ti.jet == :none && return nothing
-    Test.@testset "JET package extension failure: JET not loaded, ignoring \"jet=$(repr(ti.jet))\"" begin
+function jet_test(ti::Any, mod_expr::Expr, jet::Symbol)
+    jet in (:skip, :none) && return nothing
+    Test.@testset "JET not loaded, ignoring \"jet=$(repr(jet))\"" begin
         Test.@test_broken false
     end
     return nothing

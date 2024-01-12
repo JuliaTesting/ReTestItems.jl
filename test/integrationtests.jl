@@ -636,7 +636,7 @@ end
     tmpdir = joinpath("/tmp", "JL_RETESTITEMS_TEST_TMPDIR")
     # must run with `testitem_timeout < 20` for test to timeout as expected.
     # and must run with `nworkers > 0` for retries to be supported.
-    results = encased_testset(()->runtests(file; nworkers=1, retries=2, testitem_timeout=3))
+    results = encased_testset(()->runtests(file; nworkers=1, retries=2, testitem_timeout=5))
     # Test we _ran_ each test-item the expected number of times
     read_count(x) = parse(Int, read(x, String))
     # Passes on second attempt, so only need to retry once.
@@ -984,6 +984,29 @@ end
         @test !all_passed(results_with_end)
         @test n_passed(results_with_end) ≥ 1
         @test length(failures(results_with_end)) ≥ 1
+    end
+
+    @testset "UsingJET.jl package" begin
+        # There are two test items, both of which fail basic JET error analysis passes
+        # And 4 passing tests total.
+        results_skip_jet = with_test_package("UsingJET.jl") do
+            runtests(; nworkers=1, jet=:skip)
+        end
+        @test all_passed(results_skip_jet)
+        @test n_passed(results_skip_jet) == 4
+
+        # One of the test items has a `jet` mode set
+        results_default_jet = with_test_package("UsingJET.jl") do
+            runtests(; nworkers=1)
+        end
+        @test length(non_passes(results_default_jet)) == 1
+        @test n_passed(results_default_jet) == 4
+
+        results_force_jet = with_test_package("UsingJET.jl") do
+            runtests(; nworkers=1, jet=:typo)
+        end
+        @test length(non_passes(results_force_jet)) == 2
+        @test n_passed(results_force_jet) == 4
     end
 end
 

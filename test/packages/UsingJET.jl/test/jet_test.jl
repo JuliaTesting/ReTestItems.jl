@@ -8,7 +8,6 @@ end
 
     @test DEF+1 == 2
 
-
     function foo()
         r = Ref(2)
         @spawn ($(r)[] += UNDEF)
@@ -22,7 +21,6 @@ end
     using .Threads: @spawn
 
     @test DEF+1 == 2
-
 
     function foo()
         r = Ref(2)

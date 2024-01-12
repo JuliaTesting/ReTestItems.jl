@@ -1,4 +1,4 @@
-name = "PkgUsingJET"
+name = "UsingJET"
 uuid = "c3f2fd6f-de40-45a4-991e-5ffd14a5ac2f"
 authors = ["Tomáš Drvoštěp <tomas.drvostep@gmail.com>"]
 version = "0.1.0"
