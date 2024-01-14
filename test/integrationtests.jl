@@ -1461,10 +1461,11 @@ else
         @test n_passed(results) == 1
         @test length(failures(results)) == 2
     end
-    @testset "testitem_failfast + failfast" begin
+    @testset "`testitem_failfast` defaults to `failfast`" begin
+        # Passing `failfast=true` should also set `testitem_failfast=true`
         file = joinpath(TEST_FILES_DIR, "_testitem_failfast_tests.jl")
         c = IOCapture.capture() do
-            encased_testset(()->runtests(file; testitem_failfast=true, failfast=true))
+            encased_testset(()->runtests(file; failfast=true))
         end
         d1 = r"DONE  \(1/2\) test item \"Failure at toplevel\" \d.\d secs \(Failed Fast\)"
         d2 = r"DONE  \(2/2\)"
@@ -1477,6 +1478,27 @@ else
         @test n_tests(results) == 1
         @test n_passed(results) == 0
         @test length(failures(results)) == 1
+    end
+    @testset "`testitem_failfast` can be disabled when `failfast=true`" begin
+        file = joinpath(TEST_FILES_DIR, "_testitem_failfast_tests.jl")
+        c = IOCapture.capture() do
+            withenv("RETESTITEMS_TESTITEM_FAILFAST" => "false") do
+                encased_testset(()->runtests(file; failfast=true))
+            end
+        end
+        d1 = r"DONE  \(1/2\) test item \"Failure at toplevel\" \d.\d secs"
+        d2 = r"DONE  \(2/2\)"
+        @test contains(c.output, d1)
+        @test !contains(c.output, d2)
+        @test !contains(c.output, "(Failed Fast)")
+        @test contains(c.output, "[ Fail Fast: 1/2 test items were run.")
+        results = c.value
+        # 1st testitem should have a failure, a error, another failure, then a pass
+        # 2nd testitem should not run
+        @test n_tests(results) == 4
+        @test n_passed(results) == 1
+        @test length(failures(results)) == 2
+        @test length(errors(results)) == 1
     end
 end # VERSION
 end

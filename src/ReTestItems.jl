@@ -222,11 +222,11 @@ will be run.
   A testitem is considered to have failed if it does not pass after retries.
   Note that testitems already running on other workers in parallel with the failing testitem are allowed to complete.
   Can also be set using the `RETESTITEMS_FAILFAST` environment variable.
-- `testitem_failfast::Bool=false`: If true, a testitem stops as soon as there is a test failure or error.
+- `testitem_failfast::Bool=failfast`: If true, a testitem stops as soon as there is a test failure or error.
   Can also be set using the `RETESTITEMS_TESTITEM_FAILFAST` environment variable.
+  Defaults to the value passed to the `failfast` keyword.
   If a `@testitem` sets its own `failfast` keyword, then that takes precedence.
-  The `testitem_failfast` keyword only takes effect in Julia v1.9+ and is ignored in earlier
-  Julia versions.
+  The `testitem_failfast` keyword only takes effect in Julia v1.9+ and is ignored in earlier Julia versions.
 """
 function runtests end
 
@@ -261,7 +261,7 @@ function runtests(
     timeout_profile_wait::Real=parse(Int, get(ENV, "RETESTITEMS_TIMEOUT_PROFILE_WAIT", "0")),
     gc_between_testitems::Bool=parse(Bool, get(ENV, "RETESTITEMS_GC_BETWEEN_TESTITEMS", string(nworkers > 1))),
     failfast::Bool=parse(Bool, get(ENV, "RETESTITEMS_FAILFAST", "false")),
-    testitem_failfast::Bool=parse(Bool, get(ENV, "RETESTITEMS_TESTITEM_FAILFAST", "false")),
+    testitem_failfast::Bool=parse(Bool, get(ENV, "RETESTITEMS_TESTITEM_FAILFAST", string(failfast))),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = _validated_paths(paths, validate_paths)
