@@ -673,14 +673,14 @@ function include_testfiles!(project_name, projectfile, paths, ti_filter::TestIte
     # we set it below in tls as __RE_TEST_SETUPS__ for each included file
     setup_channel = Channel{Pair{Symbol, TestSetup}}(Inf)
     setup_task = @spawn begin
-        setups = Dict{Symbol, TestSetup}()
-        for (name, setup) in setup_channel
-            if haskey(setups, name)
+        testsetups = Dict{Symbol, TestSetup}()
+        for (name, ts) in setup_channel
+            if haskey(testsetups, name)
                 @warn "Encountered duplicate @testsetup with name: `$name`. Replacing..."
             end
-            setups[name] = setup
+            testsetups[name] = ts
         end
-        return setups
+        return testsetups
     end
     hidden_re = r"\.\w"
     @sync for (root, d, files) in Base.walkdir(project_root)
@@ -732,21 +732,21 @@ function include_testfiles!(project_name, projectfile, paths, ti_filter::TestIte
     # prune empty directories/files
     close(setup_channel)
     prune!(root_node)
-    ti = TestItems(root_node)
-    flatten_testitems!(ti)
-    check_ids(ti.testitems)
-    setups = fetch(setup_task)
-    for (i, x) in enumerate(ti.testitems)
+    tis = TestItems(root_node)
+    flatten_testitems!(tis)
+    check_ids(tis.testitems)
+    testsetups = fetch(setup_task)
+    for (i, ti) in enumerate(tis.testitems)
         # set a unique number for each testitem
-        x.number[] = i
+        ti.number[] = i
         # populate testsetups for each testitem
-        for s in x.setups
-            if haskey(setups, s)
-                push!(x.testsetups, setups[s])
+        for setup_name in ti.setups
+            if haskey(testsetups, setup_name)
+                push!(ti.testsetups, setup_name => testsetups[setup_name])
             end
         end
     end
-    return ti, setups # only returned for testing
+    return tis, testsetups # only returned for testing
 end
 
 function check_ids(testitems)
@@ -829,28 +829,18 @@ function with_source_path(f, path)
     end
 end
 
-function ensure_setup!(ctx::TestContext, setup::Symbol, setups::Vector{TestSetup}, logs::Symbol)
+function ensure_setup!(ctx::TestContext, ts::TestSetup, logs::Symbol)
     mods = ctx.setups_evaled
     @lock mods.lock begin
-        mod = get(mods.modules, setup, nothing)
+        mod = get(mods.modules, ts.name, nothing)
         if mod !== nothing
             # we've eval-ed this module before, so just return the module name
             return nameof(mod)
         end
-        # we haven't eval-ed this module before, so we need to eval it
-        i = findfirst(s -> s.name == setup, setups)
-        if i === nothing
-            # if the setup hasn't been eval-ed before and we don't have it
-            # in our testsetups, then it was never found during including
-            # in that case, we return the expected test setup module name
-            # which will turn into a `using $setup` in the test item
-            # which will throw an appropriate error
-            return setup
-        end
-        ts = setups[i]
-        # In case the setup fails to eval, we discard its logs -- the setup will be
-        # attempted to eval for each of the dependent test items and we'd for each
-        # failed test item, we'd print the cumulative logs from all the previous attempts.
+        # We haven't eval-ed this module before, so we need to eval it.
+        # In case the setup fails to eval, we discard its logs -- we will attempt to eval
+        # this testsetup for each of the dependent test items, and then for each failed
+        # test item, we'd print the cumulative logs from all the previous attempts.
         isassigned(ts.logstore) && close(ts.logstore[])
         ts.logstore[] = open(logpath(ts), "w")
         mod_expr = :(module $(gensym(ts.name)) end)
@@ -860,7 +850,7 @@ function ensure_setup!(ctx::TestContext, setup::Symbol, setups::Vector{TestSetup
             with_source_path(() -> Core.eval(Main, mod_expr), ts.file)
         end
         # add the new module to our TestSetupModules
-        mods.modules[setup] = newmod
+        mods.modules[ts.name] = newmod
         return nameof(newmod)
     end
 end
@@ -908,9 +898,9 @@ function runtestitem(ti::TestItem; kw...)
     # make a fresh TestSetupModules for each testitem run
     GLOBAL_TEST_CONTEXT_FOR_TESTING.setups_evaled = TestSetupModules()
     empty!(ti.testsetups)
-    for setup in ti.setups
-        ts = get(GLOBAL_TEST_SETUPS_FOR_TESTING, setup, nothing)
-        ts !== nothing && push!(ti.testsetups, ts)
+    for setup_name in ti.setups
+        ts = get(GLOBAL_TEST_SETUPS_FOR_TESTING, setup_name, nothing)
+        ts !== nothing && push!(ti.testsetups, setup_name => ts)
     end
     runtestitem(ti, GLOBAL_TEST_CONTEXT_FOR_TESTING; kw...)
 end
@@ -954,23 +944,24 @@ function runtestitem(
     prev = get(task_local_storage(), :__TESTITEM_ACTIVE__, false)
     task_local_storage()[:__TESTITEM_ACTIVE__] = true
     try
-        for setup in ti.setups
-            # TODO(nhd): Consider implementing some affinity to setups, so that we can
-            # prefer to send testitems to the workers that have already eval'd setups.
-            # Or maybe allow user-configurable grouping of test items by worker?
-            # Or group them by file by default?
-
+        for (setup_name, ts) in ti.testsetups
             # ensure setup has been evaled before
-            @debugv 1 "Ensuring setup for test item $(repr(name)) $(setup)$(_on_worker())."
-            ts_mod = ensure_setup!(ctx, setup, ti.testsetups, logs)
+            @debugv 1 "Ensuring setup for test item $(repr(name)) $(setup_name)$(_on_worker())."
+            ts_mod = ensure_setup!(ctx, ts, logs)
             # eval using in our @testitem module
-            @debugv 1 "Importing setup for test item $(repr(name)) $(setup)$(_on_worker())."
+            @debugv 1 "Importing setup for test item $(repr(name)) $(setup_name)$(_on_worker())."
             # We look up the testsetups from Main (since tests are eval'd in their own
             # temporary anonymous module environment.)
             push!(body.args, Expr(:using, Expr(:., :Main, ts_mod)))
             # ts_mod is a gensym'd name so that setup modules don't clash
             # so we set a const alias inside our @testitem module to make things work
-            push!(body.args, :(const $setup = $ts_mod))
+            push!(body.args, :(const $setup_name = $ts_mod))
+        end
+        for setup_name in setdiff(ti.setups, keys(ti.testsetups))
+             # if the setup was requested but is not in our testsetups, then it was never
+             # found when including files. We still add `using $setup` in the test item
+             # so that we throw an appropriate error when running the test item.
+            push!(body.args, Expr(:using, Expr(:., :Main, setup_name)))
         end
         @debugv 1 "Setup for test item $(repr(name)) done$(_on_worker())."
 
@@ -1013,7 +1004,7 @@ function runtestitem(
             LineNumberNode(ti.line, ti.file)))
     finally
         # Make sure all test setup logs are commited to file
-        foreach(ts->isassigned(ts.logstore) && flush(ts.logstore[]), ti.testsetups)
+        foreach(ts->isassigned(ts.logstore) && flush(ts.logstore[]), values(ti.testsetups))
         ts1 = Test.pop_testset()
         task_local_storage()[:__TESTITEM_ACTIVE__] = prev
         @assert ts1 === ts
