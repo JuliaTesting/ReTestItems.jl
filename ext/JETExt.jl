@@ -18,11 +18,13 @@ function ReTestItems.jet_test(ti::ReTestItems.TestItem, mod_expr::Expr, jet::Sym
     @assert mod_expr.head === :module "Expected the test item expression to be wrapped in a module, got $(repr(mod_expr.head))"
     Test.@testset "JET $(repr(jet)) mode" begin
         result = _analyze_toplevel(mod_expr, ti.file, jet)
-        no_jet_errors = isempty(result)
+        reports = JET.get_reports(result)
+        filtered_reports = JET.configured_reports(reports, ignored_modules=(JET.AnyFrameModule(Test), JET.AnyFrameModule(JET)))
+        no_jet_errors = isempty(filtered_reports)
         onfail(Test.@test no_jet_errors) do
             JET.print_reports(
                 stdout,
-                JET.get_reports(result),
+                filtered_reports,
                 # Remove the name of the module JET uses for virtualization the code and the name of the module
                 # we wrap the test items in.
                 JET.gen_postprocess(result.res.actual2virtual) ∘ x->replace(x, string("var\"", mod_expr.args[2], "\"") => ""),
