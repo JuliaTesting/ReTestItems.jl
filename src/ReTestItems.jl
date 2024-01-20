@@ -942,8 +942,8 @@ function with_source_path(f, path)
 end
 
 # Call `runtestsetup(ts, ...)` for each `ts::Testsetup` required by the given `TestItem`
-# Return setup_name => module_name pairs
-function runtestsetups(ti::TestItem, ctx::TestContext; logs::Symbol, force::Bool=false)
+# Return `Dict` mapping `setup_name::Symbol => module_name::Symbol`
+function runtestsetups(ti::TestItem, ctx::TestContext; logs::Symbol)
     # Initialse with the list of _requested_ setups, so that if it no setup by that name was
     # found when including files we return the setup name as the module name. Attempting to
     # import that name, like `using $setup`, will then throw an appropriate error.
@@ -959,16 +959,13 @@ end
 # name of the `Module` (i.e. returns a `Symbol`).
 # If the `TestSetup` has already been evaluated on this process and so is already in the
 # `TestContext`, simply returns the `Module` name.
-# Pass `force=true` to force the `TestSetup` to be re-evaluated, even if run before.
-function runtestsetup(ts::TestSetup, ctx::TestContext; logs::Symbol, force::Bool=false)
+function runtestsetup(ts::TestSetup, ctx::TestContext; logs::Symbol)
     mods = ctx.setups_evaled
     @lock mods.lock begin
-        if !force
-            mod = get(mods.modules, ts.name, nothing)
-            if mod !== nothing
-                # we've eval-ed this module before, so just return the module name
-                return nameof(mod)
-            end
+        mod = get(mods.modules, ts.name, nothing)
+        if mod !== nothing
+            # we've eval-ed this module before, so just return the module name
+            return nameof(mod)
         end
         # We haven't eval-ed this module before, so we need to eval it.
         # In case the setup fails to eval, we discard its logs -- we will attempt to eval
