@@ -1,65 +1,7 @@
 gettls(k, d) = get(task_local_storage(), k, d)
 
 ###
-### testsetup
-###
-
-"""
-    TestSetup(name, code)
-
-A module that a `TestItem` can require to be run before that `TestItem` is run.
-Used for declaring code that multiple `TestItem`s rely on.
-Should only be created via the `@testsetup` macro.
-"""
-struct TestSetup
-    name::Symbol
-    code::Any
-    file::String
-    line::Int
-    project_root::String
-    # We keep the IOStream open so that log capture can span mutliple test-items depending on
-    # the test setup. This IO object is only for writing on the worker. The coordinator needs
-    # to open the file when it needs to read from it.
-    logstore::Base.RefValue{IOStream} # Populated and only safe to use on the worker
-end
-
-"""
-    @testsetup module MyTestSetup
-        # code that can be shared between @testitems
-    end
-
-A module only used for tests, and which `@testitem`s can depend on.
-
-Useful for setup logic that is used across multiple test items.
-The setup will run once, before any `@testitem` that requires it is executed.
-If running with multiple processes, each test-setup with be run once on each process.
-
-Each test-setup module will live for the lifetime of the tests.
-Mutable state should be avoided, since the order in which test items run is non-deterministic,
-and test items may access the same test-setup module concurrently in the same process.
-
-Other than being declared with the `@testsetup` macro, to make then knowable to `@testitem`s,
-test-setup modules are just like other modules and can import dependencies and export names.
-
-A `@testitem` depends on a `@testsetup` via the `setup` keyword e.g
-
-    @testitem "MyTests1" setup=[MyTestSetup]
-        # tests that require MyTestSetup
-    end
-"""
-macro testsetup(mod)
-    (mod isa Expr && mod.head == :module) || error("`@testsetup` expects a `module ... end` argument")
-    _, name, code = mod.args
-    name isa Symbol || error("`@testsetup module` expects a valid module name")
-    nm = QuoteNode(name)
-    q = QuoteNode(code)
-    esc(quote
-        $store_test_setup($TestSetup($nm, $q, $(String(__source__.file)), $(__source__.line), $gettls(:__RE_TEST_PROJECT__, "."), Ref{IOStream}()))
-    end)
-end
-
-###
-### testitem
+### PerfStats
 ###
 
 Base.@kwdef struct PerfStats
@@ -92,6 +34,77 @@ macro timed_with_compilation(ex)
         val, out
     end
 end
+
+###
+### TestSetup
+###
+
+"""
+    TestSetup
+
+A module that a `TestItem` can require to be run before that `TestItem` is run.
+Used for declaring code that multiple `TestItem`s rely on.
+Should only be created via the `@testsetup` macro.
+"""
+struct TestSetup
+    name::Symbol
+    code::Any
+    file::String
+    line::Int
+    project_root::String
+    # We keep the IOStream open so that log capture can span mutliple test-items depending on
+    # the test setup. This IO object is only for writing on the worker. The coordinator needs
+    # to open the file when it needs to read from it.
+    logstore::Base.RefValue{IOStream} # Populated and only safe to use on the worker
+    stats::Base.RefValue{PerfStats} # populated when the test setup is finished running
+end
+function TestSetup(name::Symbol, code, file::String, line::Int, project_root::String)
+    return TestSetup(name, code, file, line, project_root, Ref{IOStream}(), Ref{PerfStats}())
+end
+
+"""
+    @testsetup module MyTestSetup
+        # code that can be shared between @testitems
+    end
+
+A module only used for tests, and which `@testitem`s can depend on.
+
+Useful for setup logic that is used across multiple test items.
+The setup will run once, before any `@testitem` that requires it is executed.
+If running with multiple processes, each test-setup with be run once on each process.
+
+Each test-setup module will live for the lifetime of the tests.
+Mutable state should be avoided, since the order in which test items run is non-deterministic,
+and test items may access the same test-setup module concurrently in the same process.
+
+Other than being declared with the `@testsetup` macro, to make then knowable to `@testitem`s,
+test-setup modules are just like other modules and can import dependencies and export names.
+
+A `@testitem` depends on a `@testsetup` via the `setup` keyword e.g
+
+    @testitem "MyTests1" setup=[MyTestSetup]
+        # tests that require MyTestSetup
+    end
+"""
+macro testsetup(mod)
+    (mod isa Expr && mod.head == :module) || error("`@testsetup` expects a `module ... end` argument")
+    _, name, code = mod.args
+    name isa Symbol || error("`@testsetup module` expects a valid module name")
+    nm = QuoteNode(name)
+    q = QuoteNode(code)
+    _source = QuoteNode(__source__)
+    esc(quote
+        $store_test_setup(
+            $TestSetup(
+                $nm, $q, $String($_source.file), $_source.line, $gettls(:__RE_TEST_PROJECT__, "."),
+            )
+        )
+    end)
+end
+
+###
+### TestItem
+###
 
 mutable struct ScheduledForEvaluation
     @atomic value::Bool
