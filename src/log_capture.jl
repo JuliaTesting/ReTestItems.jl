@@ -55,6 +55,11 @@ function _print_scaled_one_dec(io, value, scale, label="")
     end
     print(io, label)
 end
+function print_time(io::IO, s::PerfStats)
+    return print_time(
+        io; s.elapsedtime, s.bytes, s.gctime, s.allocs, s.compile_time, s.recompile_time
+    )
+end
 function print_time(io; elapsedtime, bytes=0, gctime=0, allocs=0, compile_time=0, recompile_time=0)
     _print_scaled_one_dec(io, elapsedtime, 1e9, " secs")
     if  gctime > 0 || compile_time > 0
@@ -243,7 +248,7 @@ function _print_test_errors(report_iob, ts::DefaultTestSet, worker_info)
     return nothing
 end
 
-function print_state(io, state, ti, ntestitems; color=:default)
+function print_state(io::IO, state::String, ti::TestItem, ntestitems; color=:default)
     interactive = parse(Bool, get(ENV, "RETESTITEMS_INTERACTIVE", string(Base.isinteractive())))
     print(io, format(now(), "HH:MM:SS | "))
     !interactive && print(io, _mem_watermark())
@@ -255,6 +260,13 @@ function print_state(io, state, ti, ntestitems; color=:default)
         printstyled(io, uppercase(state); bold=true)
     end
     print(io, " test item $(repr(ti.name)) ")
+end
+function print_state(io::IO, state::String, ts::TestSetup)
+    interactive = parse(Bool, get(ENV, "RETESTITEMS_INTERACTIVE", string(Base.isinteractive())))
+    print(io, format(now(), "HH:MM:SS | "))
+    !interactive && print(io, _mem_watermark())
+    printstyled(io, rpad(uppercase(state), 5))
+    print(io, " test setup $(ts.name) ")
 end
 
 function print_file_info(io, ti)
@@ -270,7 +282,6 @@ function log_testitem_skipped(ti::TestItem, ntestitems=0)
     write(DEFAULT_STDOUT[], take!(io.io))
 end
 
-# Marks the start of each test item
 function log_testitem_start(ti::TestItem, ntestitems=0)
     io = IOContext(IOBuffer(), :color => get(DEFAULT_STDOUT[], :color, false)::Bool)
     print_state(io, "START", ti, ntestitems)
@@ -278,12 +289,26 @@ function log_testitem_start(ti::TestItem, ntestitems=0)
     println(io)
     write(DEFAULT_STDOUT[], take!(io.io))
 end
+function log_testsetup_start(ts::TestSetup)
+    io = IOContext(IOBuffer(), :color => get(DEFAULT_STDOUT[], :color, false)::Bool)
+    print_state(io, "START", ts)
+    print_file_info(io, ts)
+    println(io)
+    write(DEFAULT_STDOUT[], take!(io.io))
+end
 
 function log_testitem_done(ti::TestItem, ntestitems=0)
     io = IOContext(IOBuffer(), :color => get(DEFAULT_STDOUT[], :color, false)::Bool)
     print_state(io, "DONE", ti, ntestitems)
-    x = last(ti.stats) # always print stats for most recent run
-    print_time(io; x.elapsedtime, x.bytes, x.gctime, x.allocs, x.compile_time, x.recompile_time)
+    stats = last(ti.stats) # always print stats for most recent run
+    print_time(io, stats)
+    println(io)
+    write(DEFAULT_STDOUT[], take!(io.io))
+end
+function log_testsetup_done(ts::TestSetup, ntestitems=0)
+    io = IOContext(IOBuffer(), :color => get(DEFAULT_STDOUT[], :color, false)::Bool)
+    print_state(io, "DONE", ts)
+    print_time(io, ts.stats[])
     println(io)
     write(DEFAULT_STDOUT[], take!(io.io))
 end
