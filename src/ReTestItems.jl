@@ -941,13 +941,34 @@ function with_source_path(f, path)
     end
 end
 
-function ensure_setup!(ctx::TestContext, ts::TestSetup, logs::Symbol)
+# Call `runtestsetup(ts, ...)` for each `ts::Testsetup` required by the given `TestItem`
+# Return setup_name => module_name pairs
+function runtestsetups(ti::TestItem, ctx::TestContext; logs::Symbol, force::Bool=false)
+    # Initialse with the list of _requested_ setups, so that if it no setup by that name was
+    # found when including files we return the setup name as the module name. Attempting to
+    # import that name, like `using $setup`, will then throw an appropriate error.
+    setup_to_mod = Dict{Symbol,Symbol}(ti.setups .=> ti.setups)
+    for (ts_name, ts) in ti.testsetups
+        @debugv 1 "Ensuring setup for test item $(repr(ti.name)) $(ts_name)$(_on_worker())."
+        setup_to_mod[ts_name] = runtestsetup(ts, ctx; logs)
+    end
+    return setup_to_mod
+end
+
+# Run the given `TestSetup`, add the resulting `Module` to the `TestContext` and returns the
+# name of the `Module` (i.e. returns a `Symbol`).
+# If the `TestSetup` has already been evaluated on this process and so is already in the
+# `TestContext`, simply returns the `Module` name.
+# Pass `force=true` to force the `TestSetup` to be re-evaluated, even if run before.
+function runtestsetup(ts::TestSetup, ctx::TestContext; logs::Symbol, force::Bool=false)
     mods = ctx.setups_evaled
     @lock mods.lock begin
-        mod = get(mods.modules, ts.name, nothing)
-        if mod !== nothing
-            # we've eval-ed this module before, so just return the module name
-            return nameof(mod)
+        if !force
+            mod = get(mods.modules, ts.name, nothing)
+            if mod !== nothing
+                # we've eval-ed this module before, so just return the module name
+                return nameof(mod)
+            end
         end
         # We haven't eval-ed this module before, so we need to eval it.
         # In case the setup fails to eval, we discard its logs -- we will attempt to eval
@@ -1061,24 +1082,16 @@ function runtestitem(
     prev = get(task_local_storage(), :__TESTITEM_ACTIVE__, false)
     task_local_storage()[:__TESTITEM_ACTIVE__] = true
     try
-        for (setup_name, ts) in ti.testsetups
-            # ensure setup has been evaled before
-            @debugv 1 "Ensuring setup for test item $(repr(name)) $(setup_name)$(_on_worker())."
-            ts_mod = ensure_setup!(ctx, ts, logs)
-            # eval using in our @testitem module
-            @debugv 1 "Importing setup for test item $(repr(name)) $(setup_name)$(_on_worker())."
+        # eval `using $TestSetup` in our @testitem module.
+        testsetups = runtestsetups(ti, ctx; logs)
+        for (ts_name, ts_module_name) in testsetups
+            @debugv 1 "Add setup imports for test item $(repr(name)) $(setup_name)$(_on_worker())."
             # We look up the testsetups from Main (since tests are eval'd in their own
             # temporary anonymous module environment.)
-            push!(body.args, Expr(:using, Expr(:., :Main, ts_mod)))
-            # ts_mod is a gensym'd name so that setup modules don't clash
-            # so we set a const alias inside our @testitem module to make things work
-            push!(body.args, :(const $setup_name = $ts_mod))
-        end
-        for setup_name in setdiff(ti.setups, keys(ti.testsetups))
-             # if the setup was requested but is not in our testsetups, then it was never
-             # found when including files. We still add `using $setup` in the test item
-             # so that we throw an appropriate error when running the test item.
-            push!(body.args, Expr(:using, Expr(:., :Main, setup_name)))
+            push!(body.args, Expr(:using, Expr(:., :Main, ts_module_name)))
+            # ts_module_name is a gensym'd name so that setup modules don't clash,
+            # so set a const alias inside our @testitem module to make things work.
+            push!(body.args, :(const $ts_name = $ts_module_name))
         end
         @debugv 1 "Setup for test item $(repr(name)) done$(_on_worker())."
 
