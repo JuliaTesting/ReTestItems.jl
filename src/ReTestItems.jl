@@ -385,7 +385,7 @@ function _runtests_in_current_env(
                     end
                 end
                 if failfast && is_non_pass
-                    cancel(testitems)
+                    cancel!(testitems)
                     print_failfast_cancellation(testitem)
                     break
                 end
@@ -598,10 +598,8 @@ function manage_worker(
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
                 else
                     if failfast && is_non_pass
-                        already_cancelled = cancel(testitems)
-                        if !already_cancelled
-                            print_failfast_cancellation(testitem)
-                        end
+                        already_cancelled = cancel!(testitems)
+                        already_cancelled || print_failfast_cancellation(testitem)
                     end
                     testitem = next_testitem(testitems, testitem.number[])
                     run_number = 1
@@ -632,9 +630,9 @@ function manage_worker(
             end
             # Handle retries
             if run_number == max_runs
-                if failfast && !is_cancelled(testitems)
-                    cancel(testitems)
-                    print_failfast_cancellation(testitem)
+                if failfast
+                    already_cancelled = cancel!(testitems)
+                    already_cancelled || print_failfast_cancellation(testitem)
                 end
                 testitem = next_testitem(testitems, testitem.number[])
                 run_number = 1
