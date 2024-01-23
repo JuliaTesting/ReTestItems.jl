@@ -108,7 +108,7 @@ TestItems(graph) = TestItems(graph, TestItem[])
 TestItems(graph, testitems) = TestItems(graph, testitems, false, 0)
 # Prevent any new testitems from being scheduled, and return a `Bool` indicating whether or
 # not the testitems were already cancelled.
-cancel(t::TestItems) = @atomicswap t.cancelled = true
+cancel!(t::TestItems) = @atomicswap t.cancelled = true
 # Check whether the testitems have been cancelled.
 # Should _not_ be used to decide whether or not to cancel testitems, instead just call
 # `cancel` and check the return value to know if they had already been cancelled.
