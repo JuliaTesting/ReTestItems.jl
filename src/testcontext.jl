@@ -82,14 +82,6 @@ function prune!(dn::DirNode)
     return nothing
 end
 
-mutable struct Cancellation
-    cancel::Bool
-    const lock::ReentrantLock
-end
-Cancellation() = Cancellation(false, ReentrantLock())
-check(c::Cancellation) = @lock c.lock c.cancel
-cancel(c::Cancellation) = @lock c.lock c.cancel = true
-
 mutable struct TestItems
     graph::Union{DirNode, FileNode}
     # testitems are stored in a flat list for easy iteration
@@ -97,14 +89,19 @@ mutable struct TestItems
     # they are populated once the full graph is done by doing
     # a depth-first traversal of the graph
     testitems::Vector{TestItem} # frozen once flatten_testitems! is called
-    cancellation::Cancellation
+    @atomic cancelled::Bool # if true, no more testitems should run
     @atomic count::Int # number of testitems that have been taken for eval so far
 end
 
 TestItems(graph) = TestItems(graph, TestItem[])
-TestItems(graph, testitems) = TestItems(graph, testitems, Cancellation(), 0)
-cancel(t::TestItems) = cancel(t.cancellation)
-is_cancelled(t::TestItems) = check(t.cancellation)
+TestItems(graph, testitems) = TestItems(graph, testitems, false, 0)
+# Prevent any new testitems from being scheduled, and return a `Bool` indicating whether or
+# not the testitems were already cancelled.
+cancel!(t::TestItems) = @atomicswap t.cancelled = true
+# Check whether the testitems have been cancelled.
+# Should _not_ be used to decide whether or not to cancel testitems, instead just call
+# `cancel` and check the return value to know if they had already been cancelled.
+is_cancelled(t::TestItems) = @atomic t.cancelled
 
 ###
 ### record results
