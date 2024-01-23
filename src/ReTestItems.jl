@@ -593,9 +593,11 @@ function manage_worker(
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
                 else
-                    if is_non_pass && failfast && !is_cancelled(testitems)
-                        cancel(testitems)
-                        print_failfast_cancellation(testitem)
+                    if failfast && is_non_pass
+                        already_cancelled = cancel(testitems)
+                        if !already_cancelled
+                            print_failfast_cancellation(testitem)
+                        end
                     end
                     testitem = next_testitem(testitems, testitem.number[])
                     run_number = 1
