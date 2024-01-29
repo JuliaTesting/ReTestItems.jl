@@ -280,4 +280,52 @@ end
     end
 end
 
+@testset "Manual JUnitTestSuite/JUnitTestCase with error no logs" begin
+    using ReTestItems: JUnitTestCase, JUnitTestSuite
+    using Dates: datetime2unix, DateTime
+
+    function get_test_suite(suite_name, test_name)
+        ts = @testset "$test_name" begin
+            # would rather make this false, but failing @test makes the ReTestItems test fail as well
+            @test true
+        end
+        # Make the test time deterministic to make testing report output easier
+        ts.time_start = datetime2unix(DateTime(2023, 01, 15, 16, 42))
+        ts.time_end = datetime2unix(DateTime(2023, 01, 15, 16, 42, 30))
+
+        # should be able to construct a TestCase from a TestSet
+        tc = JUnitTestCase(ts)
+        @test tc isa JUnitTestCase
+
+        # once wrapped in a TestSuite, this should have enough info to write out a report
+        suite = JUnitTestSuite(suite_name)
+        junit_record!(suite, tc)
+        @test suite isa JUnitTestSuite
+        return suite
+    end
+    suite = get_test_suite("manual", "test")
+    # pretend there is a failure
+    suite.counts.failures = 1
+    suite.testcases[1].counts.failures = 1
+
+    mktemp() do path, io
+        write_junit_file(path, suite)
+        report_string = read(io, String)
+        expected = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <testsuite name="manual" timestamp="2023-01-15T16:42:00.0" time="30.0" tests="1" skipped="0" failures="1" errors="0">
+        \t<testcase name="test" timestamp="2023-01-15T16:42:00.0" time="30.0" tests="1" skipped="0" failures="1" errors="0">
+        \t\t<properties>
+        \t\t<property name=\"dd_tags[test.id]\" value=\"$(repr(hash("test")))\"></property>
+        \t\t</properties>
+        \t\t<error message="Test errored but no error message was captured.">
+        \t\t</error>
+        \t</testcase>
+        </testsuite>
+        """
+        # leading/trailing whitespace isn't important
+        @test strip(report_string) == strip(expected)
+    end
+end
+
 end # junit_xml.jl testset
