@@ -8,7 +8,7 @@ A package for running `@testitem`s in parallel.
 
 ## Quickstart
 
-Wrap your tests in the `@testitem` macro, place then in a file name `*_test.jl`, and use `runtests` to run them:
+Wrap your tests in the `@testitem` macro, place them in a file named `*_test.jl`, and use `runtests` to run them:
 
 ```julia
 # test/arithmetic_tests.jl
