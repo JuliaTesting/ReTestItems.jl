@@ -183,6 +183,7 @@ function Worker(;
         if isassigned(GLOBAL_CALLBACK_PER_WORKER)
             GLOBAL_CALLBACK_PER_WORKER[](w)
         end
+        remote_fetch(w, :(1+1)) # Wait for worker to be ready
         return w
     catch
         # cleanup in case connect fails/times out
