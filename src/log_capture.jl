@@ -95,8 +95,8 @@ function logfile_name(ts::TestSetup)
     # Test setup names should be unique to begin with, but we add hash of their location to be sure
     string("ReTestItems_setup_", ts.name, "_", hash(ts.file, UInt(ts.line)), ".log")
 end
-logpath(ti::TestItem, i=nothing) = joinpath(RETESTITEMS_TEMP_FOLDER, logfile_name(ti, i))
-logpath(ts::TestSetup) = joinpath(RETESTITEMS_TEMP_FOLDER, logfile_name(ts))
+logpath(ti::TestItem, i=nothing) = joinpath(RETESTITEMS_TEMP_FOLDER[], logfile_name(ti, i))
+logpath(ts::TestSetup) = joinpath(RETESTITEMS_TEMP_FOLDER[], logfile_name(ts))
 
 """
     _redirect_logs(f, target::Union{IO,String})

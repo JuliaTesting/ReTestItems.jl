@@ -98,7 +98,8 @@ end
 # Base.Process has a nifty .exitnotify Condition
 # so we might as well get notified when the process exits
 # as one of our ways of detecting the worker has gone away
-function watch_and_terminate!(w::Worker)
+function watch_and_terminate!(w::Worker, ev::Threads.Event)
+    notify(ev) # notify we've started
     wait(w.process)
     terminate!(w, :watch_and_terminate)
     true
@@ -172,17 +173,23 @@ function Worker(;
         end
         # create worker
         w = Worker(ReentrantLock(), pid, proc, sock, Task(nothing), Task(nothing), Task(nothing), Dict{UInt64, Future}(), false)
-        ## start a task to watch for worker process termination
-        w.process_watch = Threads.@spawn watch_and_terminate!(w)
-        ## start a task to redirect worker output
-        w.output = Threads.@spawn redirect_worker_output(worker_redirect_io, w, worker_redirect_fn, proc)
-        ## start a task to listen for worker messages
-        w.messages = Threads.@spawn process_responses(w)
+        ## start a task to watch for worker process termination, notify the event when the task starts
+        e1 = Threads.Event()
+        w.process_watch = Threads.@spawn watch_and_terminate!(w, $e1)
+        ## start a task to redirect worker output, notify the event when the task starts
+        e2 = Threads.Event()
+        w.output = Threads.@spawn redirect_worker_output(worker_redirect_io, w, worker_redirect_fn, proc, $e2)
+        ## start a task to listen for worker messages, notify the event when the task starts
+        e3 = Threads.Event()
+        w.messages = Threads.@spawn process_responses(w, $e3)
         # add a finalizer
         finalizer(x -> @async(terminate!(x, :finalizer)), w) # @async to allow a task switch
         if isassigned(GLOBAL_CALLBACK_PER_WORKER)
             GLOBAL_CALLBACK_PER_WORKER[](w)
         end
+        wait(e1)
+        wait(e2)
+        wait(e3)
         return w
     catch
         # cleanup in case connect fails/times out
@@ -193,8 +200,9 @@ function Worker(;
     end
 end
 
-function redirect_worker_output(io::IO, w::Worker, fn, proc)
+function redirect_worker_output(io::IO, w::Worker, fn, proc, ev::Threads.Event)
     try
+        notify(ev) # notify we've started
         while !process_exited(proc) && !w.terminated
             line = readline(proc)
             if !isempty(line)
@@ -214,7 +222,8 @@ function redirect_worker_output(io::IO, w::Worker, fn, proc)
     true
 end
 
-function process_responses(w::Worker)
+function process_responses(w::Worker, ev::Threads.Event)
+    notify(ev) # notify we've started
     lock = w.lock
     reqs = w.futures
     try
