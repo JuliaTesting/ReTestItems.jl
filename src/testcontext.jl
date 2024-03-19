@@ -193,4 +193,5 @@ end
 struct TestItemResult
     testset::DefaultTestSet
     stats::PerfStats
+    is_retryable::Bool
 end

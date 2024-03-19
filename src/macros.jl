@@ -125,6 +125,7 @@ struct TestItem
     line::Int
     project_root::String
     code::Any
+    jet::Symbol
     testsetups::Vector{TestSetup} # populated by runtests coordinator
     workerid::Base.RefValue{Int} # populated when the test item is scheduled
     testsets::Vector{DefaultTestSet} # populated when the test item is finished running
@@ -132,10 +133,10 @@ struct TestItem
     stats::Vector{PerfStats} # populated when the test item is finished running
     scheduled_for_evaluation::ScheduledForEvaluation # to keep track of whether the test item has been scheduled for evaluation
 end
-function TestItem(number, name, id, tags, default_imports, setups, retries, timeout, skip, file, line, project_root, code)
+function TestItem(number, name, id, tags, default_imports, setups, retries, timeout, skip, file, line, project_root, code, jet)
     _id = @something(id, repr(hash(name, hash(relpath(file, project_root)))))
     return TestItem(
-        number, name, _id, tags, default_imports, setups, retries, timeout, skip, file, line, project_root, code,
+        number, name, _id, tags, default_imports, setups, retries, timeout, skip, file, line, project_root, code, jet,
         TestSetup[],
         Ref{Int}(0),
         DefaultTestSet[],
@@ -250,6 +251,7 @@ macro testitem(nm, exs...)
     setup = Any[]
     skip = false
     _id = nothing
+    jet = QuoteNode(:none)
     _run = true  # useful for testing `@testitem` itself
     _source = QuoteNode(__source__)
     if length(exs) > 1
@@ -293,6 +295,10 @@ macro testitem(nm, exs...)
             elseif kw == :_source
                 _source = ex.args[2]
                 @assert isa(_source, Union{QuoteNode,Expr})
+            elseif kw == :jet
+                jet = ex.args[2]
+                @assert isa(jet, QuoteNode)
+                @assert jet in QuoteNode.((:none, :skip, :typo, :basic, :sound))
             else
                 error("unknown `@testitem` keyword arg `$(ex.args[1])`")
             end
@@ -309,6 +315,7 @@ macro testitem(nm, exs...)
             $String($_source.file), $_source.line,
             $gettls(:__RE_TEST_PROJECT__, "."),
             $q,
+            $jet,
         )
             if !$_run
                 $ti
