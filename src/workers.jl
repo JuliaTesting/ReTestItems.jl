@@ -107,8 +107,9 @@ end
 
 # gracefully terminate a worker by sending a shutdown message
 # and waiting for the other tasks to perform worker shutdown
-function Base.close(w::Worker)
+function Base.close(w::Worker, from::Symbol=:manual)
     if !w.terminated && isopen(w.socket)
+        @debug "closing worker $(w.pid) from $from"
         req = Request(Symbol(), :(), rand(UInt64), true)
         @lock w.lock begin
             serialize(w.socket, req)
