@@ -212,7 +212,7 @@ function redirect_worker_output(io::IO, w::Worker, fn, proc, ev::Threads.Event)
             end
         end
     catch e
-        # @error "Error redirecting worker output $(w.pid)" exception=(e, catch_backtrace())
+        @debug "Error redirecting worker output $(w.pid)" exception=(e, catch_backtrace())
         terminate!(w, :redirect_worker_output)
         e isa EOFError || e isa Base.IOError || rethrow()
     finally
@@ -247,7 +247,7 @@ function process_responses(w::Worker, ev::Threads.Event)
             end
         end
     catch e
-        # @error "Error processing responses from worker $(w.pid)" exception=(e, catch_backtrace())
+        @debug "Error processing responses from worker $(w.pid)" exception=(e, catch_backtrace())
         terminate!(w, :process_responses)
         e isa EOFError || e isa Base.IOError || rethrow()
     end
