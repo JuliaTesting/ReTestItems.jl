@@ -82,12 +82,12 @@ function terminate!(w::Worker, from::Symbol=:manual)
         empty!(w.futures)
     end
     signal = Base.SIGTERM
-    while true
+    while !process_exited(w.process)
+        @debug "sending signal $signal to worker $(w.pid)"
         kill(w.process, signal)
         signal = signal == Base.SIGTERM ? Base.SIGINT : Base.SIGKILL
         process_exited(w.process) && break
         sleep(0.1)
-        process_exited(w.process) && break
     end
     if !(w.socket.status == Base.StatusUninit || w.socket.status == Base.StatusInit || w.socket.handle === C_NULL)
         close(w.socket)
