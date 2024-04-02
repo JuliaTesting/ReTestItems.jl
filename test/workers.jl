@@ -17,6 +17,8 @@ using Test
     @testset "clean shutdown ($w)" begin
         close(w)
         @test !process_running(w.process)
+        @test w.process.termsignal == Base.SIGTERM
+        @test w.process.exitcode == 0
         @test !isopen(w.socket)
         @test w.terminated
         @test istaskstarted(w.messages) && istaskdone(w.messages)
