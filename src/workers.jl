@@ -33,13 +33,17 @@ struct Request
     # ignoring other fields
     shutdown::Bool
 end
+is_shutdown(r::Request) = r.shutdown
 
 # worker executes Request and returns a serialized Response object *if* Request has an id
 struct Response
     result
     error::Union{Nothing, Exception}
     id::UInt64 # matches a corresponding Request.id
+    # if true, worker is shutting down, so we can stop listening to it.
+    shutdown::Bool
 end
+is_shutdown(r::Response) = r.shutdown
 
 # simple Future that coordinator can wait on until a Response comes back for a Request
 struct Future
@@ -232,6 +236,7 @@ function process_responses(w::Worker, ev::Threads.Event)
             # get the next Response from the worker
             r = deserialize(w.socket)
             @assert r isa Response "Received invalid response from worker $(w.pid): $(r)"
+            is_shutdown(r) && break
             # println("Received response $(r) from worker $(w.pid)")
             @lock lock begin
                 @assert haskey(reqs, r.id) "Received response for unknown request $(r.id) from worker $(w.pid)"
@@ -318,7 +323,14 @@ function serve_requests(io)
     while true
         req = deserialize(io)
         @assert req isa Request
-        req.shutdown && break
+        if is_shutdown(req)
+            resp = Response(nothing, nothing, rand(UInt64), true)
+            @lock iolock begin
+                # println("sending response: $(resp)")
+                serialize(io, resp)
+                flush(io)
+            end
+        end
         # println("received request: $(req)")
         Threads.@spawn begin
             r = $req
