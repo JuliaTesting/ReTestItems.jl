@@ -13,7 +13,7 @@ export runtests, runtestitem
 export @testsetup, @testitem
 export TestSetup, TestItem, TestItemResult
 
-const RETESTITEMS_TEMP_FOLDER = mkpath(joinpath(tempdir(), "ReTestItemsTempLogsDirectory"))
+const RETESTITEMS_TEMP_FOLDER = Ref{String}()
 const DEFAULT_TESTITEM_TIMEOUT = 30*60
 const DEFAULT_RETRIES = 0
 const DEFAULT_MEMORY_THRESHOLD = Ref{Float64}(0.99)
@@ -71,6 +71,8 @@ function __init__()
     @static if Sys.isapple()
         DEFAULT_MEMORY_THRESHOLD[] = 1.0
     end
+    # Defer setting up the temp folder for pkgimage relocability
+    RETESTITEMS_TEMP_FOLDER[] = mkpath(joinpath(tempdir(), "ReTestItemsTempLogsDirectory"))
     return nothing
 end
 
@@ -97,6 +99,22 @@ function _validated_nworker_threads(str)
     end
     isok || throw(ArgumentError("Invalid value for `nworker_threads` : $str"))
     return replace(str, "auto" => string(Sys.CPU_THREADS))
+end
+
+function _validated_paths(paths, should_throw::Bool)
+    return filter(paths) do p
+        if !ispath(p)
+            msg = "No such path $(repr(p))"
+            should_throw ? throw(ArgumentError(msg)) : @warn msg
+            return false
+        elseif !(is_test_file(p) || is_testsetup_file(p)) && isfile(p)
+            msg = "$(repr(p)) is not a test file"
+            should_throw ? throw(ArgumentError(msg)) : @warn msg
+            return false
+        else
+            return true
+        end
+    end
 end
 
 """
@@ -130,9 +148,11 @@ will be run.
 ## Configuring `runtests`
 - `testitem_timeout::Real`: The number of seconds to wait until a `@testitem` is marked as failed.
   Defaults to 30 minutes. Can also be set using the `RETESTITEMS_TESTITEM_TIMEOUT` environment variable.
+  If a `@testitem` sets its own `timeout` keyword, then that takes precedence.
+  Fractional values are rounded up to the nearest second.
   Note timeouts are currently only applied when `nworkers > 0`.
 - `retries::Int=$DEFAULT_RETRIES`: The number of times to retry a `@testitem` if either tests
-  do not pass or, if running with multiple worker processes, the worker fails or hits the `testitem_timeout`
+  do not pass or, if running with multiple worker processes, the worker fails or hits the timeout limit
   while running the tests. Can also be set using the `RETESTITEMS_RETRIES` environment variable.
   If a `@testitem` sets its own `retries` keyword, then the maximum of these two retry numbers
   will be used as the retry limit for that `@testitem`. When `report=true`, the report will
@@ -166,8 +186,12 @@ will be run.
   For interative sessions, `:eager` is the default when running with 0 or 1 worker processes, `:batched` otherwise.
   For non-interactive sessions, `:issues` is used by default.
 - `verbose_results::Bool`: If `true`, the final test report will list each `@testitem`, otherwise
-    the results are aggregated. Default is `false` for non-interactive sessions
-    or when `logs=:issues`, `true` otherwise.
+  the results are aggregated. Default is `false` for non-interactive sessions
+  or when `logs=:issues`, `true` otherwise.
+- `validate_paths::Bool=false`: If `true`, `runtests` will throw an error if any of the
+  `paths` passed to it cannot contain test files, either because the path doesn't exist or
+  the path points to a file which is not a test file. Default is `false`.
+  Can also be set using the `RETESTITEMS_VALIDATE_PATHS` environment variable.
 """
 function runtests end
 
@@ -212,36 +236,30 @@ function runtests(
     logs::Symbol=Symbol(get(ENV, "RETESTITEMS_LOGS", default_log_display_mode(report, nworkers))),
     verbose_results::Bool=(logs !== :issues && isinteractive()),
     test_end_expr::Expr=Expr(:block),
+    validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
-    paths′ = filter(paths) do p
-        if !ispath(p)
-            @warn "No such path $(repr(p))"
-            return false
-        elseif !(is_test_file(p) || is_testsetup_file(p)) && isfile(p)
-            @warn "$(repr(p)) is not a test file"
-            return false
-        else
-            return true
-        end
-    end
+    paths′ = _validated_paths(paths, validate_paths)
+
     logs in LOG_DISPLAY_MODES || throw(ArgumentError("`logs` must be one of $LOG_DISPLAY_MODES, got $(repr(logs))"))
     report && logs == :eager && throw(ArgumentError("`report=true` is not compatible with `logs=:eager`"))
     (0 ≤ memory_threshold ≤ 1) || throw(ArgumentError("`memory_threshold` must be between 0 and 1, got $(repr(memory_threshold))"))
+    testitem_timeout > 0 || throw(ArgumentError("`testitem_timeout` must be a postive number, got $(repr(testitem_timeout))"))
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
     shouldrun_combined(ti) = shouldrun(ti) && _shouldrun(name, ti.name) && _shouldrun(tags, ti.tags)
-    mkpath(RETESTITEMS_TEMP_FOLDER) # ensure our folder wasn't removed
+    mkpath(RETESTITEMS_TEMP_FOLDER[]) # ensure our folder wasn't removed
     save_current_stdio()
     nworkers = max(0, nworkers)
     retries = max(0, retries)
+    timeout = ceil(Int, testitem_timeout)
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs)
+            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs)
         end
     else
-        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs)
+        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs)
     end
 end
 
@@ -255,7 +273,7 @@ end
 # By tracking and reusing test environments, we can avoid this issue.
 const TEST_ENVS = Dict{String, String}()
 
-function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Real, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
+function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -298,7 +316,7 @@ end
 
 function _runtests_in_current_env(
     shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    testitem_timeout::Real, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
+    testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
 )
     start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
@@ -375,7 +393,7 @@ function _runtests_in_current_env(
     finally
         Test.TESTSET_PRINT_ENABLE[] = true
         # Cleanup test setup logs
-        foreach(rm, filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER, join=true)))
+        foreach(rm, filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER[], join=true)))
     end
     return nothing
 end
@@ -391,7 +409,8 @@ function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems; 
         Test.TESTSET_PRINT_ENABLE[] = false
         const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)
         GLOBAL_TEST_CONTEXT.setups_evaled = ReTestItems.TestSetupModules()
-        @info "Starting test worker$($i) on pid = $(Libc.getpid()), with $(Threads.nthreads()) threads"
+        nthreads_str = $nworker_threads
+        @info "Starting test worker$($i) on pid = $(Libc.getpid()), with $nthreads_str threads"
         $(worker_init_expr.args...)
         nothing
     end)
@@ -427,8 +446,7 @@ end
 
 any_non_pass(ts::DefaultTestSet) = ts.anynonpass
 
-function record_timeout!(testitem, run_number::Int, timeout_limit::Real)
-    timeout_s = round(Int, timeout_limit)
+function record_timeout!(testitem, run_number::Int, timeout_s::Int)
     time_str = if timeout_s < 60
         string(timeout_s, "s")
     else
@@ -440,7 +458,7 @@ function record_timeout!(testitem, run_number::Int, timeout_limit::Real)
         end
     end
     msg = "Timed out after $time_str running test item $(repr(testitem.name)) (run=$run_number)"
-    record_test_error!(testitem, msg, timeout_limit)
+    record_test_error!(testitem, msg, timeout_s)
 end
 
 function record_worker_terminated!(testitem, worker::Worker, run_number::Int)
@@ -472,7 +490,7 @@ end
 
 function manage_worker(
     worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    timeout::Real, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
+    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
@@ -486,6 +504,7 @@ function manage_worker(
             worker = robust_start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
         end
         testitem.workerid[] = worker.pid
+        timeout = something(testitem.timeout, default_timeout)
         fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)))))
         max_runs = 1 + max(retries, testitem.retries)
         try
@@ -845,6 +864,40 @@ end
 const GLOBAL_TEST_CONTEXT_FOR_TESTING = TestContext("ReTestItems", 0)
 const GLOBAL_TEST_SETUPS_FOR_TESTING = Dict{Symbol, TestSetup}()
 
+# Check the `skip` keyword, and return a `Bool` indicating if we should skip the testitem.
+# If `skip` is an expression, run it in a new module just like how we run testitems.
+# If the `skip` expression doesn't return a Bool, throw an informative error.
+function should_skip(ti::TestItem)
+    ti.skip isa Bool && return ti.skip
+    # `skip` is an expression.
+    # Give same scope as testitem body, e.g. imports should work.
+    skip_body = deepcopy(ti.skip::Expr)
+    softscope_all!(skip_body)
+    # Run in a new module to not pollute `Main`.
+    # Need to store the result of the `skip` expression so we can check it.
+    mod_name = gensym(Symbol(:skip_, ti.name))
+    skip_var = gensym(:skip)
+    skip_mod_expr = :(module $mod_name; $skip_var = $skip_body; end)
+    skip_mod = Core.eval(Main, skip_mod_expr)
+    # Check what the expression evaluated to.
+    skip = getfield(skip_mod, skip_var)
+    !isa(skip, Bool) && _throw_not_bool(ti, skip)
+    return skip::Bool
+end
+_throw_not_bool(ti, skip) = error("Test item $(repr(ti.name)) `skip` keyword must be a `Bool`, got `skip=$(repr(skip))`")
+
+# Log that we skipped the testitem, and record a "skipped" test result with empty stats.
+function skiptestitem(ti::TestItem, ctx::TestContext; verbose_results::Bool=true)
+    ts = DefaultTestSet(ti.name; verbose=verbose_results)
+    Test.record(ts, Test.Broken(:skipped, ti.name))
+    push!(ti.testsets, ts)
+    stats = PerfStats()
+    push!(ti.stats, stats)
+    log_testitem_skipped(ti, ctx.ntestitems)
+    return TestItemResult(ts, stats)
+end
+
+
 # assumes any required setups were expanded outside of a runtests context
 function runtestitem(ti::TestItem; kw...)
     # make a fresh TestSetupModules for each testitem run
@@ -863,6 +916,9 @@ function runtestitem(
     ti::TestItem, ctx::TestContext;
     test_end_expr::Expr=Expr(:block), logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true,
 )
+    if should_skip(ti)::Bool
+        return skiptestitem(ti, ctx; verbose_results)
+    end
     name = ti.name
     log_testitem_start(ti, ctx.ntestitems)
     ts = DefaultTestSet(name; verbose=verbose_results)

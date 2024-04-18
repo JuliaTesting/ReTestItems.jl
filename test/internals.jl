@@ -169,7 +169,7 @@ end # `include_testfiles!` testset
 @testset "report_empty_testsets" begin
     using ReTestItems: TestItem, report_empty_testsets, PerfStats, ScheduledForEvaluation
     using Test: DefaultTestSet, Fail, Error
-    ti = TestItem(Ref(42), "Dummy TestItem", "DummyID", [], false, [], 0, "source/path", 42, ".", nothing)
+    ti = TestItem(Ref(42), "Dummy TestItem", "DummyID", [], false, [], 0, nothing, false, "source/path", 42, ".", nothing)
 
     ts = DefaultTestSet("Empty testset")
     report_empty_testsets(ti, ts)
@@ -247,6 +247,80 @@ end
         @test_throws ArgumentError ReTestItems._validated_nworker_threads("0,1")
         @test_throws ArgumentError ReTestItems._validated_nworker_threads("0,auto")
     end
+end
+
+@testset "_validated_paths" begin
+    _validated_paths = ReTestItems._validated_paths
+    testfiles_dir = joinpath(pkgdir(ReTestItems), "test", "testfiles")
+
+    test_file = joinpath(testfiles_dir, "_happy_tests.jl")
+    @assert isfile(test_file)
+    for _throw in (false, true)
+        @test _validated_paths((test_file,), _throw) == (test_file,)
+        @test_logs _validated_paths((test_file,), _throw) # test nothing is logged
+    end
+
+    @assert !ispath("foo")
+    @test _validated_paths(("foo",), false) == ()
+    @test_logs (:warn, "No such path \"foo\"") _validated_paths(("foo",), false)
+    @test_throws ArgumentError("No such path \"foo\"") _validated_paths(("foo",), true)
+
+    @assert isfile(test_file)
+    @assert !ispath("foo")
+    paths = (test_file, "foo",)
+    @test _validated_paths(paths, false) == (test_file,)
+    @test_logs (:warn, "No such path \"foo\"") _validated_paths(paths, false)
+    @test_throws ArgumentError("No such path \"foo\"") _validated_paths(paths, true)
+
+    nontest_file = joinpath(testfiles_dir, "_empty_file.jl")
+    @assert isfile(nontest_file)
+    @assert !ReTestItems.is_test_file(nontest_file)
+    @assert !ReTestItems.is_testsetup_file(nontest_file)
+    @test _validated_paths((nontest_file,), false) == ()
+    @test_logs (:warn, "\"$nontest_file\" is not a test file") _validated_paths((nontest_file,), false)
+    @test_throws ArgumentError("\"$nontest_file\" is not a test file") _validated_paths((nontest_file,), true)
+end
+
+@testset "skiptestitem" begin
+    # Test that `skiptestitem` unconditionally skips a testitem
+    # and returns `TestItemResult` with a single "skipped" `Test.Result`
+    ti = @testitem "skip" _run=false begin
+        @test true
+        @test false
+        @test error()
+    end
+    ctx = ReTestItems.TestContext("test_ctx", 1)
+    ti_res = ReTestItems.skiptestitem(ti, ctx)
+    @test ti_res isa TestItemResult
+    test_res = only(ti_res.testset.results)
+    @test test_res isa Test.Result
+    @test test_res isa Test.Broken
+    @test test_res.test_type == :skipped
+end
+
+@testset "should_skip" begin
+    should_skip = ReTestItems.should_skip
+
+    ti = @testitem("x", skip=true, _run=false, begin end)
+    @test should_skip(ti)
+    ti = @testitem("x", skip=false, _run=false, begin end)
+    @test !should_skip(ti)
+
+    ti = @testitem("x", skip=:(1 == 1), _run=false, begin end)
+    @test should_skip(ti)
+    ti = @testitem("x", skip=:(1 != 1), _run=false, begin end)
+    @test !should_skip(ti)
+
+    ti = @testitem("x", skip=:(x = 1; x + x == 2), _run=false, begin end)
+    @test should_skip(ti)
+    ti = @testitem("x", skip=:(x = 1; x + x != 2), _run=false, begin end)
+    @test !should_skip(ti)
+
+    ti = @testitem("x", skip=:(x = 1; x + x), _run=false, begin end)
+    @test_throws "Test item \"x\" `skip` keyword must be a `Bool`, got `skip=2`" should_skip(ti)
+
+    ti = @testitem("x", skip=:(x = 1; x + y), _run=false, begin end)
+    @test_throws UndefVarError(:y) should_skip(ti)
 end
 
 end # internals.jl testset

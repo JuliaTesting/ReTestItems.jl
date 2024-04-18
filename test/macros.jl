@@ -1,4 +1,3 @@
-using AutoHashEquals
 using ReTestItems
 using Test
 
@@ -252,6 +251,160 @@ end
     @test_throws expected (@eval @testitem("five", _id=hash("five"), _run=false, begin end))
 end
 
+# Here we are just testing how the `timeout` keyword is parsed.
+# The actual timeout functionality is tested in `integrationtests.jl`,
+# because we need to call `runtests` with multiple workers to test timeout functionality.
+# See https://github.com/JuliaTesting/ReTestItems.jl/issues/87
+@testset "testitem `timeout` keyword" begin
+    expected(t) = "`timeout` keyword must be passed a positive number. Got `timeout=$t`"
+    for t in (0, -1.1)
+        @test_throws expected(t) (
+            @eval @testitem "Bad" timeout=$t begin
+                @test true
+            end
+        )
+    end
+
+    @test_throws "`timeout` keyword must be passed a `Real`" (
+        @eval @testitem "Bad" timeout=1im begin
+            @test true
+        end
+    )
+
+    no_run() do
+        ti = @testitem "TI" timeout=1 begin
+            @test true
+        end
+        @test ti.timeout isa Int
+        @test ti.timeout == 1
+
+        # We round up to the nearest second.
+        ti = @testitem "TI" timeout=1.1 begin
+            @test true
+        end
+        @test ti.timeout isa Int
+        @test ti.timeout == 2
+
+        ti = @testitem "TI" begin
+            @test true
+        end
+        @test ti.timeout == nothing
+    end
+end
+
+@testset "testitem `skip` keyword" begin
+    function test_skipped(ti_result)
+        ts = ti_result.testset
+        # No tests should have been run
+        @test n_passed(ts) == 0
+        # A single "skipped" result should be recorded. Test uses `Broken` for skipped.
+        @test only(ts.results) isa Test.Broken
+        # Since no test was run, the stats should be empty / zeroed.
+        @test ti_result.stats == ReTestItems.PerfStats()
+    end
+    # test case `skip` is a `Bool`
+    ti = @testitem "skip isa bool" skip=true _run=false begin
+        @test true
+    end
+    @test ti.skip
+    res = ReTestItems.runtestitem(ti)
+    test_skipped(res)
+
+    # test no code in the test item is run when `skip=true`
+    ti = @testitem "test contains error" skip=true _run=false begin
+        @test error("err")
+    end
+    @test ti.skip
+    res = ReTestItems.runtestitem(ti)
+    test_skipped(res)
+
+    # test case `skip` given a literal that's not a `Bool`
+    expected = "`skip` keyword must be passed a `Bool`"
+    @test_throws expected (
+        @eval @testitem "bad 1" skip=123 begin
+            @test true
+        end
+    )
+    @test_throws expected (
+        @eval @testitem "bad 2" skip=foo begin
+            @test true
+        end
+    )
+
+    # test case `skip` is a `Expr` evaluating to a `Bool`
+    ti = @testitem "skip isa expr 1" skip=:(1+1 == 2) _run=false begin
+        @test true
+    end
+    # want to test a case where `skip` is not a `:block`
+    @assert ti.skip.head != :block
+    @test ti.skip == :(1+1 == 2)
+    res = ReTestItems.runtestitem(ti)
+    test_skipped(res)
+
+    # test case `skip` is a `Expr` evaluating to a `Bool`
+    ti = @testitem "skip isa expr 2" skip=(quote 1+1 == 2 end) _run=false begin
+        @test true
+    end
+    # want to test a case where `skip` is a `:block`
+    @assert ti.skip.head == :block
+    @test Base.remove_linenums!(ti.skip) == Base.remove_linenums!(quote 1+1 == 2 end)
+    res = ReTestItems.runtestitem(ti)
+    test_skipped(res)
+
+    # test that no code is evaluated until `runtestitem` is called
+    ti = @testitem "skip expr has error" skip=:(throw("oops")) _run=false begin
+        @test true
+    end
+    @test ti.skip == :(throw("oops"))
+    @test_throws "oops" ReTestItems.runtestitem(ti)
+
+    # test that skip expression can load modules
+    ti = @testitem "skip expr loads module" skip=:(using AutoHashEquals; AutoHashEquals isa Module) _run=false begin
+        @test true
+    end
+    @test ti.skip isa Expr
+    res = ReTestItems.runtestitem(ti)
+    test_skipped(res)
+
+    # test that skip expression does not pollute Main
+    var = gensym(:skip_var)
+    ti = @testitem "skip expr defines variable" skip=:($var=1; $var==1) _run=false begin
+        @test true
+    end
+    @test ti.skip isa Expr
+    res = ReTestItems.runtestitem(ti)
+    test_skipped(res)
+    @test !isdefined(Main, var)
+
+    # test that skip expression does not get modified
+    @testitem "skip not modified" skip=(x=1; x==1) _run=false begin
+        @test true
+    end
+    @assert ti.skip isa Expr
+    before = deepcopy(ti.skip)
+    @assert ti.skip !== before
+    res = ReTestItems.runtestitem(ti)
+    test_skipped(res)
+    @test ti.skip == before
+
+    @testset "skipping is logged" begin
+        old = ReTestItems.DEFAULT_STDOUT[]
+        try
+            io = IOBuffer()
+            ReTestItems.DEFAULT_STDOUT[] = io
+            line = @__LINE__() + 1
+            ti = @testitem "skip this" skip=true _run=false begin
+                @test true
+            end
+            file = relpath(@__FILE__(), ti.project_root)
+            ReTestItems.runtestitem(ti)
+            output = String(take!(io))
+            @test contains(output, "SKIP test item \"skip this\" at $file:$line")
+        finally
+            ReTestItems.DEFAULT_STDOUT[] = old
+        end
+    end
+end
 
 #=
 NOTE:

@@ -8,7 +8,7 @@ A package for running `@testitem`s in parallel.
 
 ## Quickstart
 
-Wrap your tests in the `@testitem` macro, place then in a file name `*_test.jl`, and use `runtests` to run them:
+Wrap your tests in the `@testitem` macro, place them in a file named `*_test.jl`, and use `runtests` to run them:
 
 ```julia
 # test/arithmetic_tests.jl
@@ -38,7 +38,8 @@ julia> runtests("test/arithmetic_tests.jl"; nworkers=2)
 
 ## Running tests
 
-You can run tests using the `runtests` function, which will run all tests for the current active project.
+You can run tests using the [`runtests`](https://docs.juliahub.com/General/ReTestItems/stable/autodocs/#ReTestItems.runtests) function,
+which will run all tests for the current active project.
 
 ```julia
 julia> using ReTestItems
@@ -59,7 +60,17 @@ julia> runtests(
        )
 ```
 
-You can use the `name` keyword, to select test-items by name.
+For interactive sessions, all logs from the tests will be printed out in the REPL by default.
+You can disable this by passing `logs=:issues` in which case logs from a test-item are only printed if that test-items errors or fails.
+`logs=:issues` is also the default for non-interactive sessions.
+
+```julia
+julia> runtests("test/Database/"; logs=:issues)
+```
+
+#### Filtering tests
+
+You can use the `name` keyword to select test-items by name.
 Pass a string to select a test-item by its exact name,
 or pass a regular expression (regex) to match multiple test-item names.
 
@@ -69,17 +80,24 @@ julia> runtests("test/Database/"; name="issue-123")
 julia> runtests("test/Database/"; name=r"^issue")
 ```
 
-For interactive sessions, all logs from the tests will be printed out in the REPL by default.
-You can disable this by passing `logs=:issues` in which case logs from a test-item are only printed if that test-items errors or fails.
-`logs=:issues` is also the default for non-interactive sessions.
+You can pass `tags` to select test-items by tag.
+When passing multiple tags a test-item is only run if it has all the requested tags.
 
 ```julia
-julia> runtests("test/Database/"; logs=:issues)
+# Run tests that are tagged as both `regression` and `fast`
+julia> runtests("test/Database/"; tags=[:regression, :fast])
+```
+
+Filtering by `name` and `tags` can be combined to run only test-items that match both the name and tags.
+
+```julia
+# Run tests named `issue*` which also have tag `regression`.
+julia> runtests("test/Database/"; tags=:regression, name=r"^issue")
 ```
 
 ## Writing tests
 
-Tests must be wrapped in a `@testitem`.
+Tests must be wrapped in a [`@testitem`](https://docs.juliahub.com/General/ReTestItems/stable/autodocs/#ReTestItems.@testitem-Tuple{Any,%20Vararg{Any}}).
 In most cases, a `@testitem` can just be used instead of a `@testset`, wrapping together a bunch of related tests:
 ```julia
 @testitem "min/max" begin
@@ -109,7 +127,7 @@ Since a `@testitem` is the block of code that will be executed, `@testitem`s can
 
 #### Test setup
 
-If some test-specific code needs to be shared by multiple `@testitem`s, this code can be placed in a `module` and marked as `@testsetup`,
+If some test-specific code needs to be shared by multiple `@testitem`s, this code can be placed in a `module` and marked as [`@testsetup`](https://docs.juliahub.com/General/ReTestItems/stable/autodocs/#ReTestItems.@testsetup-Tuple{Any})
 and the `@testitem`s can depend on it via the `setup` keyword.
 
 ```julia
@@ -128,6 +146,31 @@ end
 
 The `setup` is run once on each worker process that requires it;
 it is not run before every `@testitem` that depends on the setup.
+
+#### Skipping tests
+
+The `skip` keyword can be used to skip a `@testitem`, meaning no code inside that test-item will run.
+A skipped test-item logs that it is being skipped and records a single "skipped" test result, similar to `@test_skip`.
+
+```julia
+@testitem "skipped" skip=true begin
+    @test false
+end
+```
+
+If `skip` is given as an `Expr`, it must return a `Bool` indicating whether or not to skip the test-item.
+This expression will be run in a new module similar to a test-item immediately before the test-item would be run.
+
+```julia
+# Don't run "orc v1" tests if we don't have orc v1
+@testitem "orc v1" skip=:(using LLVM; !LLVM.has_orc_v1()) begin
+    # tests
+end
+```
+
+The `skip` keyword allows you to define the condition under which a test needs to be skipped,
+for example if it can only be run on a certain platform.
+See [filtering tests](#filtering-tests) for controlling which tests run in a particular `runtests` call.
 
 #### Post-testitem hook
 
@@ -191,7 +234,7 @@ runtests("frobble_tests.jl"; nworkers, worker_init_expr)
       runtests(MyPackage)
       ```
     - Pass to `runtests` any configuration you want your tests to run with, such as `retries`, `testitem_timeout`, `nworkers`, `nworker_threads`, `worker_init_expr`, `test_end_expr`.
-      See the `runtests` docstring for details.
+      See the [`runtests`](https://docs.juliahub.com/General/ReTestItems/stable/autodocs/#ReTestItems.runtests) docstring for details.
 
 ---
 

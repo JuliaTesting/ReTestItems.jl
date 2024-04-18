@@ -79,26 +79,39 @@ end
     @test n_passed(results) == 1
 end
 
-@testset "Warn when not test file" begin
+@testset "Warn or error when not test file" begin
     pkg = joinpath(TEST_PKG_DIR, "TestsInSrc.jl")
 
     # warn if the path does not exist
     dne = joinpath(pkg, "does_not_exist")
-    @test_logs (:warn, "No such path \"$dne\"") match_mode=:any begin
+    dne_msg = "No such path \"$dne\""
+    @test_logs (:warn, dne_msg) match_mode=:any begin
         runtests(dne)
+    end
+    # throw if `validate_paths`
+    @test_throws ArgumentError(dne_msg) runtests(dne; validate_paths=true)
+    # test setting `validate_paths` via environment variable
+    withenv("RETESTITEMS_VALIDATE_PATHS" => 1) do
+        @test_throws ArgumentError(dne_msg) runtests(dne)
     end
 
     # warn if the file is not a test file
     file = joinpath(pkg, "src", "foo.jl")
     @assert isfile(file)
-    @test_logs (:warn, "\"$file\" is not a test file") match_mode=:any begin
+    file_msg = "\"$file\" is not a test file"
+    @test_logs (:warn, file_msg) match_mode=:any begin
         runtests(file)
     end
+    # throw if `validate_paths`
+    @test_throws ArgumentError(file_msg) runtests(file; validate_paths=true)
 
     # Warn for each invalid path
-    @test_logs (:warn, "No such path \"$dne\"") (:warn, "\"$file\" is not a test file") match_mode=:any begin
+    @test_logs (:warn, dne_msg) (:warn, file_msg) match_mode=:any begin
         runtests(dne, file)
     end
+    # Throw on first invalid path if `validate_paths`
+    @test_throws ArgumentError(dne_msg) runtests(dne, file; validate_paths=true)
+    @test_throws ArgumentError(file_msg) runtests(file, dne; validate_paths=true)
 
     # Warn for each invalid path and still run valid ones
     test_file = joinpath(pkg, "src", "foo_test.jl")
@@ -109,6 +122,8 @@ end
         end
     end
     @test n_tests(results) == 2 # foo_test.jl has 2 tests
+    # Throw on first invalid path, even if some are valid, if `validate_paths`
+    @test_throws ArgumentError(dne_msg) runtests(test_file, dne, file; validate_paths=true)
 end
 
 @testset "filter `runtests(func, x)`" begin
@@ -653,7 +668,7 @@ end
     rm(tmpdir; force=true)
 end
 
-@testset "testitem timeout" begin
+@testset "testitem_timeout" begin
     file = joinpath(TEST_FILES_DIR, "_timeout_tests.jl")
     # NOTE: this test must run with exactly 1 worker, so that we can test that the worker
     # is replaced after the timeout and subsequent testitems still run.
@@ -666,9 +681,14 @@ end
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
     @test err.value == string(ErrorException("Timed out after 4s running test item \"Test item takes 60 seconds\" (run=1)"))
+
+    for t in (0, -1.1)
+        expected = ArgumentError("`testitem_timeout` must be a postive number, got $t")
+        @test_throws expected runtests(file; nworkers, testitem_timeout=t)
+    end
 end
 
-@testset "testitem timeout set via env variable" begin
+@testset "testitem_timeout set via env variable" begin
     file = joinpath(TEST_FILES_DIR, "_timeout_tests.jl")
     # NOTE: this test must run with exactly 1 worker, so that we can test that the worker
     # is replaced after the timeout and subsequent testitems still run.
@@ -683,6 +703,27 @@ end
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
     @test err.value == string(ErrorException("Timed out after 4s running test item \"Test item takes 60 seconds\" (run=1)"))
+end
+
+@testset "@testitem `timeout`" begin
+    # NOTE: this test must run with >0 worker
+    # https://github.com/JuliaTesting/ReTestItems.jl/issues/87
+    nworkers = 1
+    # This file contains a single test that sets `timeout=6` and sleeps for 10 seconds.
+    file = joinpath(TEST_FILES_DIR, "_timeout2_tests.jl")
+    # The @testitem's own `timeout=6` should take precedence.
+    # The test is partly relying on the error message accurately reflecting the actual behaviour...
+    # so we test with a really big timeout so it would be obvious if the larger of the two
+    # timeouts were to be used (in which case the test would fail as the testitem would pass).
+    for testitem_timeout in (4, 8, 1_000_000)
+        results = encased_testset(()->runtests(file; nworkers, testitem_timeout))
+        @test n_tests(results) == 1
+        @test n_passed(results) == 0
+        # Test the error is as expected, namely that the timeout is 6 seconds.
+        err = only(non_passes(results))
+        @test err.test_type == :nontest_error
+        @test err.value == string(ErrorException("Timed out after 6s running test item \"Sets timeout=6\" (run=1)"))
+    end
 end
 
 @testset "Error outside `@testitem`" begin
@@ -989,6 +1030,33 @@ end
     err_msg = "ArgumentError: `memory_threshold` must be between 0 and 1, got $xx"
     expected_err = VERSION < v"1.8" ? ArgumentError : err_msg
     @test_throws expected_err runtests(file; nworkers=1, memory_threshold=xx)
+end
+
+@testset "skipping testitems" begin
+    # Test report printing has test items as "skipped" (which appear under "Broken")
+    using IOCapture
+    file = joinpath(TEST_FILES_DIR, "_skip_tests.jl")
+    results = encased_testset(()->runtests(file; nworkers=1))
+    c = IOCapture.capture() do
+        Test.print_test_results(results)
+    end
+    @test contains(
+        c.output,
+        r"""
+        Test Summary: \s*     \| Pass  Fail  Broken  Total  Time
+        ReTestItems   \s*     \|    4     1       3      8  \s*\d*.\ds
+        """
+    )
+end
+
+@testset "logs are aligned" begin
+    file = joinpath(TEST_FILES_DIR, "_skip_tests.jl")
+    c1 = IOCapture.capture() do
+        encased_testset(()->runtests(file))
+    end
+    @test contains(c1.output, r"START \(1/6\) test item \"no skip, 1 pass\"")
+    @test contains(c1.output, r"DONE  \(1/6\) test item \"no skip, 1 pass\"")
+    @test contains(c1.output, r"SKIP  \(3/6\) test item \"skip true\"")
 end
 
 end # integrationtests.jl testset

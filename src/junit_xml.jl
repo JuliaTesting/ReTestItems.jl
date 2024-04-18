@@ -262,10 +262,12 @@ function write_junit_xml(io, tc::JUnitTestCase)
     write_counts(io, tc.counts)
     write(io, ">")
     write_dd_tags(io, tc)
-    if !isnothing(tc.logs)
-        write(io, "\n\t\t<error")
-        !isnothing(tc.error_message) && write(io, " message=", xml_markup(tc.error_message))
-        write(io, ">", xml_content(strip(String(tc.logs))))
+    if (tc.counts.failures + tc.counts.errors) > 0
+        err_msg = something(tc.error_message, "Test errored but no error message was captured.")
+        write(io, "\n\t\t<error message=", xml_markup(err_msg), ">")
+        if !isnothing(tc.logs)
+            write(io, xml_content(strip(String(tc.logs))))
+        end
         write(io, "\n\t\t</error>")
     end
     write(io, "\n\t</testcase>")

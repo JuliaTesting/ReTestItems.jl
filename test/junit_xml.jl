@@ -26,6 +26,7 @@ function remove_variables(str)
         # Ignore the full path the test file.
         r" at .*/testfiles/_junit_xml_test" => " at path/to/testfiles/_junit_xml_test",
         r" at .*/testfiles/_retry_tests" => " at path/to/testfiles/_retry_tests",
+        r" at .*/testfiles/_skip_tests" => " at path/to/testfiles/_skip_tests",
         # Ignore worker pid
         r"on worker [0-9]*" => "on worker 0",
         # Remove backticks (because backticks were added to some error messages in v1.9+).
@@ -69,7 +70,7 @@ end
 
 @testset "junit_xml.jl" verbose=true begin
 
-@testset "JUnit reference tests" begin
+@testset "JUnit reference tests" verbose=true begin
     REF_DIR = joinpath(pkgdir(ReTestItems), "test", "references")
     @testset "retries=0, nworkers=$nworkers" for nworkers in (0, 1)
         mktempdir() do dir
@@ -119,6 +120,18 @@ end
                     joinpath(REF_DIR, "retry_tests_report_1worker.xml")
                 end
                 test_reference(ref, report)
+            end
+        end
+    end
+    @testset "skipped testitems" begin
+        mktempdir() do dir
+            withenv("RETESTITEMS_REPORT_LOCATION" => dir) do
+                try # Ignore the fact that the `_skip_tests.jl` testset has failures/errors.
+                    run(`$(Base.julia_cmd()) --project -e 'using ReTestItems; runtests("testfiles/_skip_tests.jl"; report=true)'`)
+                catch
+                end
+                report = only(filter(endswith("xml"), readdir(dir, join=true)))
+                test_reference(joinpath(REF_DIR, "skipped_tests_report.xml"), report)
             end
         end
     end
@@ -259,6 +272,54 @@ end
         \t\t<properties>
         \t\t<property name=\"dd_tags[test.id]\" value=\"$(repr(hash("outer2")))\"></property>
         \t\t</properties>
+        \t</testcase>
+        </testsuite>
+        """
+        # leading/trailing whitespace isn't important
+        @test strip(report_string) == strip(expected)
+    end
+end
+
+@testset "Manual JUnitTestSuite/JUnitTestCase with error no logs" begin
+    using ReTestItems: JUnitTestCase, JUnitTestSuite
+    using Dates: datetime2unix, DateTime
+
+    function get_test_suite(suite_name, test_name)
+        ts = @testset "$test_name" begin
+            # would rather make this false, but failing @test makes the ReTestItems test fail as well
+            @test true
+        end
+        # Make the test time deterministic to make testing report output easier
+        ts.time_start = datetime2unix(DateTime(2023, 01, 15, 16, 42))
+        ts.time_end = datetime2unix(DateTime(2023, 01, 15, 16, 42, 30))
+
+        # should be able to construct a TestCase from a TestSet
+        tc = JUnitTestCase(ts)
+        @test tc isa JUnitTestCase
+
+        # once wrapped in a TestSuite, this should have enough info to write out a report
+        suite = JUnitTestSuite(suite_name)
+        junit_record!(suite, tc)
+        @test suite isa JUnitTestSuite
+        return suite
+    end
+    suite = get_test_suite("manual", "test")
+    # pretend there is a failure
+    suite.counts.failures = 1
+    suite.testcases[1].counts.failures = 1
+
+    mktemp() do path, io
+        write_junit_file(path, suite)
+        report_string = read(io, String)
+        expected = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <testsuite name="manual" timestamp="2023-01-15T16:42:00.0" time="30.0" tests="1" skipped="0" failures="1" errors="0">
+        \t<testcase name="test" timestamp="2023-01-15T16:42:00.0" time="30.0" tests="1" skipped="0" failures="1" errors="0">
+        \t\t<properties>
+        \t\t<property name=\"dd_tags[test.id]\" value=\"$(repr(hash("test")))\"></property>
+        \t\t</properties>
+        \t\t<error message="Test errored but no error message was captured.">
+        \t\t</error>
         \t</testcase>
         </testsuite>
         """

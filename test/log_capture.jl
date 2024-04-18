@@ -33,7 +33,7 @@ end
 @testset "log capture -- reporting" begin
     setup1 = @testsetup module TheTestSetup1 end
     setup2 = @testsetup module TheTestSetup2 end
-    ti = TestItem(Ref(42), "TheTestItem", "ID007", [], false, [], 0, "source/path", 42, ".", nothing)
+    ti = TestItem(Ref(42), "TheTestItem", "ID007", [], false, [], 0, nothing, false, "source/path", 42, ".", nothing)
     push!(ti.testsetups, setup1)
     push!(ti.testsetups, setup2)
     push!(ti.testsets, Test.DefaultTestSet("dummy"))
@@ -97,69 +97,69 @@ end
     @test_throws AssertionError ReTestItems.default_log_display_mode(true, -1, false)
 end
 
-@testset "time_print" begin
+@testset "print_time" begin
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=0)
+    ReTestItems.print_time(io, elapsedtime=0)
     @test String(take!(io)) == "0 secs"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=123.456 * 1e9)
+    ReTestItems.print_time(io, elapsedtime=123.456 * 1e9)
     @test String(take!(io)) == "123.5 secs"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=0.09 * 1e9)
+    ReTestItems.print_time(io, elapsedtime=0.09 * 1e9)
     @test String(take!(io)) == "<0.1 secs"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=1e9, gctime=0.5*1e9)
+    ReTestItems.print_time(io, elapsedtime=1e9, gctime=0.5*1e9)
     @test String(take!(io)) == "1.0 secs (50.0% GC)"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=1e9, gctime=0.0009*1e9)
+    ReTestItems.print_time(io, elapsedtime=1e9, gctime=0.0009*1e9)
     @test String(take!(io)) == "1.0 secs (<0.1% GC)"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=1e9, compile_time=0.5*1e9)
+    ReTestItems.print_time(io, elapsedtime=1e9, compile_time=0.5*1e9)
     @test String(take!(io)) == "1.0 secs (50.0% compile)"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=1e9, compile_time=0.0009*1e9)
+    ReTestItems.print_time(io, elapsedtime=1e9, compile_time=0.0009*1e9)
     @test String(take!(io)) == "1.0 secs (<0.1% compile)"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=1e9, compile_time=0.5*1e9, recompile_time=0.5*1e9)
+    ReTestItems.print_time(io, elapsedtime=1e9, compile_time=0.5*1e9, recompile_time=0.5*1e9)
     @test String(take!(io)) == "1.0 secs (50.0% compile, 50.0% recompile)"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=1e9, compile_time=0.0009*1e9, recompile_time=0.0009*1e9)
+    ReTestItems.print_time(io, elapsedtime=1e9, compile_time=0.0009*1e9, recompile_time=0.0009*1e9)
     @test String(take!(io)) == "1.0 secs (<0.1% compile, <0.1% recompile)"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=1e9, compile_time=0.5*1e9, recompile_time=0.5*1e9, gctime=0.5*1e9)
+    ReTestItems.print_time(io, elapsedtime=1e9, compile_time=0.5*1e9, recompile_time=0.5*1e9, gctime=0.5*1e9)
     @test String(take!(io)) == "1.0 secs (50.0% compile, 50.0% recompile, 50.0% GC)"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=1e9, compile_time=0.0009*1e9, recompile_time=0.0009*1e9, gctime=0.0009*1e9)
+    ReTestItems.print_time(io, elapsedtime=1e9, compile_time=0.0009*1e9, recompile_time=0.0009*1e9, gctime=0.0009*1e9)
     @test String(take!(io)) == "1.0 secs (<0.1% compile, <0.1% recompile, <0.1% GC)"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=1e9, allocs=1, bytes=1024)
+    ReTestItems.print_time(io, elapsedtime=1e9, allocs=1, bytes=1024)
     @test String(take!(io)) == "1.0 secs, 1 alloc (1.024 KB)"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=1e9, allocs=2, bytes=1_024_000)
+    ReTestItems.print_time(io, elapsedtime=1e9, allocs=2, bytes=1_024_000)
     @test String(take!(io)) == "1.0 secs, 2 allocs (1.024 MB)"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=1e9, compile_time=0.5*1e9, recompile_time=0.5*1e9, gctime=0.5*1e9, allocs=9001, bytes=1024_000_000)
+    ReTestItems.print_time(io, elapsedtime=1e9, compile_time=0.5*1e9, recompile_time=0.5*1e9, gctime=0.5*1e9, allocs=9001, bytes=1024_000_000)
     @test String(take!(io)) == "1.0 secs (50.0% compile, 50.0% recompile, 50.0% GC), 9.00 K allocs (1.024 GB)"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=1e9, compile_time=0.0009*1e9, recompile_time=0.0009*1e9, gctime=0.0009*1e9, allocs=9_001_000, bytes=1024_000_000_000)
+    ReTestItems.print_time(io, elapsedtime=1e9, compile_time=0.0009*1e9, recompile_time=0.0009*1e9, gctime=0.0009*1e9, allocs=9_001_000, bytes=1024_000_000_000)
     @test String(take!(io)) == "1.0 secs (<0.1% compile, <0.1% recompile, <0.1% GC), 9.00 M allocs (1.024 TB)"
 
     io = IOBuffer()
-    ReTestItems.time_print(io, elapsedtime=1e9, compile_time=1e9, recompile_time=1e9, gctime=1e9, allocs=9_001_000_000, bytes=1024_000_000_000_000)
+    ReTestItems.print_time(io, elapsedtime=1e9, compile_time=1e9, recompile_time=1e9, gctime=1e9, allocs=9_001_000_000, bytes=1024_000_000_000_000)
     @test String(take!(io)) == "1.0 secs (100.0% compile, 100.0% recompile, 100.0% GC), 9.00 B allocs (1.024 PB)"
 end
 
