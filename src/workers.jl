@@ -118,6 +118,7 @@ function trigger_profile(w::Worker, from::Symbol=:manual)
             kill(w.process, 29)  # SIGINFO
         end
     end
+    sleep(120) # Leave time for it to print the profile.
     return nothing
 end
 
