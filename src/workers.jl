@@ -121,6 +121,7 @@ function Base.close(w::Worker, from::Symbol=:manual)
         end
     end
     wait(w)
+    @debug "Worker $(w.pid) has closed successfully."
     return
 end
 
@@ -324,12 +325,14 @@ function serve_requests(io)
         req = deserialize(io)
         @assert req isa Request
         if is_shutdown(req)
+            @debug "Received shutdown request on worker $(getpid())"
             resp = Response(nothing, nothing, rand(UInt64), true)
             @lock iolock begin
                 # println("sending response: $(resp)")
                 serialize(io, resp)
                 flush(io)
             end
+            break
         end
         # println("received request: $(req)")
         Threads.@spawn begin
