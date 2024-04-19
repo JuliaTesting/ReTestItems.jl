@@ -59,6 +59,7 @@ mutable struct Worker
     process_watch::Task
     futures::Dict{UInt64, Future} # Request.id -> Future
     @atomic terminated::Bool
+    gracefully_closed::Bool
 end
 
 # used to close Future.value channels when a worker terminates
@@ -80,6 +81,16 @@ function terminate!(w::Worker, from::Symbol=:manual)
             close(fut.value, wte)
         end
         empty!(w.futures)
+    end
+    # Give some time for the worker to exit gracefully.
+    if w.gracefully_closed
+        @static if !Sys.isapple()
+            # NOTE: THIS CAUSES A HANG ON MACOS! We can remove this if-check once
+            # the julia issue is resolved:
+            sleep(5)
+        else
+            wait(w.process)
+        end
     end
     signal = Base.SIGTERM
     while !process_exited(w.process)
@@ -116,6 +127,7 @@ function Base.close(w::Worker, from::Symbol=:manual)
             flush(w.socket)
         end
     end
+    w.gracefully_closed = true
     wait(w)
     return
 end
@@ -173,7 +185,7 @@ function Worker(;
             return Sockets.connect(parse(Int, split(port_str, ':')[2]))
         end
         # create worker
-        w = Worker(ReentrantLock(), pid, proc, sock, Task(nothing), Task(nothing), Task(nothing), Dict{UInt64, Future}(), false)
+        w = Worker(ReentrantLock(), pid, proc, sock, Task(nothing), Task(nothing), Task(nothing), Dict{UInt64, Future}(), false, false)
         ## start a task to watch for worker process termination, notify the event when the task starts
         e1 = Threads.Event()
         w.process_watch = Threads.@spawn watch_and_terminate!(w, $e1)
