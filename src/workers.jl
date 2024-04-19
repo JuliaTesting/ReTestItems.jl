@@ -43,6 +43,8 @@ struct Response
     # if true, worker is shutting down, so we can stop listening to it.
     shutdown::Bool
 end
+Response(a, b, c) = Response(a, b, c, false)
+shutdown_response() = Response(nothing, nothing, rand(UInt64), true)
 is_shutdown(r::Response) = r.shutdown
 
 # simple Future that coordinator can wait on until a Response comes back for a Request
@@ -96,6 +98,7 @@ function terminate!(w::Worker, from::Symbol=:manual)
     if !(w.socket.status == Base.StatusUninit || w.socket.status == Base.StatusInit || w.socket.handle === C_NULL)
         close(w.socket)
     end
+    @debug "Done cleaning up after terminating worker $(w.pid) from $from"
     return
 end
 
@@ -210,6 +213,8 @@ function redirect_worker_output(io::IO, w::Worker, fn, proc, ev::Threads.Event)
     try
         notify(ev) # notify we've started
         while !process_exited(proc) && !w.terminated
+            # Core.println(getpid(proc))
+            # Core.println(process_exited(proc))
             line = readline(proc)
             if !isempty(line)
                 fn(io, w.pid, line)
@@ -237,7 +242,14 @@ function process_responses(w::Worker, ev::Threads.Event)
             # get the next Response from the worker
             r = deserialize(w.socket)
             @assert r isa Response "Received invalid response from worker $(w.pid): $(r)"
-            is_shutdown(r) && break
+            if is_shutdown(r)
+                @debug "Received shutdown response from worker $(w.pid). Waiting for shutdown of $(w.process)"
+                # TODO(PR): SOMEHOW this wait(p) is not getting interrupted when p dies as a zombie <defunct> process.
+                wait(w.process)
+                @debug "shutdown"
+                terminate!(w, :process_responses)
+                break
+            end
             # println("Received response $(r) from worker $(w.pid)")
             @lock lock begin
                 @assert haskey(reqs, r.id) "Received response for unknown request $(r.id) from worker $(w.pid)"
@@ -295,6 +307,7 @@ function startworker()
         serve_requests(accept(sock))
     finally
         close(sock)
+        @debug "Shutting down worker $(getpid())"
         exit(0)
     end
 end
@@ -326,7 +339,7 @@ function serve_requests(io)
         @assert req isa Request
         if is_shutdown(req)
             @debug "Received shutdown request on worker $(getpid())"
-            resp = Response(nothing, nothing, rand(UInt64), true)
+            resp = shutdown_response()
             @lock iolock begin
                 # println("sending response: $(resp)")
                 serialize(io, resp)

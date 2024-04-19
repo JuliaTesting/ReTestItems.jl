@@ -41,6 +41,7 @@ using Test
 
     w = Worker()
     @testset "remote_eval/remote_fetch ($w)" begin
+        @info "starting testset remote_eval/remote_fetch ($w)"
         expr = quote
             global x
             x = 101
