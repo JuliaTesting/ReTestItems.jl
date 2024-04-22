@@ -873,16 +873,18 @@ end
     end
 
     # The profile is collected for each worker thread.
-    capture_timeout_profile(5, nworker_threads="3,2") do logs
+    for log_capture in (:eager, :batched)
+        capture_timeout_profile(5, nworker_threads="3,2", logs=log_capture) do logs
         @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 2 seconds", logs)
         @test occursin("Information request received", logs)
-        @test occursin(r"Worker \d+:  Thread 1 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
-        @test occursin(r"Worker \d+:  Thread 2 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
-        @test occursin(r"Worker \d+:  Thread 3 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
-        @test occursin(r"Worker \d+:  Thread 4 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
-        @test occursin(r"Worker \d+:  Thread 5 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
-        @test !occursin(r"Worker \d+:  Thread 6 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        @test occursin(r"Thread 1 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        @test occursin(r"Thread 2 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        @test occursin(r"Thread 3 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        @test occursin(r"Thread 4 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        @test occursin(r"Thread 5 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        @test !occursin(r"Thread 6 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
         @test occursin("Profile collected.", logs)
+        end
     end
 end
 

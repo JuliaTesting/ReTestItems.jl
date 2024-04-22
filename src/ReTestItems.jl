@@ -558,23 +558,29 @@ function manage_worker(
         catch e
             @debugv 2 "Error" exception=e
             println(DEFAULT_STDOUT[])
-            _print_captured_logs(DEFAULT_STDOUT[], testitem, run_number)
             # Handle the exception
             if e isa TimeoutException
                 @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker"
                 timeout_profile_wait > 0 && trigger_profile(worker, timeout_profile_wait, :timeout)
                 terminate!(worker, :timeout)
                 wait(worker)
+                # TODO: We print the captured logs after the worker is terminated,
+                # which means that we include an annoying stackrace from the worker termination,
+                # but the profiles don't seem to get flushed properly if we don't do this.
+                # This is not an issue with eager logs, but when going through a file, this seems to help.
+                _print_captured_logs(DEFAULT_STDOUT[], testitem, run_number)
                 @error "$worker timed out running test item $(repr(testitem.name)) after $timeout seconds. \
                     Recording test error."
                 record_timeout!(testitem, run_number, timeout)
             elseif e isa WorkerTerminatedException
+                _print_captured_logs(DEFAULT_STDOUT[], testitem, run_number)
                 @error "$worker died running test item $(repr(testitem.name)). \
                     Recording test error."
                 record_worker_terminated!(testitem, worker, run_number)
             else
                 # We don't expect any other kind of error, so rethrow, which will propagate
                 # back up to the main coordinator task and throw to the user
+                _print_captured_logs(DEFAULT_STDOUT[], testitem, run_number)
                 rethrow()
             end
             # Handle retries
