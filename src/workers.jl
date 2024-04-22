@@ -108,9 +108,11 @@ end
 
 # Send signal to the given `Worker` process to trigger a profile.
 # Users can customise this profiling in the usual way, e.g. via
-# `JULIA_PROFILE_PEEK_HEAP_SNAPSHOT`, `Profile.set_peek_duration`, `Profile.peek_report[]`
+# `JULIA_PROFILE_PEEK_HEAP_SNAPSHOT`, but `Profile.set_peek_duration`, `Profile.peek_report[]`
+# would have to be modified in the worker process.
 # See https://docs.julialang.org/en/v1/stdlib/Profile/#Triggered-During-Execution
-function trigger_profile(w::Worker, from::Symbol=:manual)
+# Called when timeout_profile_wait is non-zero.
+function trigger_profile(w::Worker, timeout_profile_wait, from::Symbol=:manual)
     if !Sys.iswindows()
         @debug "sending profile request to worker $(w.pid) from $from"
         if Sys.islinux()
@@ -119,7 +121,7 @@ function trigger_profile(w::Worker, from::Symbol=:manual)
             kill(w.process, 29)  # SIGINFO
         end
     end
-    sleep(120) # Leave time for it to print the profile.
+    sleep(timeout_profile_wait) # Leave time for it to print the profile.
     return nothing
 end
 

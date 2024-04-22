@@ -819,6 +819,73 @@ end
     @test ts.time_end - ts.time_start ≈ timeout
 end
 
+@testset "CPU profile timeout trigger" begin
+    using Profile
+
+    function capture_timeout_profile(f, timeout_profile_wait; kwargs...)
+        logs = mktemp() do path, io
+            redirect_stdio(stdout=io, stderr=io, stdin=devnull) do
+                encased_testset() do
+                    if isnothing(timeout_profile_wait)
+                        runtests(joinpath(TEST_FILES_DIR, "_timeout_tests.jl"); nworkers=1, testitem_timeout=2, kwargs...)
+                    else
+                        runtests(joinpath(TEST_FILES_DIR, "_timeout_tests.jl"); nworkers=1, testitem_timeout=2, timeout_profile_wait, kwargs...)
+                    end
+                end
+            end
+            flush(io)
+            close(io)
+            read(path, String)
+        end
+        f(logs)
+        return nothing
+    end
+
+    # No profile is collected when timeout_profile_wait is zero.
+    capture_timeout_profile(0) do logs
+        @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 2 seconds", logs)
+        @test !occursin("Information request received", logs)
+    end
+
+    # Profile is collected when timeout_profile_wait is non-zero.
+    default_peektime = Profile.get_peek_duration()
+    capture_timeout_profile(5) do logs
+        @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 2 seconds", logs)
+        @test occursin("Information request received. A stacktrace will print followed by a $(default_peektime) second profile", logs)
+        @test occursin("Profile collected.", logs)
+    end
+
+    # Profile is collected with and set_peek_duration is respected.
+    capture_timeout_profile(5, worker_init_expr=:(using Profile; Profile.set_peek_duration($default_peektime + 1.0))) do logs
+        @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 2 seconds", logs)
+        @test occursin("Information request received. A stacktrace will print followed by a $(default_peektime + 1.0) second profile", logs)
+        @test occursin("Profile collected.", logs)
+    end
+
+
+    # The RETESTITEMS_TIMEOUT_PROFILE_WAIT environment variable can be used to set the timeout_profile_wait.
+    withenv("RETESTITEMS_TIMEOUT_PROFILE_WAIT" => "5") do
+        capture_timeout_profile(nothing) do logs
+            @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 2 seconds", logs)
+            @test occursin("Information request received", logs)
+            @test occursin("Profile collected.", logs)
+        end
+    end
+
+    # The profile is collected for each worker thread.
+    capture_timeout_profile(5, nworker_threads="3,2") do logs
+        @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 2 seconds", logs)
+        @test occursin("Information request received", logs)
+        @test occursin(r"Worker \d+:  Thread 1 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        @test occursin(r"Worker \d+:  Thread 2 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        @test occursin(r"Worker \d+:  Thread 3 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        @test occursin(r"Worker \d+:  Thread 4 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        @test occursin(r"Worker \d+:  Thread 5 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        @test !occursin(r"Worker \d+:  Thread 6 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        @test occursin("Profile collected.", logs)
+    end
+end
+
 @testset "worker always crashes immediately" begin
     file = joinpath(TEST_FILES_DIR, "_happy_tests.jl")
 
