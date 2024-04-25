@@ -82,12 +82,12 @@ function terminate!(w::Worker, from::Symbol=:manual)
         empty!(w.futures)
     end
     signal = Base.SIGTERM
-    while true
+    while !process_exited(w.process)
+        @debug "sending signal $signal to worker $(w.pid)"
         kill(w.process, signal)
         signal = signal == Base.SIGTERM ? Base.SIGINT : Base.SIGKILL
         process_exited(w.process) && break
         sleep(0.1)
-        process_exited(w.process) && break
     end
     if !(w.socket.status == Base.StatusUninit || w.socket.status == Base.StatusInit || w.socket.handle === C_NULL)
         close(w.socket)
@@ -107,8 +107,9 @@ end
 
 # gracefully terminate a worker by sending a shutdown message
 # and waiting for the other tasks to perform worker shutdown
-function Base.close(w::Worker)
+function Base.close(w::Worker, from::Symbol=:manual)
     if !w.terminated && isopen(w.socket)
+        @debug "closing worker $(w.pid) from $from"
         req = Request(Symbol(), :(), rand(UInt64), true)
         @lock w.lock begin
             serialize(w.socket, req)
@@ -211,7 +212,7 @@ function redirect_worker_output(io::IO, w::Worker, fn, proc, ev::Threads.Event)
             end
         end
     catch e
-        # @error "Error redirecting worker output $(w.pid)" exception=(e, catch_backtrace())
+        @debug "Error redirecting worker output $(w.pid)" exception=(e, catch_backtrace())
         terminate!(w, :redirect_worker_output)
         e isa EOFError || e isa Base.IOError || rethrow()
     finally
@@ -246,7 +247,7 @@ function process_responses(w::Worker, ev::Threads.Event)
             end
         end
     catch e
-        # @error "Error processing responses from worker $(w.pid)" exception=(e, catch_backtrace())
+        @debug "Error processing responses from worker $(w.pid)" exception=(e, catch_backtrace())
         terminate!(w, :process_responses)
         e isa EOFError || e isa Base.IOError || rethrow()
     end
