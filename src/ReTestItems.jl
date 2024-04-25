@@ -393,7 +393,9 @@ function _runtests_in_current_env(
     finally
         Test.TESTSET_PRINT_ENABLE[] = true
         # Cleanup test setup logs
-        foreach(rm, filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER[], join=true)))
+        foreach(Iterators.filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER[], join=true))) do logfile
+            rm(logfile; force=true)  # `force` to ignore error if file already cleaned up
+        end
     end
     return nothing
 end
