@@ -295,7 +295,6 @@ function startworker()
     # don't need stdin (copied from Distributed.start_worker)
     redirect_stdin(devnull)
     close(stdin)
-    atexit(() -> (flush(stdout); flush(stderr)))
     redirect_stderr(stdout) # redirect stderr so coordinator reads everything from stdout
     port, sock = listenany(UInt16(rand(10000:50000)))
     # send the port to the coordinator
