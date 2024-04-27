@@ -95,7 +95,7 @@ using Test
 
     @testset "CPU profile" begin
         logs = mktemp() do path, io
-            w = Worker(threads=VERSION > v"1.9" ? "3,2" : "3", worker_redirect_io=io)
+            w = Worker(threads=VERSION >= v"1.9" ? "3,2" : "3", worker_redirect_io=io)
             fut = remote_eval(w, :(sleep(5), yield()))
             sleep(0.5)
             trigger_profile(w, 1, :test)
