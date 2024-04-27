@@ -822,7 +822,7 @@ end
 @testset "CPU profile timeout trigger" begin
     using Profile
     # We're only testing that the signal was registered and that the stacktrace was printed.
-    # We also tried testing that the CPU profile was displayed, but that was too flaky in CI.
+    # We also tried testing that the CPU profile was displayed here, but that was too flaky in CI.
     function capture_timeout_profile(f, timeout_profile_wait; kwargs...)
         logs = mktemp() do path, io
             redirect_stdio(stdout=io, stderr=io, stdin=devnull) do
