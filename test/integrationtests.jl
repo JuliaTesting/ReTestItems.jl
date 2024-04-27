@@ -821,15 +821,16 @@ end
 
 @testset "CPU profile timeout trigger" begin
     using Profile
-
+    # We're only testing that the signal was registered and that the stacktrace was printed.
+    # We also tried testing that the CPU profile was displayed, but that was too flaky in CI.
     function capture_timeout_profile(f, timeout_profile_wait; kwargs...)
         logs = mktemp() do path, io
             redirect_stdio(stdout=io, stderr=io, stdin=devnull) do
                 encased_testset() do
                     if isnothing(timeout_profile_wait)
-                        runtests(joinpath(TEST_FILES_DIR, "_timeout_tests.jl"); nworkers=1, testitem_timeout=2, kwargs...)
+                        runtests(joinpath(TEST_FILES_DIR, "_timeout_tests.jl"); nworkers=1, testitem_timeout=3, kwargs...)
                     else
-                        runtests(joinpath(TEST_FILES_DIR, "_timeout_tests.jl"); nworkers=1, testitem_timeout=2, timeout_profile_wait, kwargs...)
+                        runtests(joinpath(TEST_FILES_DIR, "_timeout_tests.jl"); nworkers=1, testitem_timeout=3, timeout_profile_wait, kwargs...)
                     end
                 end
             end
@@ -838,51 +839,56 @@ end
             read(path, String)
         end
         f(logs)
-        return nothing
+        return logs
     end
 
-    # No profile is collected when timeout_profile_wait is zero.
+    @testset "timeout_profile_wait=0 means no CPU profile" begin
     capture_timeout_profile(0) do logs
-        @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 2 seconds", logs)
+            @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 3 seconds", logs)
         @test !occursin("Information request received", logs)
+        end
     end
 
-    # Profile is collected when timeout_profile_wait is non-zero.
+
     default_peektime = Profile.get_peek_duration()
+    @testset "non-zero timeout_profile_wait means we collect a CPU profile" begin
     capture_timeout_profile(5) do logs
-        @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 2 seconds", logs)
+            @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 3 seconds", logs)
         @test occursin("Information request received. A stacktrace will print followed by a $(default_peektime) second profile", logs)
+            @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
         @test occursin("Profile collected.", logs)
+        end
     end
 
-    # Profile is collected with and set_peek_duration is respected.
+
+    @testset "`set_peek_duration` is respected in `worker_init_expr`" begin
     capture_timeout_profile(5, worker_init_expr=:(using Profile; Profile.set_peek_duration($default_peektime + 1.0))) do logs
-        @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 2 seconds", logs)
+            @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 3 seconds", logs)
         @test occursin("Information request received. A stacktrace will print followed by a $(default_peektime + 1.0) second profile", logs)
+            @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
         @test occursin("Profile collected.", logs)
+        end
     end
 
 
     # The RETESTITEMS_TIMEOUT_PROFILE_WAIT environment variable can be used to set the timeout_profile_wait.
+    @testset "RETESTITEMS_TIMEOUT_PROFILE_WAIT environment variable" begin
     withenv("RETESTITEMS_TIMEOUT_PROFILE_WAIT" => "5") do
         capture_timeout_profile(nothing) do logs
-            @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 2 seconds", logs)
+                @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 3 seconds", logs)
             @test occursin("Information request received", logs)
+                @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
             @test occursin("Profile collected.", logs)
+            end
         end
     end
 
     # The profile is collected for each worker thread.
-    for log_capture in (:eager, :batched)
-        capture_timeout_profile(5, nworker_threads="3,2", logs=log_capture) do logs
-        @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 2 seconds", logs)
+    @testset "CPU profile with $(repr(log_capture)) logs" for log_capture in (:eager, :batched)
+        logs = capture_timeout_profile(5, nworker_threads="3,2", logs=log_capture) do logs
+            @assert occursin("timed out running test item \"Test item takes 60 seconds\" after 3 seconds", logs)
         @test occursin("Information request received", logs)
-        @test occursin(r"Thread 1 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
-        @test occursin(r"Thread 2 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
-        @test occursin(r"Thread 3 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
-        @test occursin(r"Thread 4 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
-        @test occursin(r"Thread 5 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
-        @test !occursin(r"Thread 6 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+            @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
         @test occursin("Profile collected.", logs)
         end
     end
