@@ -107,7 +107,9 @@ If target is String it is assumed it is a file path.
 _redirect_logs(f, path::String) = open(io->_redirect_logs(f, io), path, "w")
 function _redirect_logs(f, target::IO)
     target === DEFAULT_STDOUT[] && return f()
-    colored_io = IOContext(target, :color => get(DEFAULT_STDOUT[], :color, false))
+    # If we're not doing :eager logs, make sure the displaysize is large so we don't truncate
+    # CPU profiles.
+    colored_io = IOContext(target, :color => get(DEFAULT_STDOUT[], :color, false), :displaysize => (10000,10000))
     # In case the default logger was changed by the user, we need to make sure the new logstate
     # is poinitng to the new stderr.
     # Adapted from https://github.com/JuliaIO/Suppressor.jl/blob/cbfc46f1450b03d6b69dad4c35de739290ff0aff/src/Suppressor.jl#L158-L161
