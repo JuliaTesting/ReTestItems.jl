@@ -420,6 +420,7 @@ function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems; 
         let
             # Like https://github.com/JuliaLang/julia/blob/6023ad6718514c15b3297197757ae3d93b85270b/stdlib/Profile/src/Profile.jl#L65-L70
             # but doesn't limit the IOContext to the default display size
+            Profile = Base.require(@__MODULE__, :Profile)
             function _peek_report()
                 iob = IOBuffer()
                 println(iob, "Worker$i: CPU profile")
@@ -427,7 +428,7 @@ function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems; 
                 print(ioc, groupby = [:thread, :task])
                 Base.print(stdout, String(resize!(iob.data, iob.size)))
             end
-            ReTestItems.Profile.peek_report[] = _peek_report
+            peek_report[] = _peek_report
         end
         Test.TESTSET_PRINT_ENABLE[] = false
         const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)
