@@ -428,7 +428,7 @@ function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems; 
                 print(ioc, groupby = [:thread, :task])
                 Base.print(stdout, String(resize!(iob.data, iob.size)))
             end
-            peek_report[] = _peek_report
+            Profile.peek_report[] = _peek_report
         end
         Test.TESTSET_PRINT_ENABLE[] = false
         const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)
