@@ -416,6 +416,19 @@ function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems; 
     # remote_fetch here because we want to make sure the worker is all setup before starting to eval testitems
     remote_fetch(w, quote
         using ReTestItems, Test
+        let
+            import Profile: peek_report
+            # Like https://github.com/JuliaLang/julia/blob/6023ad6718514c15b3297197757ae3d93b85270b/stdlib/Profile/src/Profile.jl#L65-L70
+            # but doesn't limit the IOContext to the default display size
+            function _peek_report()
+                iob = IOBuffer()
+                println(iob, "Worker$i: CPU profile")
+                ioc = IOContext(iob, stdout)
+                print(ioc, groupby = [:thread, :task])
+                Base.print(stdout, String(resize!(iob.data, iob.size)))
+            end
+            peek_report[] = _peek_report
+        end
         Test.TESTSET_PRINT_ENABLE[] = false
         const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)
         GLOBAL_TEST_CONTEXT.setups_evaled = ReTestItems.TestSetupModules()
