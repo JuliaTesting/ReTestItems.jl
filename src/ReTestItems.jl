@@ -559,10 +559,9 @@ function manage_worker(
             end
         catch e
             @debugv 2 "Error" exception=e
-            println(DEFAULT_STDOUT[])
             # Handle the exception
             if e isa TimeoutException
-                @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker"
+                @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker $(timeout_profile_wait > 0 ? "and triggering profile" : "")."
                 timeout_profile_wait > 0 && trigger_profile(worker, timeout_profile_wait, :timeout)
                 terminate!(worker, :timeout)
                 wait(worker)
@@ -570,11 +569,13 @@ function manage_worker(
                 # which means that we include an annoying stackrace from the worker termination,
                 # but the profiles don't seem to get flushed properly if we don't do this.
                 # This is not an issue with eager logs, but when going through a file, this seems to help.
+                println(DEFAULT_STDOUT[])
                 _print_captured_logs(DEFAULT_STDOUT[], testitem, run_number)
                 @error "$worker timed out running test item $(repr(testitem.name)) after $timeout seconds. \
                     Recording test error."
                 record_timeout!(testitem, run_number, timeout)
             elseif e isa WorkerTerminatedException
+                println(DEFAULT_STDOUT[])
                 _print_captured_logs(DEFAULT_STDOUT[], testitem, run_number)
                 @error "$worker died running test item $(repr(testitem.name)). \
                     Recording test error."
@@ -582,6 +583,7 @@ function manage_worker(
             else
                 # We don't expect any other kind of error, so rethrow, which will propagate
                 # back up to the main coordinator task and throw to the user
+                println(DEFAULT_STDOUT[])
                 _print_captured_logs(DEFAULT_STDOUT[], testitem, run_number)
                 rethrow()
             end
