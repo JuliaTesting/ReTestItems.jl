@@ -561,8 +561,11 @@ function manage_worker(
             @debugv 2 "Error" exception=e
             # Handle the exception
             if e isa TimeoutException
-                @debugv 1 "Test item $(repr(testitem.name)) timed out. Terminating worker $worker $(timeout_profile_wait > 0 ? "and triggering profile" : "")."
-                timeout_profile_wait > 0 && trigger_profile(worker, timeout_profile_wait, :timeout)
+                if timeout_profile_wait > 0
+                    @warn "$worker timed out running test item $(repr(testitem.name)) after $timeout seconds. \
+                        A CPU profile will be triggered on the worker and then it will be terminated."
+                    trigger_profile(worker, timeout_profile_wait, :timeout)
+                end
                 terminate!(worker, :timeout)
                 wait(worker)
                 # TODO: We print the captured logs after the worker is terminated,
