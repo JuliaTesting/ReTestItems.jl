@@ -1,0 +1,16 @@
+name = "UsingJET"
+uuid = "c3f2fd6f-de40-45a4-991e-5ffd14a5ac2f"
+authors = ["Tomáš Drvoštěp <tomas.drvostep@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+ReTestItems = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"
+
+[extras]
+JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+ReTestItems = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["JET", "ReTestItems", "Test"]
