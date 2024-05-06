@@ -251,7 +251,7 @@ function runtests(
     report && logs == :eager && throw(ArgumentError("`report=true` is not compatible with `logs=:eager`"))
     (0 ≤ memory_threshold ≤ 1) || throw(ArgumentError("`memory_threshold` must be between 0 and 1, got $(repr(memory_threshold))"))
     testitem_timeout > 0 || throw(ArgumentError("`testitem_timeout` must be a positive number, got $(repr(testitem_timeout))"))
-    timeout_profile_wait > 0 || throw(ArgumentError("`timeout_profile_wait` must be a positive number, got $(repr(timeout_profile_wait))"))
+    timeout_profile_wait >= 0 || throw(ArgumentError("`timeout_profile_wait` must be a non-negative number, got $(repr(timeout_profile_wait))"))
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
     shouldrun_combined(ti) = shouldrun(ti) && _shouldrun(name, ti.name) && _shouldrun(tags, ti.tags)
