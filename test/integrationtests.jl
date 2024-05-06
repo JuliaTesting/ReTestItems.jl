@@ -891,6 +891,14 @@ end
 end
 
 @testset "Backtraces timeout trigger" begin
+    function gdb_available()
+        try
+            run(`gdb -ex "exit"`)
+            true
+        catch
+            false
+        end
+    end
     function capture_timeout_backtraces(f, timeout_backtraces; kwargs...)
         logs = mktemp() do path, io
             redirect_stdio(stdout=io, stderr=io, stdin=devnull) do
@@ -923,10 +931,12 @@ end
 
     @testset "timeout_backtraces=true means we gather backtraces" begin
     capture_timeout_backtraces(true) do logs
-        @test occursin("in signal_listener", logs)
-        @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
-        @test occursin("==== Thread 1 created", logs)
-        @test occursin("==== End thread 1", logs)
+        if gdb_available()
+            @test occursin("in signal_listener", logs)
+            @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
+            @test occursin("==== Thread 1 created", logs)
+            @test occursin("==== End thread 1", logs)
+        end
         end
     end
 
@@ -934,7 +944,9 @@ end
     @testset "RETESTITEMS_TIMEOUT_BACKTRACES environment variable" begin
     withenv("RETESTITEMS_TIMEOUT_BACKTRACES" => "true") do
         capture_timeout_backtraces(nothing) do logs
-            @test occursin("==== Thread 1 created", logs)
+            if gdb_available()
+                @test occursin("==== Thread 1 created", logs)
+            end
             end
         end
     end
