@@ -683,7 +683,7 @@ end
     @test err.value == string(ErrorException("Timed out after 4s running test item \"Test item takes 60 seconds\" (run=1)"))
 
     for t in (0, -1.1)
-        expected = ArgumentError("`testitem_timeout` must be a postive number, got $t")
+        expected = ArgumentError("`testitem_timeout` must be a positive number, got $t")
         @test_throws expected runtests(file; nworkers, testitem_timeout=t)
     end
 end
