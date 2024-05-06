@@ -120,8 +120,8 @@ function trigger_profile(w::Worker, timeout_profile_wait, from::Symbol=:manual)
         elseif Sys.isbsd()
             kill(w.process, 29)  # SIGINFO
         end
+        sleep(timeout_profile_wait) # Leave time for it to print the profile.
     end
-    sleep(timeout_profile_wait) # Leave time for it to print the profile.
     return nothing
 end
 
