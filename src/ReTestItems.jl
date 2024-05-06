@@ -197,6 +197,9 @@ will be run.
    Zero means no profile will be taken. Can also be set using the `RETESTITEMS_TIMEOUT_PROFILE_WAIT`
    environment variable. See the [Profile documentation](https://docs.julialang.org/en/v1/stdlib/Profile/#Triggered-During-Execution)
    for more information on triggered profiles. Note you can use `worker_init_expr` to tweak the profile settings on workers.
+- `timeout_backtraces::Bool=false`: Linux only. If `true`, we use GDB to get thread and task
+  backtraces from a worker that times-out. Can also be set using the `RETESTITEMS_TIMEOUT_BACKTRACES`
+  environment variable. If a CPU profile was also requested, this runs after that is taken.
 """
 function runtests end
 
@@ -243,6 +246,7 @@ function runtests(
     test_end_expr::Expr=Expr(:block),
     validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
     timeout_profile_wait::Real=parse(Int, get(ENV, "RETESTITEMS_TIMEOUT_PROFILE_WAIT", "0")),
+    timeout_backtraces::Bool=parse(Bool, get(ENV, "RETESTITEMS_TIMEOUT_BACKTRACES", "false")),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = _validated_paths(paths, validate_paths)
@@ -262,13 +266,14 @@ function runtests(
     timeout = ceil(Int, testitem_timeout)
     timeout_profile_wait = ceil(Int, timeout_profile_wait)
     (timeout_profile_wait > 0 && Sys.iswindows()) && @warn "CPU profiles on timeout is not supported on Windows, ignoring `timeout_profile_wait`"
+    (timeout_backtraces && !Sys.islinux()) && @warn "Backtraces on timeout is only supported on Linux, ignoring `timeout_backtraces`"
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait)
+            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, timeout_backtraces)
         end
     else
-        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait)
+        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, timeout_backtraces)
     end
 end
 
@@ -282,7 +287,7 @@ end
 # By tracking and reusing test environments, we can avoid this issue.
 const TEST_ENVS = Dict{String, String}()
 
-function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int)
+function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int, timeout_backtraces::Bool)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -302,7 +307,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
         if is_running_test_runtests_jl(proj_file)
             # Assume this is `Pkg.test`, so test env already active.
             @debugv 2 "Running in current environment `$(Base.active_project())`"
-            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait)
+            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, timeout_backtraces)
         else
             @debugv 1 "Activating test environment for `$proj_file`"
             orig_proj = Base.active_project()
@@ -315,7 +320,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
                     testenv = TestEnv.activate()
                     TEST_ENVS[proj_file] = testenv
                 end
-                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait)
+                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, timeout_backtraces)
             finally
                 Base.set_active_project(orig_proj)
             end
@@ -327,6 +332,7 @@ function _runtests_in_current_env(
     shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
     testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
     timeout_profile_wait::Int,
+    timeout_backtraces::Bool,
 )
     start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
@@ -391,7 +397,7 @@ function _runtests_in_current_env(
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
-                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs, $timeout_profile_wait)
+                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs, $timeout_profile_wait, $timeout_backtraces)
                     end
                 end
             end
@@ -502,7 +508,8 @@ end
 
 function manage_worker(
     worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int
+    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int,
+    timeout_backtraces::Bool,
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
@@ -563,11 +570,16 @@ function manage_worker(
             @debugv 2 "Error" exception=e
             # Handle the exception
             if e isa TimeoutException
+                @warn "$worker timed out running test item $(repr(testitem.name)) after $timeout seconds."
                 if timeout_profile_wait > 0
-                    @warn "$worker timed out running test item $(repr(testitem.name)) after $timeout seconds. \
-                        A CPU profile will be triggered on the worker and then it will be terminated."
+                    @warn "Gathering a CPU profile from the worker."
                     trigger_profile(worker, timeout_profile_wait, :timeout)
                 end
+                if timeout_backtraces
+                    @warn "Gathering thread and task backtraces from the worker."
+                    trigger_backtraces(worker, :timeout)
+                end
+                @warn "Terminating the worker."
                 terminate!(worker, :timeout)
                 wait(worker)
                 # TODO: We print the captured logs after the worker is terminated,

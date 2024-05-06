@@ -3,7 +3,7 @@ module Workers
 using Sockets, Serialization
 
 export Worker, remote_eval, remote_fetch, terminate!, WorkerTerminatedException
-export trigger_profile
+export trigger_profile, trigger_backtraces
 
 function try_with_timeout(f, timeout)
     cond = Threads.Condition()
@@ -108,8 +108,8 @@ end
 
 # Send signal to the given `Worker` process to trigger a profile.
 # Users can customise this profiling in the usual way, e.g. via
-# `JULIA_PROFILE_PEEK_HEAP_SNAPSHOT`, but `Profile.set_peek_duration`, `Profile.peek_report[]`
-# would have to be modified in the worker process.
+# `JULIA_PROFILE_PEEK_HEAP_SNAPSHOT`, but `Profile.set_peek_duration`,
+# `Profile.peek_report[]` would have to be modified in the worker process.
 # See https://docs.julialang.org/en/v1/stdlib/Profile/#Triggered-During-Execution
 # Called when timeout_profile_wait is non-zero.
 function trigger_profile(w::Worker, timeout_profile_wait, from::Symbol=:manual)
@@ -120,7 +120,22 @@ function trigger_profile(w::Worker, timeout_profile_wait, from::Symbol=:manual)
         elseif Sys.isbsd()
             kill(w.process, 29)  # SIGINFO
         end
-        sleep(timeout_profile_wait) # Leave time for it to print the profile.
+        sleep(timeout_profile_wait) # Leave time to output the profile.
+    end
+    return nothing
+end
+
+# Spawn GDB to request thread backtraces followed by invoking jl_print_task_backtraces
+# to get task backtraces. We wait for GDB to finish so no sleep is needed.
+function trigger_backtraces(w::Worker, from::Symbol=:manual)
+    if Sys.islinux()
+        @debug "using GDB to get thread and task backtraces on worker $(w.pid) from $from"
+        gdb_cmd = `gdb -ex "handle SIGSEGV noprint nostop pass" -ex "set pagination 0" -ex "thread apply all bt" -ex "call jl_print_task_backtraces(1)" --batch -p $(w.pid)`
+        try
+            run(gdb_cmd; wait = true) # if `wait = false`, std* are redirected to devnull
+        catch e
+            @warn "Could not get thread/task backtraces via GDB.\n$(sprint(showerror, e))"
+        end
     end
     return nothing
 end
