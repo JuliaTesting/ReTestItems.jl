@@ -3,6 +3,7 @@ module Workers
 using Sockets, Serialization
 
 export Worker, remote_eval, remote_fetch, terminate!, WorkerTerminatedException
+export trigger_profile
 
 function try_with_timeout(f, timeout)
     cond = Threads.Condition()
@@ -103,6 +104,25 @@ function watch_and_terminate!(w::Worker, ev::Threads.Event)
     wait(w.process)
     terminate!(w, :watch_and_terminate)
     true
+end
+
+# Send signal to the given `Worker` process to trigger a profile.
+# Users can customise this profiling in the usual way, e.g. via
+# `JULIA_PROFILE_PEEK_HEAP_SNAPSHOT`, but `Profile.set_peek_duration`, `Profile.peek_report[]`
+# would have to be modified in the worker process.
+# See https://docs.julialang.org/en/v1/stdlib/Profile/#Triggered-During-Execution
+# Called when timeout_profile_wait is non-zero.
+function trigger_profile(w::Worker, timeout_profile_wait, from::Symbol=:manual)
+    if !Sys.iswindows()
+        @debug "sending profile request to worker $(w.pid) from $from"
+        if Sys.islinux()
+            kill(w.process, 10)  # SIGUSR1
+        elseif Sys.isbsd()
+            kill(w.process, 29)  # SIGINFO
+        end
+        sleep(timeout_profile_wait) # Leave time for it to print the profile.
+    end
+    return nothing
 end
 
 # gracefully terminate a worker by sending a shutdown message

@@ -93,4 +93,28 @@ using Test
         close(w)
     end
 
+    @testset "CPU profile" begin
+        logs = mktemp() do path, io
+            w = Worker(threads=VERSION >= v"1.9" ? "3,2" : "3", worker_redirect_io=io)
+            fut = remote_eval(w, :(sleep(5), yield()))
+            sleep(0.5)
+            trigger_profile(w, 1, :test)
+            fetch(fut)
+            close(w)
+            flush(io)
+            close(io)
+            return read(path, String)
+        end
+
+        @test occursin(r"Thread 1 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        @test occursin(r"Thread 2 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        @test occursin(r"Thread 3 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        if VERSION >= v"1.9"
+            @test occursin(r"Thread 4 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+            @test occursin(r"Thread 5 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+            @test !occursin(r"Thread 6 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        else
+            @test !occursin(r"Thread 4 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+        end
+    end
 end # workers.jl testset
