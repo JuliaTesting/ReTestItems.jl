@@ -126,11 +126,12 @@ function trigger_profile(w::Worker, timeout_profile_wait, from::Symbol=:manual)
 end
 
 # Spawn GDB to request thread backtraces followed by invoking jl_print_task_backtraces
-# to get task backtraces. We wait for GDB to finish so no sleep is needed.
+# to get task backtraces. We wait for GDB to finish so no sleep is needed. Thread backtraces
+# are written to `gdb.btall`, which is overwritten if present.
 function trigger_backtraces(w::Worker, from::Symbol=:manual)
     if Sys.islinux()
         @debug "using GDB to get thread and task backtraces on worker $(w.pid) from $from"
-        gdb_cmd = `gdb -ex "handle SIGSEGV noprint nostop pass" -ex "set pagination 0" -ex "thread apply all bt" -ex "call jl_print_task_backtraces(1)" --batch -p $(w.pid)`
+        gdb_cmd = `gdb -ex "handle SIGSEGV noprint nostop pass" -ex "handle SIGUSR2 noprint nostop pass" -ex "set pagination 0" -ex "set logging overwrite on" -ex "set logging file gdb.btall" -ex "set logging redirect on" -ex "set logging enabled on" -ex "thread apply all bt" -ex "set logging enabled off" -ex "call jl_print_task_backtraces(1)" --batch -p $(w.pid)`
         try
             run(gdb_cmd; wait = true) # if `wait = false`, std* are redirected to devnull
         catch e
