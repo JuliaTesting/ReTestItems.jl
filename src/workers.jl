@@ -135,7 +135,7 @@ function trigger_backtraces(w::Worker, from::Symbol=:manual)
         try
             run(gdb_cmd; wait = true) # if `wait = false`, std* are redirected to devnull
         catch e
-            @warn "Could not get thread/task backtraces via GDB.\n$(sprint(showerror, e))"
+            @warn "Could not get thread/task backtraces via GDB." exception=e
         end
     end
     return nothing

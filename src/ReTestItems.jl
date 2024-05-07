@@ -572,14 +572,14 @@ function manage_worker(
             if e isa TimeoutException
                 @warn "$worker timed out running test item $(repr(testitem.name)) after $timeout seconds."
                 if timeout_profile_wait > 0
-                    @warn "Gathering a CPU profile from the worker."
+                    @info "Gathering a CPU profile from $worker."
                     trigger_profile(worker, timeout_profile_wait, :timeout)
                 end
                 if timeout_backtraces
-                    @warn "Gathering thread and task backtraces from the worker."
+                    @info "Gathering thread and task backtraces from $worker."
                     trigger_backtraces(worker, :timeout)
                 end
-                @warn "Terminating the worker."
+                @info "Terminating $worker."
                 terminate!(worker, :timeout)
                 wait(worker)
                 # TODO: We print the captured logs after the worker is terminated,
