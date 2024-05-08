@@ -571,13 +571,14 @@ function manage_worker(
             # Handle the exception
             if e isa TimeoutException
                 @warn "$worker timed out running test item $(repr(testitem.name)) after $timeout seconds."
+                xtra_output = nothing
                 if timeout_profile_wait > 0
                     @info "Gathering a CPU profile from $worker."
                     trigger_profile(worker, timeout_profile_wait, :timeout)
                 end
                 if timeout_backtraces
                     @info "Gathering thread and task backtraces from $worker."
-                    trigger_backtraces(worker, :timeout)
+                    xtra_output = trigger_backtraces(worker, :timeout)
                 end
                 @info "Terminating $worker."
                 terminate!(worker, :timeout)
@@ -588,6 +589,7 @@ function manage_worker(
                 # This is not an issue with eager logs, but when going through a file, this seems to help.
                 println(DEFAULT_STDOUT[])
                 _print_captured_logs(DEFAULT_STDOUT[], testitem, run_number)
+                isnothing(xtra_output) || println(DEFAULT_STDOUT[], xtra_output)
                 @error "$worker timed out running test item $(repr(testitem.name)) after $timeout seconds. \
                     Recording test error."
                 record_timeout!(testitem, run_number, timeout)

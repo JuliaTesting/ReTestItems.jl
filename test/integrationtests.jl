@@ -904,20 +904,15 @@ end
             redirect_stdio(stdout=io, stderr=io, stdin=devnull) do
                 encased_testset() do
                     if isnothing(timeout_backtraces)
-                        runtests(joinpath(TEST_FILES_DIR, "_timeout_tests.jl"); nworkers=1, testitem_timeout=3, kwargs...)
+                        runtests(joinpath(TEST_FILES_DIR, "_timeout_tests.jl"); nworkers=1, testitem_timeout=2, kwargs...)
                     else
-                        runtests(joinpath(TEST_FILES_DIR, "_timeout_tests.jl"); nworkers=1, testitem_timeout=3, timeout_backtraces, kwargs...)
+                        runtests(joinpath(TEST_FILES_DIR, "_timeout_tests.jl"); nworkers=1, testitem_timeout=2, timeout_backtraces, kwargs...)
                     end
                 end
             end
             flush(io)
             close(io)
-            btlogs = ""
-            if isfile("gdb.btall")
-                btlogs = read("gdb.btall", String) * "\n"
-                rm("gdb.btall", force=true)
-            end
-            btlogs * read(path, String)
+            read(path, String)
         end
         f(logs)
         return logs
@@ -932,7 +927,9 @@ end
     @testset "timeout_backtraces=true means we gather backtraces" begin
     capture_timeout_backtraces(true) do logs
         if gdb_available()
-            @test occursin("in signal_listener", logs)
+            if Sys.islinux()
+                @test occursin("in signal_listener", logs)
+            end
             @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
             @test occursin("==== Thread 1 created", logs)
             @test occursin("==== End thread 1", logs)
