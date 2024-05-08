@@ -145,11 +145,17 @@ function trigger_backtraces(w::Worker, from::Symbol=:manual)
             "-ex", "set pagination 0",
             # Get all thread backtraces
             "-ex", "thread apply all bt",
-            # Ask Julia to dump all task backtraces
-            "-ex", "call jl_print_task_backtraces(1)",
-            # Run all commands above in batched mode
-            "--batch", "-p", "$(w.pid)"
         ])
+        @static if VERSION >= v"1.9"
+            push!(gdb_cmd.exec,
+                # Ask Julia to dump all task backtraces
+                "-ex", "call jl_print_task_backtraces(1)",
+            )
+        end
+        push!(gdb_cmd.exec,
+            # Run all commands above in batched mode
+            "--batch", "-p", "$(w.pid)",
+        )
         try
             run(pipeline(gdb_cmd, stdout=iob, stderr=iob))
             return String(take!(iob))

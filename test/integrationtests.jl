@@ -929,10 +929,14 @@ end
         if gdb_available()
             if Sys.islinux()
                 @test occursin("in signal_listener", logs)
+            else
+                @test_skip "not on Linux"
             end
             @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
-            @test occursin("==== Thread 1 created", logs)
-            @test occursin("==== End thread 1", logs)
+            if VERSION >= v"1.9" # jl_print_task_backtraces() output
+                @test occursin("==== Thread 1 created", logs)
+                @test occursin("==== End thread 1", logs)
+            end
         else
             @test_skip "gdb unavailable"
         end
@@ -944,7 +948,7 @@ end
     withenv("RETESTITEMS_TIMEOUT_BACKTRACES" => "true") do
         capture_timeout_backtraces(nothing) do logs
             if gdb_available()
-                @test occursin("==== Thread 1 created", logs)
+                @test occursin("Thread 1", logs)
             else
                 @test_skip "gdb unavailable"
             end
