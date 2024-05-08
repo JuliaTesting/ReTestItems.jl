@@ -27,9 +27,6 @@ jobs:
           - x64
     steps:
       - uses: actions/checkout@v3.5.0
-      - name: Install GDB
-        if: startsWith(matrix.os, 'ubuntu')
-        run: sudo apt-get install -y gdb
       - uses: julia-actions/setup-julia@v1
         with:
           version: ${{ matrix.version }}
