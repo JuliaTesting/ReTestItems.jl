@@ -428,7 +428,7 @@ function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems; 
         const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)
         GLOBAL_TEST_CONTEXT.setups_evaled = ReTestItems.TestSetupModules()
         nthreads_str = $nworker_threads
-        @info "Starting test worker$($i) on pid = $(Libc.getpid()), with $nthreads_str threads"
+        @info "Starting test worker$($i) on pid = $(Libc.getpid()), with $nthreads_str threads, nthreads(:default) = $(Base.Threads.nthreads(:default)), nthreads(:interactive) = $(Base.Threads.nthreads(:interactive))"
         $(worker_init_expr.args...)
         nothing
     end)
