@@ -137,12 +137,12 @@ function trigger_backtraces(w::Worker, from::Symbol=:manual)
         iob = IOBuffer()
         gdb_cmd = Cmd([
             "gdb",
+            # Run in batched mode on the worker process
+            "--batch", "-p", "$(w.pid)",
             # Julia's runtime uses SIGSEGV for GC and SIGUSR2 to pause threads
             # (for profiling or backtracing). Tell GDB to ignore these signals.
             "-ex", "handle SIGSEGV noprint nostop pass",
             "-ex", "handle SIGUSR2 noprint nostop pass",
-            # Don't page-break output
-            "-ex", "set pagination 0",
             # Get all thread backtraces
             "-ex", "thread apply all bt",
         ])
@@ -154,10 +154,7 @@ function trigger_backtraces(w::Worker, from::Symbol=:manual)
             )
         end
 =#
-        push!(gdb_cmd.exec,
-            # Run all commands above in batched mode
-            "--batch", "-p", "$(w.pid)",
-        )
+        push!(gdb_cmd.exec, "-ex", "detach")
         try
             run(pipeline(gdb_cmd, stdout=iob, stderr=iob))
             return String(take!(iob))
