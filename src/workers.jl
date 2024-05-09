@@ -146,12 +146,14 @@ function trigger_backtraces(w::Worker, from::Symbol=:manual)
             # Get all thread backtraces
             "-ex", "thread apply all bt",
         ])
+#=
         @static if VERSION >= v"1.9"
             push!(gdb_cmd.exec,
                 # Ask Julia to dump all task backtraces
                 "-ex", "call jl_print_task_backtraces(1)",
             )
         end
+=#
         push!(gdb_cmd.exec,
             # Run all commands above in batched mode
             "--batch", "-p", "$(w.pid)",
