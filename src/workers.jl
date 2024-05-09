@@ -134,7 +134,7 @@ end
 function trigger_backtraces(w::Worker, from::Symbol=:manual)
     if Sys.islinux()
         @debug "using GDB to get thread and task backtraces on worker $(w.pid) from $from"
-        iob = IOBuffer()
+        #iob = IOBuffer()
         gdb_cmd = Cmd([
             "gdb",
             # Run in batched mode on the worker process
@@ -154,10 +154,11 @@ function trigger_backtraces(w::Worker, from::Symbol=:manual)
             )
         end
 =#
-        push!(gdb_cmd.exec, "-ex", "detach")
         try
-            run(pipeline(gdb_cmd, stdout=iob, stderr=iob))
-            return String(take!(iob))
+            println("Running $(gdb_cmd)")
+            run(gdb_cmd)
+            #run(pipeline(gdb_cmd, stdout=iob, stderr=iob))
+            #return String(take!(iob))
         catch e
             @warn "Could not get thread/task backtraces via GDB." exception=e
         end
