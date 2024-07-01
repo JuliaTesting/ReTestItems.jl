@@ -165,6 +165,8 @@ will be run.
 - `worker_init_expr::Expr`: an expression that will be run on each worker process before any tests are run.
   Can be used to load packages or set up the environment. Must be a `:block` expression.
 - `test_end_expr::Expr`: an expression that will be run after each testitem is run.
+  By default, the expression is `GC.gc(true)`, when `nworkers > 1`, to help with memory pressure,
+  otherwise it is a no-op.
   Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
 - `memory_threshold::Real`: Sets the fraction of memory that can be in use before a worker processes are
   restarted to free memory. Defaults to $(DEFAULT_MEMORY_THRESHOLD[]). Only supported with `nworkers > 0`.
@@ -240,7 +242,7 @@ function runtests(
     report::Bool=parse(Bool, get(ENV, "RETESTITEMS_REPORT", "false")),
     logs::Symbol=Symbol(get(ENV, "RETESTITEMS_LOGS", default_log_display_mode(report, nworkers))),
     verbose_results::Bool=(logs !== :issues && isinteractive()),
-    test_end_expr::Expr=Expr(:block),
+    test_end_expr::Expr=nworkers>1 ? :(GC.gc(true)) : Expr(:block),
     validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
     timeout_profile_wait::Real=parse(Int, get(ENV, "RETESTITEMS_TIMEOUT_PROFILE_WAIT", "0")),
 )
@@ -356,10 +358,6 @@ function _runtests_in_current_env(
                     ts = res.testset
                     print_errors_and_captured_logs(testitem, run_number; logs)
                     report_empty_testsets(testitem, ts)
-                    # It takes 2 GCs to do a full mark+sweep
-                    # (the first one is a partial mark, full sweep, the next one is a full mark).
-                    GC.gc(true)
-                    GC.gc(false)
                     if any_non_pass(ts) && run_number != max_runs
                         run_number += 1
                         @info "Retrying $(repr(testitem.name)). Run=$run_number."
@@ -369,6 +367,8 @@ function _runtests_in_current_env(
                 end
             end
         elseif !isempty(testitems.testitems)
+            # Try to free up memory on the coordinator before starting workers
+            GC.gc(true)
             # Use the logger that was set before we eval'd any user code to avoid world age
             # issues when logging https://github.com/JuliaLang/julia/issues/33865
             original_logger = current_logger()
@@ -546,9 +546,6 @@ function manage_worker(
                 push!(testitem.stats, testitem_result.stats)
                 print_errors_and_captured_logs(testitem, run_number; logs)
                 report_empty_testsets(testitem, ts)
-                # Run GC to free memory on the worker before next testitem.
-                @debugv 2 "Running GC on $worker"
-                remote_fetch(worker, :(GC.gc(true); GC.gc(false)))
                 if any_non_pass(ts) && run_number != max_runs
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
