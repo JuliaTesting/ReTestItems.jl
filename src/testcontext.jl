@@ -50,7 +50,7 @@ struct FileNode
     testitems::FilteredVector{TestItem} # sorted by line number within file
 end
 
-function FileNode(path, f=default_shouldrun; report::Bool=false, verbose::Bool=false)
+function FileNode(path, f=ShouldRun(); report::Bool=false, verbose::Bool=false)
     junit = report ? JUnitTestSuite(path) : nothing
     return FileNode(path, DefaultTestSet(path; verbose), junit, FilteredVector(f, TestItem[]))
 end

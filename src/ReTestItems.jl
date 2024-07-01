@@ -54,6 +54,7 @@ function softscope_all!(@nospecialize ex)
     end
 end
 
+include("walkdir.jl")
 include("workers.jl")
 using .Workers
 include("macros.jl")
@@ -214,13 +215,42 @@ _shouldrun(tags::AbstractVector{Symbol}, ti_tags) = issubset(tags, ti_tags)
 _shouldrun(tag::Symbol, ti_tags) = tag in ti_tags
 _shouldrun(::Nothing, x) = true
 
-default_shouldrun(ti::TestItem) = true
+struct ShouldRun{
+        F<:Function,
+        T<:Union{Nothing,Symbol,AbstractVector{Symbol}},
+        N<:Union{Nothing,AbstractString,Regex}
+    } <: Function
+    f::F
+    tags::T
+    name::N
+end
+ShouldRun(f, t, n) = ShouldRun{typeof(f), typeof(t), typeof(n)}(f, t, n)
+(s::ShouldRun)(ti::TestItem) = s.f(ti)::Bool && _shouldrun(s.tags, ti.tags) && _shouldrun(s.name, ti.name)
+function (s::ShouldRun)(expr::Expr)
+    should_throw = false
+    if expr.head == :macrocall
+        name = expr.args[1]
+        if name === Symbol("@testitem") # || name === Symbol("@test_rel")
+            expr = _shouldrun(s.name, expr.args[3]) ? expr : nothing
+        elseif name === Symbol("@test") || name === Symbol("@testset")
+            should_throw = true
+        elseif name === Symbol("@testsetup")# || name === Symbol("@static") || name === Symbol("@eval")
+             expr = nothing
+        end
+    else
+        should_throw = true
+    end
 
-runtests(; kw...) = runtests(default_shouldrun, dirname(Base.active_project()); kw...)
+    should_throw && _throw_not_macrocall(expr)
+    return expr
+end
+
+
+runtests(; kw...) = runtests(Returns(true), dirname(Base.active_project()); kw...)
 runtests(shouldrun; kw...) = runtests(shouldrun, dirname(Base.active_project()); kw...)
-runtests(paths::AbstractString...; kw...) = runtests(default_shouldrun, paths...; kw...)
+runtests(paths::AbstractString...; kw...) = runtests(Returns(true), paths...; kw...)
 
-runtests(pkg::Module; kw...) = runtests(default_shouldrun, pkg; kw...)
+runtests(pkg::Module; kw...) = runtests(Returns(true), pkg; kw...)
 function runtests(shouldrun, pkg::Module; kw...)
     dir = pkgdir(pkg)
     isnothing(dir) && error("Could not find directory for `$pkg`")
@@ -228,7 +258,7 @@ function runtests(shouldrun, pkg::Module; kw...)
 end
 
 function runtests(
-    shouldrun,
+    shouldrun_ti,
     paths::AbstractString...;
     nworkers::Int=parse(Int, get(ENV, "RETESTITEMS_NWORKERS", "0")),
     nworker_threads::Union{Int,String}=get(ENV, "RETESTITEMS_NWORKER_THREADS", "2"),
@@ -256,7 +286,7 @@ function runtests(
     timeout_profile_wait >= 0 || throw(ArgumentError("`timeout_profile_wait` must be a non-negative number, got $(repr(timeout_profile_wait))"))
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
-    shouldrun_combined(ti) = shouldrun(ti) && _shouldrun(name, ti.name) && _shouldrun(tags, ti.tags)
+    shouldrun = ShouldRun(shouldrun_ti, tags, name)
     mkpath(RETESTITEMS_TEMP_FOLDER[]) # ensure our folder wasn't removed
     save_current_stdio()
     nworkers = max(0, nworkers)
@@ -267,10 +297,10 @@ function runtests(
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait)
+            _runtests(shouldrun, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait)
         end
     else
-        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait)
+        return _runtests(shouldrun, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait)
     end
 end
 
@@ -651,22 +681,7 @@ end
 #   expand to be an `@testitem`. We will likely _tighten_ this check in future.
 #   i.e. We may in future throw an error for files that currently successfully get included.
 #   i.e. Only `@testitem` and `@testsetup` calls are officially supported.
-checked_include(mod, filepath) = Base.include(check_retestitem_macrocall, mod, filepath)
-function check_retestitem_macrocall(expr)
-    is_retestitem_macrocall(expr) || _throw_not_macrocall(expr)
-    return expr
-end
-function is_retestitem_macrocall(expr::Expr)
-    if expr.head == :macrocall
-        # For now, we're not checking for `@testitem`/`@testsetup` only,
-        # but we can still guard against the most common issue.
-        name = expr.args[1]
-        if name != Symbol("@testset") && name != Symbol("@test")
-            return true
-        end
-    end
-    return false
-end
+checked_include(shouldrun, mod, filepath) = _include(shouldrun, mod, filepath)
 function _throw_not_macrocall(expr)
     # `Base.include` sets the `:SOURCE_PATH` before the `mapexpr`
     # (`check_retestitem_macrocall`) is first called
@@ -699,7 +714,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, verbose
         return setups
     end
     hidden_re = r"\.\w"
-    @sync for (root, d, files) in Base.walkdir(project_root)
+    @sync for (root, d, files) in walkdir(project_root)
         if subproject_root !== nothing && startswith(root, subproject_root)
             @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
             continue
@@ -735,7 +750,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, verbose
                     task_local_storage(:__RE_TEST_ITEMS__, ($file_node, $testitem_names)) do
                         task_local_storage(:__RE_TEST_PROJECT__, $(project_root)) do
                             task_local_storage(:__RE_TEST_SETUPS__, $setup_channel) do
-                                checked_include(Main, $filepath)
+                                checked_include($shouldrun, Main, $filepath)
                             end
                         end
                     end
