@@ -165,7 +165,7 @@ will be run.
 - `worker_init_expr::Expr`: an expression that will be run on each worker process before any tests are run.
   Can be used to load packages or set up the environment. Must be a `:block` expression.
 - `test_end_expr::Expr`: an expression that will be run after each testitem is run.
-  By default, the expression is `GC.gc(true); GC.gc(false)`, when `nworkers > 1`, to help with memory pressure,
+  By default, the expression is `GC.gc(true)`, when `nworkers > 1`, to help with memory pressure,
   otherwise it is a no-op.
   Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
 - `memory_threshold::Real`: Sets the fraction of memory that can be in use before a worker processes are
@@ -242,7 +242,7 @@ function runtests(
     report::Bool=parse(Bool, get(ENV, "RETESTITEMS_REPORT", "false")),
     logs::Symbol=Symbol(get(ENV, "RETESTITEMS_LOGS", default_log_display_mode(report, nworkers))),
     verbose_results::Bool=(logs !== :issues && isinteractive()),
-    test_end_expr::Expr=nworkers>1 ? quote GC.gc(true); GC.gc(false) end : Expr(:block),
+    test_end_expr::Expr=nworkers>1 ? :(GC.gc(true)) : Expr(:block),
     validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
     timeout_profile_wait::Real=parse(Int, get(ENV, "RETESTITEMS_TIMEOUT_PROFILE_WAIT", "0")),
 )
@@ -369,7 +369,6 @@ function _runtests_in_current_env(
         elseif !isempty(testitems.testitems)
             # Try to free up memory on the coordinator before starting workers
             GC.gc(true)
-            GC.gc(false)
             # Use the logger that was set before we eval'd any user code to avoid world age
             # issues when logging https://github.com/JuliaLang/julia/issues/33865
             original_logger = current_logger()
