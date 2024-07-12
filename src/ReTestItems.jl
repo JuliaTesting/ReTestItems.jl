@@ -343,6 +343,9 @@ function _runtests_in_current_env(
         (nworkers == 0 ? "" : " with $nworkers worker processes and $nworker_threads threads per worker.")
     try
         if nworkers == 0
+            if length(worker_init_expr.args) > 0
+                error("worker_init_expr is set, but will not run because number of workers is 0.")
+            end
             # This is where we disable printing for the serial executor case.
             Test.TESTSET_PRINT_ENABLE[] = false
             ctx = TestContext(proj_name, ntestitems)
