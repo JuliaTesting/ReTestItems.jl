@@ -168,6 +168,8 @@ will be run.
   By default, the expression is `GC.gc(true)`, when `nworkers > 1`, to help with memory pressure,
   otherwise it is a no-op.
   Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
+  The `test_end_expr` is evaluated whether a testitem passes, fails, or errors. If the
+  `testsetup` fails, then the `test_end_expr` is not run.
 - `memory_threshold::Real`: Sets the fraction of memory that can be in use before a worker processes are
   restarted to free memory. Defaults to $(DEFAULT_MEMORY_THRESHOLD[]). Only supported with `nworkers > 0`.
   For example, if set to 0.8, then when >80% of the available memory is in use, a worker process will be killed and
