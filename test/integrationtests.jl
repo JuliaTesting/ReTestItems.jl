@@ -1068,6 +1068,26 @@ end
         @test length(failures(results_with_end)) ≥ 1
     end
 end
+mutable struct AtomicCounter{T}; @atomic x::T; end
+@testset "test_end_expr always runs, even if testitem throws" begin
+    @testset "DontPass.jl package" begin
+        # Test that even though the tests in DontPass will fail, the test_end_expr will
+        # still run.
+        end_expr_count = AtomicCounter(0)
+        test_end_expr = quote
+            @info "RUNNING"
+            @atomic $end_expr_count.x += 1
+        end
+        dont_pass_results = with_test_package("DontPass.jl") do
+            runtests(; nworkers=0, test_end_expr)
+        end
+        @test !all_passed(dont_pass_results)
+        @show n_passed(dont_pass_results)
+        @show length(failures(dont_pass_results))
+        @show length(errors(dont_pass_results))
+        @test n_tests(dont_pass_results) == @atomic(end_expr_count.x)
+    end
+end
 
 @testset "Replace workers when we hit memory threshold" begin
     using IOCapture
