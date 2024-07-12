@@ -224,6 +224,17 @@ end
     end
 end
 
+@testset "runtests a dir with 0 nworkers but worker_init_expr set" verbose=true begin
+    # Doesn't actually matter what it's set to, just that it's set.
+    worker_init_expr =:(1+1)
+    results = encased_testset() do
+        runtests(joinpath(TEST_PKG_DIR, "NoDeps.jl"); worker_init_expr)
+    end
+
+    @test n_passed(results) == 0
+    @test length(errors(results)) == 1
+end
+
 nworkers = 2
 @testset "runtests with nworkers = $nworkers" verbose=true begin
     @testset "Pkg.test() $pkg" for pkg in TEST_PKGS
