@@ -1086,9 +1086,9 @@ mutable struct AtomicCounter{T}; @atomic x::T; end
         @show length(failures(dont_pass_results))
         @show length(errors(dont_pass_results))
         Test.print_test_results(dont_pass_results)
-        number_of_bad_setup_tests = 2
-        # TODO(PR): This should be counting the number of testitems, not the number of tests.
-        @test n_tests(dont_pass_results) - number_of_bad_setup_tests == @atomic(end_expr_count.x)
+        # This is the total number of testitems in DontPass.jl, minus those with
+        # nonexistent testsetups, or errors in the testsetup.
+        @test @atomic(end_expr_count.x) == 7
     end
 end
 
