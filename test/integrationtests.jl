@@ -1147,9 +1147,9 @@ end
     # containing a ParseError, but what we care about is that ultimately the ParseError is
     # displayed, so we just check for that.
     # Only v1.10+ has the newer Parser with better error messages.
-    expected = VERSION < v"1.10" ? "ParseError:" : ["ParseError:", "Expected `]`"]
-    @test_throws ["ParseError:", "Expected `]`"] runtests(file; nworkers=0)
-    @test_throws ["ParseError:", "Expected `]`"] runtests(file; nworkers=1)
+    expected = VERSION < v"1.10" ? "syntax:" : ["ParseError:", "Expected `]`"]
+    @test_throws expected runtests(file; nworkers=0)
+    @test_throws expected runtests(file; nworkers=1)
 end
 
 end # integrationtests.jl testset
