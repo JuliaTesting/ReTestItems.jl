@@ -384,6 +384,7 @@ function _runtests_in_current_env(
                     ts = res.testset
                     print_errors_and_captured_logs(testitem, run_number; logs)
                     report_empty_testsets(testitem, ts)
+                    is_non_pass = any_non_pass(ts)
                     if is_non_pass && run_number != max_runs
                         run_number += 1
                         @info "Retrying $(repr(testitem.name)). Run=$run_number."
@@ -597,7 +598,8 @@ function manage_worker(
                 push!(testitem.stats, testitem_result.stats)
                 print_errors_and_captured_logs(testitem, run_number; logs)
                 report_empty_testsets(testitem, ts)
-                if any_non_pass(ts) && run_number != max_runs
+                is_non_pass = any_non_pass(ts)
+                if is_non_pass && run_number != max_runs
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
                 else
