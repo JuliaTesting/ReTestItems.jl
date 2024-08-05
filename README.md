@@ -227,8 +227,8 @@ runtests("frobble_tests.jl"; nworkers, worker_init_expr)
 1. Write tests inside of an `@testitem` block.
     - These are like an `@testset`, except that they must contain all the code they need to run;
       any imports or definitions required for the tests must be inside the `@testitem`.
-    - A `@testset` can still be used to add structure to your tests, but all `@testset`s must be inside an `@testitem`.
-      These nested `@testset`s can add structure to the reporting, but serve no other purpose.
+    - A `@testset` can still be used, but all `@testset`s must be inside an `@testitem`.
+      These nested `@testset`s can add structure to your test code and to the summary of results printed out at the end of the tests, but serve no other functional purpose.
     - Tests that might previously have had imports and `struct` or `function` definitions outside of an `@testset` should instead now declare these inside of a `@testitem`.
     - `@testitem` can be run in parallel by setting the `nworkers` keyword.
 2. Write shared/re-used testing code in a `@testsetup module`
