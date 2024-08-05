@@ -1141,4 +1141,15 @@ end
     @test contains(c1.output, r"SKIP  \(3/6\) test item \"skip true\"")
 end
 
+@testset "ParseError in test file" begin
+    file = joinpath(TEST_FILES_DIR, "_parse_error_test.jl")
+    # the actual error type will be a TaskFailedException, containing a LoadError,
+    # containing a ParseError, but what we care about is that ultimately the ParseError is
+    # displayed, so we just check for that.
+    # Only v1.10+ has the newer Parser with better error messages.
+    expected = VERSION < v"1.10" ? "syntax:" : ["ParseError:", "Expected `]`"]
+    @test_throws expected runtests(file; nworkers=0)
+    @test_throws expected runtests(file; nworkers=1)
+end
+
 end # integrationtests.jl testset

@@ -653,6 +653,11 @@ end
 #   i.e. Only `@testitem` and `@testsetup` calls are officially supported.
 checked_include(mod, filepath) = Base.include(check_retestitem_macrocall, mod, filepath)
 function check_retestitem_macrocall(expr)
+    if Meta.isexpr(expr, :error)
+        # If the expression failed to parse, most user-friendly to throw the ParseError,
+        # rather than report an error about using only `@testitem` or `@testsetup`.
+        Core.eval(Main, expr)
+    end
     is_retestitem_macrocall(expr) || _throw_not_macrocall(expr)
     return expr
 end
