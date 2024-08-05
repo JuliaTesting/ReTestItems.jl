@@ -95,6 +95,28 @@ Filtering by `name` and `tags` can be combined to run only test-items that match
 julia> runtests("test/Database/"; tags=:regression, name=r"^issue")
 ```
 
+
+#### Running tests in parallel
+
+You can run tests in parallel on multiple worker processes using the `nworkers` keyword.
+
+The `nworkers` keyword specifies the number of worker processes to use for running tests in parallel:
+- `nworkers=0` (the default), runs tests sequentially on the current process.
+- `nworkers=1` runs tests sequentially in a new process.
+- `nworkers=2` runs tests in parallel on 2 new processes (and so on for `nworkers=3`,
+    `nworkers=4`, ...)
+
+All new workers processes are started before any tests are run. Each worker runs the `worker_init_expr` (if given), and then selects a test-item to run from a global queue in a work-stealing manner until all test-items have been run.
+
+The number of threads each worker processes should have is specified by the `nworker_threads` keyword.
+For example, `nworker_threads=2` will start each worker process with 2 threads, and
+`nworker_threads="2,1"` with start each worker with 2 default threads and 1 interactive
+thread
+(see [the Julia manual on
+threadpools](https://docs.julialang.org/en/v1/manual/multi-threading/#man-threadpools)).
+
+Note ReTestItems.jl uses distributed parallelism, not multi-threading, to run test-items in parallel.
+
 ## Writing tests
 
 Tests must be wrapped in a [`@testitem`](https://docs.juliahub.com/General/ReTestItems/stable/autodocs/#ReTestItems.@testitem-Tuple{Any,%20Vararg{Any}}).
@@ -208,11 +230,11 @@ runtests("frobble_tests.jl"; nworkers, worker_init_expr)
     - A `@testset` can still be used to add structure to your tests, but all `@testset`s must be inside an `@testitem`.
       These nested `@testset`s can add structure to the reporting, but serve no other purpose.
     - Tests that might previously have had imports and `struct` or `function` definitions outside of an `@testset` should instead now declare these inside of a `@testitem`.
-    - `@testitem` will be run in parallel (using whatever threads or workers are available to the current Julia process).
+    - `@testitem` can be run in parallel by setting the `nworkers` keyword.
 2. Write shared/re-used testing code in a `@testsetup module`
     - If you want to split tests up into multiple `@testitem` (so they can run in parallel), but also want to share common helper functions, types, or constants,
       then put the shared helper code in a module marked with `@testsetup`.
-    - Each `@testsetup` will only be evaluated once per Julia process.
+    - Each `@testsetup` will only be evaluated once per worker process that requires it.
     - A `@testsetup module` is recommended to be used for sharing helper definitions or shared immutable data;
       not for initializing shared global state that is meant to be mutated (like starting a server).
       For example, a server should be explicitly started and stopped as needed in a `@testitem`, not started within a `@testsetup module`.
