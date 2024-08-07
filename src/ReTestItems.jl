@@ -168,7 +168,7 @@ will be run.
   Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
 - `gc_between_testitems::Bool`: If `true`, a full garbage collection (GC) will be run after each test item is run.
   Defaults to `nworkers > 1`, i.e. `true` when running with multiple worker processes, since multiple worker processes
-  cannot coordinate to trigger Julia's GC, and should not be necessary to invoke the GC directly if running with without
+  cannot coordinate to trigger Julia's GC, and it should not be necessary to invoke the GC directly if running with without
   workers or with a single worker (since the GC will be triggered automatically by the single process running all the tests).
   Can also be set using the `RETESTITEMS_GC_BETWEEN_TESTITEMS` environment variable.
   Tip: For complete control over GC, set `gc_between_testitems=false` and manually trigger GC in `test_end_expr`.
