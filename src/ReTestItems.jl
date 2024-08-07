@@ -686,6 +686,8 @@ end
 # Filter `@testitem` calls from the AST based on the `name` and `tags` keyword passed by the
 # user to `runtests`. We do this by removing the expression altogether if it doesn't match
 # the given name and tags.
+# If name or tags aren't of the expected type, we just return the original expression so
+# we throw when the code is evaluated.
 function filter_testitems(shouldrun, expr)
     # can only filter `@testitem` calls
     @assert expr.head == :macrocall
@@ -697,12 +699,19 @@ function filter_testitems(shouldrun, expr)
     # get name
     @assert expr.args[2] isa LineNumberNode
     name = expr.args[3]
-    name isa String || return expr
+    name isa String || return expr  # so we will throw on `name` not being the right type
     # get tags
     tags = Symbol[]
     for args in expr.args[4:end]
         if args isa Expr && args.head == :(=) && args.args[1] == :tags
-            tags = args.args[2]
+            tags_arg = args.args[2]
+            if tags_arg isa QuoteNode
+                tags = Symbol[tags_arg.value]
+            elseif tags_arg isa Expr && tags_arg.head == :vect
+                tags = Symbol[(arg::QuoteNode).value for arg in tags_arg.args]
+            else
+                return expr # so we will throw on `tags` not being the right type
+            end
         end
     end
     # For backwards compatibility `shouldrun` must be a function that takes a single argument
