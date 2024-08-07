@@ -166,12 +166,12 @@ will be run.
   Can be used to load packages or set up the environment. Must be a `:block` expression.
 - `test_end_expr::Expr`: an expression that will be run after each testitem is run.
   Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
-- `gc_between_testitems::Bool`: If `true`, a full garbage collection (GC) will be run on the worker process
-  after each test item is run. This can be useful to free up memory between test items, especially when running
-  with multiple worker processes, since those processes cannot coordinate to trigger Julia's GC.
-  Defaults to `nworkers > 1`, i.e. `true` when running with multiple worker processes.
+- `gc_between_testitems::Bool`: If `true`, a full garbage collection (GC) will be run after each test item is run.
+  Defaults to `nworkers > 1`, i.e. `true` when running with multiple worker processes, since multiple worker processes
+  cannot coordinate to trigger Julia's GC, and should not be necessary to invoke the GC directly if running with without
+  workers or with a single worker (since the GC will be triggered automatically by the single process running all the tests).
   Can also be set using the `RETESTITEMS_GC_BETWEEN_TESTITEMS` environment variable.
-  Tip: For complete control over GC, set `gc_between_testitems=false` and manually trigger GC from `test_end_expr`.
+  Tip: For complete control over GC, set `gc_between_testitems=false` and manually trigger GC in `test_end_expr`.
 - `memory_threshold::Real`: Sets the fraction of memory that can be in use before a worker processes are
   restarted to free memory. Defaults to $(DEFAULT_MEMORY_THRESHOLD[]). Only supported with `nworkers > 0`.
   For example, if set to 0.8, then when >80% of the available memory is in use, a worker process will be killed and
