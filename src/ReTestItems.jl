@@ -355,7 +355,7 @@ function _runtests_in_current_env(
             # we use a single TestSetupModules
             ctx.setups_evaled = TestSetupModules()
             for (i, testitem) in enumerate(testitems.testitems)
-                push!(testitem.workerid, Libc.getpid())
+                push!(testitem.workerids, Libc.getpid())
                 testitem.eval_number[] = i
                 run_number = 1
                 max_runs = 1 + max(retries, testitem.retries)
@@ -527,7 +527,7 @@ function manage_worker(
             wait(worker)
             worker = robust_start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
         end
-        push!(testitem.workerid, worker.pid)
+        push!(testitem.workerids, worker.pid)
         timeout = something(testitem.timeout, default_timeout)
         fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)))))
         max_runs = 1 + max(retries, testitem.retries)

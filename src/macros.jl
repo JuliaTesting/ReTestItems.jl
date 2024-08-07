@@ -126,7 +126,7 @@ struct TestItem
     project_root::String
     code::Any
     testsetups::Vector{TestSetup} # populated by runtests coordinator
-    workerid::Vector{Int} # populated each time the test item is scheduled
+    workerids::Vector{Int} # populated each time the test item is scheduled
     testsets::Vector{DefaultTestSet} # populated each time the test item is finished running
     stats::Vector{PerfStats} # populated each time the test item is finished running
     eval_number::Base.RefValue{Int} # to keep track of how many items have been run so far

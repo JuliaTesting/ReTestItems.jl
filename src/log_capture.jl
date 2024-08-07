@@ -133,7 +133,7 @@ end
 ### Logging and reporting helpers ##########################################################
 
 _on_worker() = " on worker $(Libc.getpid())"
-_on_worker(ti::TestItem) = " on worker $(last(ti.workerid))"
+_on_worker(ti::TestItem) = " on worker $(last(ti.workerids))"
 _file_info(ti::Union{TestSetup,TestItem}) = string(relpath(ti.file, ti.project_root), ":", ti.line)
 _has_logs(ts::TestSetup) = filesize(logpath(ts)) > 0
 # The path might not exist if a testsetup always throws an error and we don't get to actually
