@@ -166,6 +166,12 @@ will be run.
   Can be used to load packages or set up the environment. Must be a `:block` expression.
 - `test_end_expr::Expr`: an expression that will be run after each testitem is run.
   Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
+- `gc_between_testitems::Bool`: If `true`, a full garbage collection (GC) will be run on the worker process
+  after each test item is run. This can be useful to free up memory between test items, especially when running
+  with multiple worker processes, since those processes cannot coordinate to trigger Julia's GC.
+  Defaults to `nworkers > 1`, i.e. `true` when running with multiple worker processes.
+  Can also be set using the `RETESTITEMS_GC_BETWEEN_TESTITEMS` environment variable.
+  Tip: For complete control over GC, set `gc_between_testitems=false` and manually trigger GC from `test_end_expr`.
 - `memory_threshold::Real`: Sets the fraction of memory that can be in use before a worker processes are
   restarted to free memory. Defaults to $(DEFAULT_MEMORY_THRESHOLD[]). Only supported with `nworkers > 0`.
   For example, if set to 0.8, then when >80% of the available memory is in use, a worker process will be killed and
@@ -243,6 +249,7 @@ function runtests(
     test_end_expr::Expr=Expr(:block),
     validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
     timeout_profile_wait::Real=parse(Int, get(ENV, "RETESTITEMS_TIMEOUT_PROFILE_WAIT", "0")),
+    gc_between_testitems::Bool=parse(Bool, get(ENV, "RETESTITEMS_GC_BETWEEN_TESTITEMS", string(nworkers > 1))),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = _validated_paths(paths, validate_paths)
@@ -326,7 +333,7 @@ end
 function _runtests_in_current_env(
     shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
     testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
-    timeout_profile_wait::Int,
+    timeout_profile_wait::Int, gc_between_testitems::Bool,
 )
     start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
@@ -357,6 +364,10 @@ function _runtests_in_current_env(
                     ts = res.testset
                     print_errors_and_captured_logs(testitem, run_number; logs)
                     report_empty_testsets(testitem, ts)
+                    if gc_between_testitems
+                        @debugv 2 "Running GC"
+                        GC.gc(true)
+                    end
                     if any_non_pass(ts) && run_number != max_runs
                         run_number += 1
                         @info "Retrying $(repr(testitem.name)). Run=$run_number."
@@ -367,6 +378,7 @@ function _runtests_in_current_env(
             end
         elseif !isempty(testitems.testitems)
             # Try to free up memory on the coordinator before starting workers
+            #
             GC.gc(true) # TODO: why do we need to force GC here? do we need a full sweep?
             # Use the logger that was set before we eval'd any user code to avoid world age
             # issues when logging https://github.com/JuliaLang/julia/issues/33865
@@ -386,12 +398,11 @@ function _runtests_in_current_env(
             # Now all workers are started, we can begin processing test items.
             @info "Starting running test items"
             starting = get_starting_testitems(testitems, nworkers)
-            gc_between_testitems = nworkers > 1
             @sync for (i, w) in enumerate(workers)
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
-                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs, $timeout_profile_wait; gc_between_testitems=$gc_between_testitems)
+                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs, $timeout_profile_wait, $gc_between_testitems)
                     end
                 end
             end
@@ -502,7 +513,8 @@ end
 
 function manage_worker(
     worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int; gc_between_testitems::Bool
+    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int,
+    gc_between_testitems::Bool
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
@@ -549,7 +561,7 @@ function manage_worker(
                 if gc_between_testitems
                     # Run GC to free memory on the worker before next testitem.
                     @debugv 2 "Running GC on $worker"
-                    remote_fetch(worker, :(GC.gc())) # TODO: do we need a full sweep?
+                    remote_fetch(worker, :(GC.gc(true))) # TODO: do we need a full sweep?
                 end
                 if any_non_pass(ts) && run_number != max_runs
                     run_number += 1
