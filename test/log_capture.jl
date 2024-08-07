@@ -36,7 +36,10 @@ end
     ti = TestItem(Ref(42), "TheTestItem", "ID007", [], false, [], 0, nothing, false, "source/path", 42, ".", nothing)
     push!(ti.testsetups, setup1)
     push!(ti.testsetups, setup2)
-    push!(ti.testsets, Test.DefaultTestSet("dummy"))
+    push!(ti.testsets, Test.DefaultTestSet("dummy1"))
+    push!(ti.workerids, 98765)
+    push!(ti.testsets, Test.DefaultTestSet("dummy2"))
+    push!(ti.workerids, 43210)
     setup1.logstore[] = open(ReTestItems.logpath(setup1), "w")
     setup2.logstore[] = open(ReTestItems.logpath(setup2), "w")
 
@@ -46,6 +49,15 @@ end
     ReTestItems.print_errors_and_captured_logs(iob, ti, 1, logs=:batched)
     logs = String(take!(iob))
     @test contains(logs, " for test item \"TheTestItem\" at ")
+    @test contains(logs, " on worker 98765")
+    @test contains(logs, "The test item has logs")
+
+    # Test we log the right worker id for the test run
+    open(io->write(io, "The test item has logs"), ReTestItems.logpath(ti, 2), "w")
+    ReTestItems.print_errors_and_captured_logs(iob, ti, 2, logs=:batched)
+    logs = String(take!(iob))
+    @test contains(logs, " for test item \"TheTestItem\" at ")
+    @test contains(logs, " on worker 43210")
     @test contains(logs, "The test item has logs")
 
     open(io->write(io, "The test item has logs"), ReTestItems.logpath(ti, 1), "w")
