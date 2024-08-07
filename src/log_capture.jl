@@ -133,7 +133,7 @@ end
 ### Logging and reporting helpers ##########################################################
 
 _on_worker() = " on worker $(Libc.getpid())"
-_on_worker(ti::TestItem) = " on worker $(ti.workerid[])"
+_on_worker(ti::TestItem, run_number::Int) = " on worker $(ti.workerids[run_number])"
 _file_info(ti::Union{TestSetup,TestItem}) = string(relpath(ti.file, ti.project_root), ":", ti.line)
 _has_logs(ts::TestSetup) = filesize(logpath(ts)) > 0
 # The path might not exist if a testsetup always throws an error and we don't get to actually
@@ -178,11 +178,11 @@ function print_errors_and_captured_logs(
         println(report_iob)
         # in :eager mode, the logs were already printed
         if errors_first
-            has_errors && _print_test_errors(report_iob, ts, _on_worker(ti))
+            has_errors && _print_test_errors(report_iob, ts, _on_worker(ti, run_number))
             logs != :eager && _print_captured_logs(report_iob, ti, run_number)
         else
             logs != :eager && _print_captured_logs(report_iob, ti, run_number)
-            has_errors && _print_test_errors(report_iob, ts, _on_worker(ti))
+            has_errors && _print_test_errors(report_iob, ts, _on_worker(ti, run_number))
         end
         if has_errors || has_logs
             # a newline to visually separate the report for the current test item
@@ -196,13 +196,13 @@ function print_errors_and_captured_logs(
     return nothing
 end
 
-function _print_captured_logs(io, setup::TestSetup, ti::Union{Nothing,TestItem}=nothing)
+function _print_captured_logs(io, setup::TestSetup, ti::Union{Nothing,TestItem}, run_number::Int)
     if _has_logs(setup)
         ti_info = isnothing(ti) ? "" : " (dependency of $(repr(ti.name)))"
         printstyled(io, "Captured logs"; bold=true, color=Base.info_color())
         print(io, " for test setup \"$(setup.name)\"$(ti_info) at ")
         printstyled(io, _file_info(setup); bold=true, color=:default)
-        println(io, isnothing(ti) ? _on_worker() : _on_worker(ti))
+        println(io, isnothing(ti) ? _on_worker() : _on_worker(ti, run_number))
         open(logpath(setup), "r") do logstore
             write(io, logstore)
         end
@@ -215,14 +215,14 @@ end
 # will call this function only if some logs were collected or when called with `verbose_results`.
 function _print_captured_logs(io, ti::TestItem, run_number::Int)
     for setup in ti.testsetups
-        _print_captured_logs(io, setup, ti)
+        _print_captured_logs(io, setup, ti, run_number)
     end
     has_logs = _has_logs(ti, run_number)
     bold_text = has_logs ? "Captured Logs" : "No Captured Logs"
     printstyled(io, bold_text; bold=true, color=Base.info_color())
     print(io, " for test item $(repr(ti.name)) at ")
     printstyled(io, _file_info(ti); bold=true, color=:default)
-    println(io, _on_worker(ti))
+    println(io, _on_worker(ti, run_number))
     has_logs && open(logpath(ti, run_number), "r") do logstore
         write(io, logstore)
     end
