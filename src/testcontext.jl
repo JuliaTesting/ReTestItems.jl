@@ -31,28 +31,16 @@ mutable struct TestContext
     # and shouldn't be serialized across processes
     TestContext(name, ntestitems) = new(name, ntestitems)
 end
-
-# FilteredVector applies a filtering function `f` to items
-# when you try to `push!` and only puts if `f` returns true.
-struct FilteredVector{T} <: AbstractVector{T}
-    f::Any
-    vec::Vector{T}
-end
-
-Base.push!(x::FilteredVector, y) = x.f(y) && push!(x.vec, y)
-Base.size(x::FilteredVector) = size(x.vec)
-Base.getindex(x::FilteredVector, i) = x.vec[i]
-
 struct FileNode
     path::String
     testset::DefaultTestSet
     junit::Union{JUnitTestSuite,Nothing}
-    testitems::FilteredVector{TestItem} # sorted by line number within file
+    testitems::Vector{TestItem} # sorted by line number within file
 end
 
-function FileNode(path, f=default_shouldrun; report::Bool=false, verbose::Bool=false)
+function FileNode(path; report::Bool=false, verbose::Bool=false)
     junit = report ? JUnitTestSuite(path) : nothing
-    return FileNode(path, DefaultTestSet(path; verbose), junit, FilteredVector(f, TestItem[]))
+    return FileNode(path, DefaultTestSet(path; verbose), junit, TestItem[])
 end
 
 Base.push!(f::FileNode, ti::TestItem) = push!(f.testitems, ti)
