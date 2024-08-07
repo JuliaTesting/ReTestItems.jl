@@ -792,7 +792,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, verbose
                 continue
             end
             fpath = relpath(filepath, project_root)
-            file_node = FileNode(fpath, shouldrun; report, verbose=verbose_results)
+            file_node = FileNode(fpath; report, verbose=verbose_results)
             testitem_names = Set{String}() # to enforce that names in the same file are unique
             push!(dir_node, file_node)
             @debugv 1 "Including test items from file `$filepath`"
