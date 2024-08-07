@@ -153,22 +153,28 @@ end
     end
     @test n_tests(results) == 0
 
-    # there is a `bar_test.jl` -- filter to just that file.
-    results = encased_testset() do
-        runtests(ti -> contains(ti.file, "bar_"), pkg)
-    end
-    @test n_passed(results) > 0
-    @test n_tests(results) < n_total
+    ## TODO: Are we okay to remove these tests?
+    ## passing a `shouldrun` function as the first arg has never been documented, and
+    ## when it has come up as a workaround for people, we have only ever said you can filter
+    ## on `ti.name` and `ti.tags`, so i think it is okay to remove these tests that use
+    ## `ti.file` (and not support filtering on `ti.file)
+    ##
+    # # there is a `bar_test.jl` -- filter to just that file.
+    # results = encased_testset() do
+    #     runtests(ti -> contains(ti.file, "bar_"), pkg)
+    # end
+    # @test n_passed(results) > 0
+    # @test n_tests(results) < n_total
 
-    # test we can filter by directory (all tests are in `src/`)
-    results_test_dir = encased_testset() do
-        runtests(ti -> startswith(ti.file, "$pkg/test"), pkg)
-    end
-    results_src_dir = encased_testset() do
-        runtests(ti -> startswith(ti.file, "$pkg/src"), pkg)
-    end
-    @test n_tests(results_src_dir) == n_total
-    @test n_tests(results_test_dir) == 0
+    # # test we can filter by directory (all tests are in `src/`)
+    # results_test_dir = encased_testset() do
+    #     runtests(ti -> startswith(ti.file, "$pkg/test"), pkg)
+    # end
+    # results_src_dir = encased_testset() do
+    #     runtests(ti -> startswith(ti.file, "$pkg/src"), pkg)
+    # end
+    # @test n_tests(results_src_dir) == n_total
+    # @test n_tests(results_test_dir) == 0
 end
 
 @testset "`@testitem` scoping rules" begin
