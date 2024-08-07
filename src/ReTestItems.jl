@@ -165,9 +165,13 @@ will be run.
 - `worker_init_expr::Expr`: an expression that will be run on each worker process before any tests are run.
   Can be used to load packages or set up the environment. Must be a `:block` expression.
 - `test_end_expr::Expr`: an expression that will be run after each testitem is run.
-  By default, the expression is `GC.gc(true)`, when `nworkers > 1`, to help with memory pressure,
-  otherwise it is a no-op.
   Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
+- `gc_between_testitems::Bool`: If `true`, a full garbage collection (GC) will be run after each test item is run.
+  Defaults to `nworkers > 1`, i.e. `true` when running with multiple worker processes, since multiple worker processes
+  cannot coordinate to trigger Julia's GC, and it should not be necessary to invoke the GC directly if running without
+  workers or with a single worker (since the GC will be triggered automatically by the single process running all the tests).
+  Can also be set using the `RETESTITEMS_GC_BETWEEN_TESTITEMS` environment variable.
+  Tip: For complete control over GC, set `gc_between_testitems=false` and manually trigger GC in `test_end_expr`.
 - `memory_threshold::Real`: Sets the fraction of memory that can be in use before a worker processes are
   restarted to free memory. Defaults to $(DEFAULT_MEMORY_THRESHOLD[]). Only supported with `nworkers > 0`.
   For example, if set to 0.8, then when >80% of the available memory is in use, a worker process will be killed and
@@ -242,9 +246,10 @@ function runtests(
     report::Bool=parse(Bool, get(ENV, "RETESTITEMS_REPORT", "false")),
     logs::Symbol=Symbol(get(ENV, "RETESTITEMS_LOGS", default_log_display_mode(report, nworkers))),
     verbose_results::Bool=(logs !== :issues && isinteractive()),
-    test_end_expr::Expr=nworkers>1 ? :(GC.gc(true)) : Expr(:block),
+    test_end_expr::Expr=Expr(:block),
     validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
     timeout_profile_wait::Real=parse(Int, get(ENV, "RETESTITEMS_TIMEOUT_PROFILE_WAIT", "0")),
+    gc_between_testitems::Bool=parse(Bool, get(ENV, "RETESTITEMS_GC_BETWEEN_TESTITEMS", string(nworkers > 1))),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = _validated_paths(paths, validate_paths)
@@ -267,10 +272,10 @@ function runtests(
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait)
+            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, gc_between_testitems)
         end
     else
-        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait)
+        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, gc_between_testitems)
     end
 end
 
@@ -284,7 +289,7 @@ end
 # By tracking and reusing test environments, we can avoid this issue.
 const TEST_ENVS = Dict{String, String}()
 
-function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int)
+function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int, gc_between_testitems::Bool)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -304,7 +309,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
         if is_running_test_runtests_jl(proj_file)
             # Assume this is `Pkg.test`, so test env already active.
             @debugv 2 "Running in current environment `$(Base.active_project())`"
-            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait)
+            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, gc_between_testitems)
         else
             @debugv 1 "Activating test environment for `$proj_file`"
             orig_proj = Base.active_project()
@@ -317,7 +322,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
                     testenv = TestEnv.activate()
                     TEST_ENVS[proj_file] = testenv
                 end
-                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait)
+                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, gc_between_testitems)
             finally
                 Base.set_active_project(orig_proj)
             end
@@ -328,7 +333,7 @@ end
 function _runtests_in_current_env(
     shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
     testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
-    timeout_profile_wait::Int,
+    timeout_profile_wait::Int, gc_between_testitems::Bool,
 )
     start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
@@ -359,6 +364,10 @@ function _runtests_in_current_env(
                     ts = res.testset
                     print_errors_and_captured_logs(testitem, run_number; logs)
                     report_empty_testsets(testitem, ts)
+                    if gc_between_testitems
+                        @debugv 2 "Running GC"
+                        GC.gc(true)
+                    end
                     if any_non_pass(ts) && run_number != max_runs
                         run_number += 1
                         @info "Retrying $(repr(testitem.name)). Run=$run_number."
@@ -368,7 +377,8 @@ function _runtests_in_current_env(
                 end
             end
         elseif !isempty(testitems.testitems)
-            # Try to free up memory on the coordinator before starting workers
+            # Try to free up memory on the coordinator before starting workers, since
+            # the workers won't be able to collect it if they get under memory pressure.
             GC.gc(true)
             # Use the logger that was set before we eval'd any user code to avoid world age
             # issues when logging https://github.com/JuliaLang/julia/issues/33865
@@ -392,7 +402,7 @@ function _runtests_in_current_env(
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
-                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs, $timeout_profile_wait)
+                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs, $timeout_profile_wait, $gc_between_testitems)
                     end
                 end
             end
@@ -503,7 +513,8 @@ end
 
 function manage_worker(
     worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int
+    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int,
+    gc_between_testitems::Bool
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
@@ -547,6 +558,10 @@ function manage_worker(
                 push!(testitem.stats, testitem_result.stats)
                 print_errors_and_captured_logs(testitem, run_number; logs)
                 report_empty_testsets(testitem, ts)
+                if gc_between_testitems
+                    @debugv 2 "Running GC on $worker"
+                    remote_fetch(worker, :(GC.gc(true)))
+                end
                 if any_non_pass(ts) && run_number != max_runs
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
