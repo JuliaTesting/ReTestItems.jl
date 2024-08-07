@@ -220,7 +220,7 @@ _shouldrun(tags::AbstractVector{Symbol}, ti_tags) = issubset(tags, ti_tags)
 _shouldrun(tag::Symbol, ti_tags) = tag in ti_tags
 _shouldrun(::Nothing, x) = true
 
-default_shouldrun(ti::TestItem) = true
+default_shouldrun(ti) = true
 
 runtests(; kw...) = runtests(default_shouldrun, dirname(Base.active_project()); kw...)
 runtests(shouldrun; kw...) = runtests(shouldrun, dirname(Base.active_project()); kw...)
@@ -668,16 +668,60 @@ end
 #   expand to be an `@testitem`. We will likely _tighten_ this check in future.
 #   i.e. We may in future throw an error for files that currently successfully get included.
 #   i.e. Only `@testitem` and `@testsetup` calls are officially supported.
-checked_include(mod, filepath) = Base.include(check_retestitem_macrocall, mod, filepath)
-function check_retestitem_macrocall(expr)
-    if Meta.isexpr(expr, :error)
-        # If the expression failed to parse, most user-friendly to throw the ParseError,
-        # rather than report an error about using only `@testitem` or `@testsetup`.
-        Core.eval(Main, expr)
-    end
-    is_retestitem_macrocall(expr) || _throw_not_macrocall(expr)
-    return expr
+function checked_include(mod, filepath, shouldrun)
+    f = check_and_filter_retestitem_macrocall(shouldrun)
+    Base.include(f, mod, filepath)
 end
+function check_and_filter_retestitem_macrocall(shouldrun)
+    return function check_and_filter(expr)
+        if Meta.isexpr(expr, :error)
+            # If the expression failed to parse, most user-friendly to throw the ParseError,
+            # rather than report an error about using only `@testitem` or `@testsetup`.
+            Core.eval(Main, expr)
+        end
+        is_retestitem_macrocall(expr) || _throw_not_macrocall(expr)
+        expr = filter_testitems(shouldrun, expr)
+        return expr
+    end
+end
+
+# Filter `@testitem` calls from the AST based on the `name` and `tags` keyword passed by the
+# user to `runtests`. We do this by removing the expression altogether if it doesn't match
+# the given name and tags.
+# If name or tags aren't of the expected type, we just return the original expression so
+# we throw when the code is evaluated.
+function filter_testitems(shouldrun, expr)
+    # can only filter `@testitem` calls
+    @assert expr.head == :macrocall
+    if expr.args[1] != Symbol("@testitem")
+        return expr
+    end
+    # testitem must at least have: macro_name, [line number], name, body
+    @assert length(expr.args) >= 4
+    # get name
+    @assert expr.args[2] isa LineNumberNode
+    name = expr.args[3]
+    name isa String || return expr  # so we will throw on `name` not being the right type
+    # get tags
+    tags = Symbol[]
+    for args in expr.args[4:end]
+        if args isa Expr && args.head == :(=) && args.args[1] == :tags
+            tags_arg = args.args[2]
+            if tags_arg isa QuoteNode
+                tags = Symbol[tags_arg.value]
+            elseif tags_arg isa Expr && tags_arg.head == :vect
+                tags = Symbol[(arg::QuoteNode).value for arg in tags_arg.args]
+            else
+                return expr # so we will throw on `tags` not being the right type
+            end
+        end
+    end
+    # For backwards compatibility `shouldrun` must be a function that takes a single argument
+    # (historically a `TestItem`) that has `name` and `tags` fields.
+    ti = (; name, tags)
+    return shouldrun(ti) ? expr : :()
+end
+
 function is_retestitem_macrocall(expr::Expr)
     if expr.head == :macrocall
         # For now, we're not checking for `@testitem`/`@testsetup` only,
@@ -757,7 +801,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, verbose
                     task_local_storage(:__RE_TEST_ITEMS__, ($file_node, $testitem_names)) do
                         task_local_storage(:__RE_TEST_PROJECT__, $(project_root)) do
                             task_local_storage(:__RE_TEST_SETUPS__, $setup_channel) do
-                                checked_include(Main, $filepath)
+                                checked_include(Main, $filepath, $shouldrun)
                             end
                         end
                     end
