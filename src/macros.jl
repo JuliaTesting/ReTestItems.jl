@@ -126,10 +126,10 @@ struct TestItem
     project_root::String
     code::Any
     testsetups::Vector{TestSetup} # populated by runtests coordinator
-    workerid::Base.RefValue{Int} # populated when the test item is scheduled
-    testsets::Vector{DefaultTestSet} # populated when the test item is finished running
+    workerid::Vector{Int} # populated each time the test item is scheduled
+    testsets::Vector{DefaultTestSet} # populated each time the test item is finished running
+    stats::Vector{PerfStats} # populated each time the test item is finished running
     eval_number::Base.RefValue{Int} # to keep track of how many items have been run so far
-    stats::Vector{PerfStats} # populated when the test item is finished running
     scheduled_for_evaluation::ScheduledForEvaluation # to keep track of whether the test item has been scheduled for evaluation
 end
 function TestItem(number, name, id, tags, default_imports, setups, retries, timeout, skip, file, line, project_root, code)
@@ -137,10 +137,10 @@ function TestItem(number, name, id, tags, default_imports, setups, retries, time
     return TestItem(
         number, name, _id, tags, default_imports, setups, retries, timeout, skip, file, line, project_root, code,
         TestSetup[],
-        Ref{Int}(0),
+        Int[],
         DefaultTestSet[],
-        Ref{Int}(0),
         PerfStats[],
+        Ref{Int}(0),
         ScheduledForEvaluation(),
     )
 end
