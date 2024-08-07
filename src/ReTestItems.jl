@@ -377,9 +377,9 @@ function _runtests_in_current_env(
                 end
             end
         elseif !isempty(testitems.testitems)
-            # Try to free up memory on the coordinator before starting workers
-            #
-            GC.gc(true) # TODO: why do we need to force GC here? do we need a full sweep?
+            # Try to free up memory on the coordinator before starting workers, since
+            # the workers won't be able to collect it if they get under memory pressure.
+            GC.gc(true)
             # Use the logger that was set before we eval'd any user code to avoid world age
             # issues when logging https://github.com/JuliaLang/julia/issues/33865
             original_logger = current_logger()
@@ -559,9 +559,8 @@ function manage_worker(
                 print_errors_and_captured_logs(testitem, run_number; logs)
                 report_empty_testsets(testitem, ts)
                 if gc_between_testitems
-                    # Run GC to free memory on the worker before next testitem.
                     @debugv 2 "Running GC on $worker"
-                    remote_fetch(worker, :(GC.gc(true))) # TODO: do we need a full sweep?
+                    remote_fetch(worker, :(GC.gc(true)))
                 end
                 if any_non_pass(ts) && run_number != max_runs
                     run_number += 1
