@@ -165,8 +165,6 @@ will be run.
 - `worker_init_expr::Expr`: an expression that will be run on each worker process before any tests are run.
   Can be used to load packages or set up the environment. Must be a `:block` expression.
 - `test_end_expr::Expr`: an expression that will be run after each testitem is run.
-  By default, the expression is `GC.gc(true)`, when `nworkers > 1`, to help with memory pressure,
-  otherwise it is a no-op.
   Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
 - `memory_threshold::Real`: Sets the fraction of memory that can be in use before a worker processes are
   restarted to free memory. Defaults to $(DEFAULT_MEMORY_THRESHOLD[]). Only supported with `nworkers > 0`.
@@ -242,7 +240,7 @@ function runtests(
     report::Bool=parse(Bool, get(ENV, "RETESTITEMS_REPORT", "false")),
     logs::Symbol=Symbol(get(ENV, "RETESTITEMS_LOGS", default_log_display_mode(report, nworkers))),
     verbose_results::Bool=(logs !== :issues && isinteractive()),
-    test_end_expr::Expr=nworkers>1 ? :(GC.gc(true)) : Expr(:block),
+    test_end_expr::Expr=Expr(:block),
     validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
     timeout_profile_wait::Real=parse(Int, get(ENV, "RETESTITEMS_TIMEOUT_PROFILE_WAIT", "0")),
 )
@@ -369,7 +367,7 @@ function _runtests_in_current_env(
             end
         elseif !isempty(testitems.testitems)
             # Try to free up memory on the coordinator before starting workers
-            GC.gc(true)
+            GC.gc(true) # TODO: why do we need to force GC here? do we need a full sweep?
             # Use the logger that was set before we eval'd any user code to avoid world age
             # issues when logging https://github.com/JuliaLang/julia/issues/33865
             original_logger = current_logger()
@@ -388,11 +386,12 @@ function _runtests_in_current_env(
             # Now all workers are started, we can begin processing test items.
             @info "Starting running test items"
             starting = get_starting_testitems(testitems, nworkers)
+            gc_between_testitems = nworkers > 1
             @sync for (i, w) in enumerate(workers)
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
-                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs, $timeout_profile_wait)
+                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs, $timeout_profile_wait; gc_between_testitems=$gc_between_testitems)
                     end
                 end
             end
@@ -503,7 +502,7 @@ end
 
 function manage_worker(
     worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int
+    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int; gc_between_testitems::Bool
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
@@ -547,6 +546,11 @@ function manage_worker(
                 push!(testitem.stats, testitem_result.stats)
                 print_errors_and_captured_logs(testitem, run_number; logs)
                 report_empty_testsets(testitem, ts)
+                if gc_between_testitems
+                    # Run GC to free memory on the worker before next testitem.
+                    @debugv 2 "Running GC on $worker"
+                    remote_fetch(worker, :(GC.gc())) # TODO: do we need a full sweep?
+                end
                 if any_non_pass(ts) && run_number != max_runs
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
