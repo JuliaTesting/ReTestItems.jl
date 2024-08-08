@@ -668,18 +668,14 @@ end
 #   expand to be an `@testitem`. We will likely _tighten_ this check in future.
 #   i.e. We may in future throw an error for files that currently successfully get included.
 #   i.e. Only `@testitem` and `@testsetup` calls are officially supported.
-function checked_include(mod, filepath, shouldrun)
-    f = check_and_filter_retestitem_macrocall(shouldrun)
-    Base.include(f, mod, filepath)
-end
-function check_and_filter_retestitem_macrocall(shouldrun)
+function check_and_filter_retestitem_macrocall(shouldrun, strict::Bool)
     return function check_and_filter(expr)
         if Meta.isexpr(expr, :error)
             # If the expression failed to parse, most user-friendly to throw the ParseError,
             # rather than report an error about using only `@testitem` or `@testsetup`.
             Core.eval(Main, expr)
         end
-        is_retestitem_macrocall(expr) || _throw_not_macrocall(expr)
+        is_retestitem_macrocall(expr, strict) || _throw_not_macrocall(expr)
         expr = filter_testitems(shouldrun, expr)
         return expr
     end
@@ -746,7 +742,8 @@ function _throw_not_macrocall(expr)
 end
 
 # for each directory, kick off a recursive test-finding task
-function include_testfiles!(project_name, projectfile, paths, shouldrun, verbose_results::Bool, report::Bool)
+function include_testfiles!(project_name, projectfile, paths, shouldrun, verbose_results::Bool, report::Bool; strict::Bool)
+    check_and_filter = check_and_filter_retestitem_macrocall(shouldrun, strict)
     project_root = dirname(projectfile)
     subproject_root = nothing  # don't recurse into directories with their own Project.toml.
     root_node = DirNode(project_name; report, verbose=verbose_results)
@@ -801,7 +798,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun, verbose
                     task_local_storage(:__RE_TEST_ITEMS__, ($file_node, $testitem_names)) do
                         task_local_storage(:__RE_TEST_PROJECT__, $(project_root)) do
                             task_local_storage(:__RE_TEST_SETUPS__, $setup_channel) do
-                                checked_include(Main, $filepath, $shouldrun)
+                                Base.include($check_and_filter, Main, $filepath)
                             end
                         end
                     end
