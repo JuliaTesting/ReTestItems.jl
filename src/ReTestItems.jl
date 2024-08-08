@@ -218,13 +218,11 @@ _shouldrun(tags::AbstractVector{Symbol}, ti_tags) = issubset(tags, ti_tags)
 _shouldrun(tag::Symbol, ti_tags) = tag in ti_tags
 _shouldrun(::Nothing, x) = true
 
-default_shouldrun(ti) = true
-
-runtests(; kw...) = runtests(default_shouldrun, dirname(Base.active_project()); kw...)
+runtests(; kw...) = runtests(Returns(true), dirname(Base.active_project()); kw...)
 runtests(shouldrun; kw...) = runtests(shouldrun, dirname(Base.active_project()); kw...)
-runtests(paths::AbstractString...; kw...) = runtests(default_shouldrun, paths...; kw...)
+runtests(paths::AbstractString...; kw...) = runtests(Returns(true), paths...; kw...)
 
-runtests(pkg::Module; kw...) = runtests(default_shouldrun, pkg; kw...)
+runtests(pkg::Module; kw...) = runtests(Returns(true), pkg; kw...)
 function runtests(shouldrun, pkg::Module; kw...)
     dir = pkgdir(pkg)
     isnothing(dir) && error("Could not find directory for `$pkg`")
@@ -667,7 +665,7 @@ function create_testitem_check_and_filter(shouldrun::F, strict::Bool) where {F}
             Core.eval(Main, expr)
         end
         is_retestitem_macrocall(expr, strict) || _throw_not_macrocall(expr)
-        expr = filter_testitems(shouldrun, expr)
+        expr = filter_testitem(shouldrun, expr)
         return expr
     end
 end
