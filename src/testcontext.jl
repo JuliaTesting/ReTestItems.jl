@@ -43,6 +43,9 @@ Base.push!(x::FilteredVector, y) = x.f(y) && push!(x.vec, y)
 Base.size(x::FilteredVector) = size(x.vec)
 Base.getindex(x::FilteredVector, i) = x.vec[i]
 
+# TODO: In future when we guarantee test files have only `@testitem`/`@testsetup` calls and
+# filtering is done at the AST level, we will no longer need to filter here, and the
+# `testitems` can just be a `Vector{TestItem}` and we can delete `FilteredVector`.
 struct FileNode
     path::String
     testset::DefaultTestSet
@@ -50,7 +53,7 @@ struct FileNode
     testitems::FilteredVector{TestItem} # sorted by line number within file
 end
 
-function FileNode(path, f=default_shouldrun; report::Bool=false, verbose::Bool=false)
+function FileNode(path, f=Returns(true); report::Bool=false, verbose::Bool=false)
     junit = report ? JUnitTestSuite(path) : nothing
     return FileNode(path, DefaultTestSet(path; verbose), junit, FilteredVector(f, TestItem[]))
 end
