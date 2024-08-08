@@ -230,11 +230,11 @@ function (s::ShouldRun)(expr::Expr)
     should_throw = false
     if expr.head == :macrocall
         name = expr.args[1]
-        if name === Symbol("@testitem") # || name === Symbol("@test_rel")
-            expr = _shouldrun(s.name, expr.args[3]) ? expr : nothing
+        if name === Symbol("@testitem") || name === Symbol("@test_rel")
+            expr = _shouldrun(s.name, get(expr.args, 3, "")) ? expr : nothing
         elseif name === Symbol("@test") || name === Symbol("@testset")
             should_throw = true
-        elseif name === Symbol("@testsetup")# || name === Symbol("@static") || name === Symbol("@eval")
+        elseif name === Symbol("@testsetup") || name === Symbol("@static") || name === Symbol("@eval")
              expr = nothing
         end
     else
