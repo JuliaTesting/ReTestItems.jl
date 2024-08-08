@@ -166,6 +166,8 @@ will be run.
   Can be used to load packages or set up the environment. Must be a `:block` expression.
 - `test_end_expr::Expr`: an expression that will be run after each testitem is run.
   Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
+  The `test_end_expr` is evaluated whether a testitem passes, fails, or errors. If the
+  `testsetup` fails, then the `test_end_expr` is not run.
 - `gc_between_testitems::Bool`: If `true`, a full garbage collection (GC) will be run after each test item is run.
   Defaults to `nworkers > 1`, i.e. `true` when running with multiple worker processes, since multiple worker processes
   cannot coordinate to trigger Julia's GC, and it should not be necessary to invoke the GC directly if running without
@@ -955,10 +957,16 @@ end
 # when `runtestitem` called directly or `@testitem` called outside of `runtests`.
 function runtestitem(
     ti::TestItem, ctx::TestContext;
-    test_end_expr::Expr=Expr(:block), logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true,
+    test_end_expr::Union{Nothing,Expr}=nothing, logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true,
 )
     if should_skip(ti)::Bool
         return skiptestitem(ti, ctx; verbose_results)
+    end
+    if test_end_expr === nothing
+        has_test_end_expr = false
+        test_end_expr = Expr(:block)
+    else
+        has_test_end_expr = true
     end
     name = ti.name
     log_testitem_start(ti, ctx.ntestitems)
@@ -1024,8 +1032,13 @@ function runtestitem(
         # environment = Module()
         @debugv 1 "Running test item $(repr(name))$(_on_worker())."
         _, stats = @timed_with_compilation _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : logpath(ti)) do
-            with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
-            with_source_path(() -> Core.eval(Main, test_end_mod_expr), ti.file)
+            # Always run the test_end_mod_expr, even if the test item fails / throws
+            try
+                with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
+            finally
+                has_test_end_expr && @debugv 1 "Running test_end_expr for test item $(repr(name))$(_on_worker())."
+                with_source_path(() -> Core.eval(Main, test_end_mod_expr), ti.file)
+            end
             nothing # return nothing as the first return value of @timed_with_compilation
         end
         @debugv 1 "Done running test item $(repr(name))$(_on_worker())."
