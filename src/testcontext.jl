@@ -34,6 +34,7 @@ end
 
 # FilteredVector applies a filtering function `f` to items
 # when you try to `push!` and only puts if `f` returns true.
+# TODO: drop this when all filtering is done at the AST level
 struct FilteredVector{T} <: AbstractVector{T}
     f::Any
     vec::Vector{T}
@@ -43,9 +44,6 @@ Base.push!(x::FilteredVector, y) = x.f(y) && push!(x.vec, y)
 Base.size(x::FilteredVector) = size(x.vec)
 Base.getindex(x::FilteredVector, i) = x.vec[i]
 
-# TODO: In future when we guarantee test files have only `@testitem`/`@testsetup` calls and
-# filtering is done at the AST level, we will no longer need to filter here, and the
-# `testitems` can just be a `Vector{TestItem}` and we can delete `FilteredVector`.
 struct FileNode
     path::String
     testset::DefaultTestSet

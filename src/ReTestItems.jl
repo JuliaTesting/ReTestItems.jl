@@ -60,6 +60,7 @@ include("macros.jl")
 include("junit_xml.jl")
 include("testcontext.jl")
 include("log_capture.jl")
+include("filtering.jl")
 
 function __init__()
     DEFAULT_STDOUT[] = stdout
@@ -208,18 +209,6 @@ will be run.
 """
 function runtests end
 
-# We assume copy-pasting test name would be the most common use-case
-_shouldrun(name::AbstractString, ti_name) = name == ti_name
-# Regex used for partial matches on test item name (commonly used with XUnit.jl)
-_shouldrun(pattern::Regex, ti_name) = contains(ti_name, pattern)
-# All tags must be present in the test item, aka we use AND chaining for tags.
-# OR chaining would make it hard to run more specific subsets of tests + one can run
-# mutliple independents `runtests` with AND chaining to get most of the benefits of OR chaining
-# (with the caveat that overlaps would be run multiple times)
-_shouldrun(tags::AbstractVector{Symbol}, ti_tags) = issubset(tags, ti_tags)
-_shouldrun(tag::Symbol, ti_tags) = tag in ti_tags
-_shouldrun(::Nothing, x) = true
-
 runtests(; kw...) = runtests(Returns(true), dirname(Base.active_project()); kw...)
 runtests(shouldrun; kw...) = runtests(shouldrun, dirname(Base.active_project()); kw...)
 runtests(paths::AbstractString...; kw...) = runtests(Returns(true), paths...; kw...)
@@ -256,7 +245,7 @@ function runtests(
     # filtering of testitems on the AST rather than having to evaluate the files first (since
     # we would be guaranteeing the AST has only contain `@testitem` and `@testsetup` calls).
     # This is exposed as a keyword for now to help with the transition to the stricter behaviour.
-    check_files::Bool=false
+    strict::Bool=false
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = _validated_paths(paths, validate_paths)
@@ -268,7 +257,7 @@ function runtests(
     timeout_profile_wait >= 0 || throw(ArgumentError("`timeout_profile_wait` must be a non-negative number, got $(repr(timeout_profile_wait))"))
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
-    shouldrun_combined(ti) = shouldrun(ti) && _shouldrun(name, ti.name) && _shouldrun(tags, ti.tags)
+    ti_filter = TestItemFilter(shouldrun, tags, name, strict)
     mkpath(RETESTITEMS_TEMP_FOLDER[]) # ensure our folder wasn't removed
     save_current_stdio()
     nworkers = max(0, nworkers)
@@ -279,10 +268,10 @@ function runtests(
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, gc_between_testitems, check_files)
+            _runtests(ti_filter, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, gc_between_testitems)
         end
     else
-        return _runtests(shouldrun_combined, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, gc_between_testitems, check_files)
+        return _runtests(ti_filter, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, gc_between_testitems)
     end
 end
 
@@ -296,7 +285,7 @@ end
 # By tracking and reusing test environments, we can avoid this issue.
 const TEST_ENVS = Dict{String, String}()
 
-function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int, gc_between_testitems::Bool, check_files::Bool)
+function _runtests(ti_filter, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int, gc_between_testitems::Bool)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -316,7 +305,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
         if is_running_test_runtests_jl(proj_file)
             # Assume this is `Pkg.test`, so test env already active.
             @debugv 2 "Running in current environment `$(Base.active_project())`"
-            return _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, gc_between_testitems, check_files)
+            return _runtests_in_current_env(ti_filter, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, gc_between_testitems)
         else
             @debugv 1 "Activating test environment for `$proj_file`"
             orig_proj = Base.active_project()
@@ -329,7 +318,7 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
                     testenv = TestEnv.activate()
                     TEST_ENVS[proj_file] = testenv
                 end
-                _runtests_in_current_env(shouldrun, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, gc_between_testitems, check_files)
+                _runtests_in_current_env(ti_filter, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, gc_between_testitems)
             finally
                 Base.set_active_project(orig_proj)
             end
@@ -338,16 +327,16 @@ function _runtests(shouldrun, paths, nworkers::Int, nworker_threads::String, wor
 end
 
 function _runtests_in_current_env(
-    shouldrun, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
+    ti_filter, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
     testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
-    timeout_profile_wait::Int, gc_between_testitems::Bool, check_files::Bool
+    timeout_profile_wait::Int, gc_between_testitems::Bool
 )
     start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
     @info "Scanning for test items in project `$proj_name` at paths: $(join(paths, ", "))"
     inc_time = time()
     @debugv 1 "Including tests in $paths"
-    testitems, _ = include_testfiles!(proj_name, projectfile, paths, shouldrun; verbose_results, report, check_files)
+    testitems, _ = include_testfiles!(proj_name, projectfile, paths, ti_filter, verbose_results, report)
     ntestitems = length(testitems.testitems)
     @debugv 1 "Done including tests in $paths"
     @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds." *
@@ -665,95 +654,8 @@ function _is_subproject(dir, current_projectfile)
     return true
 end
 
-# Return a function that transforms the AST before the file is evaluated.
-function create_ast_filter(shouldrun::F, strict::Bool) where {F}
-    return function check_and_filter(expr)
-        if Meta.isexpr(expr, :error)
-            # If the expression failed to parse, most user-friendly to throw the ParseError,
-            # rather than report an error about using only `@testitem` or `@testsetup`.
-            Core.eval(Main, expr)
-        end
-        is_retestitem_macrocall(expr, strict) || _throw_not_macrocall(expr)
-        expr = filter_testitem(shouldrun, expr)
-        return expr
-    end
-end
-
-# Filter out `@testitem` calls based on the `name` and `tags` keyword passed to `runtests`.
-# i.e. removing the expression altogether if it doesn't match the given name and tags.
-# If name or tags aren't of the expected type, we just return the original expression so
-# we throw when the code is evaluated.
-function filter_testitem(shouldrun, expr)
-    @assert expr.head == :macrocall
-    if expr.args[1] !== Symbol("@testitem")
-        return expr
-    end
-    @assert length(expr.args) >= 4  # must at least have: macro_name, line_number, name, body
-    @assert expr.args[2] isa LineNumberNode
-    name = expr.args[3]
-    name isa String || return expr  # not as expected, leave the expr as is so it throws
-    tags = Symbol[]
-    for args in expr.args[4:end]
-        if args isa Expr && args.head == :(=) && args.args[1] == :tags
-            tags_arg = args.args[2]
-            if tags_arg isa Expr && tags_arg.head == :vect
-                for tag in tags_arg.args
-                    if tag isa QuoteNode && tag.value isa Symbol
-                        push!(tags, tag.value)
-                    else  # not as expected, leave the expr as is so it throws
-                        return expr
-                    end
-                end
-            end
-        end
-    end
-    # For backwards compatibility `shouldrun` must be a function that takes a single argument
-    # (historically a `TestItem`) that has `name` and `tags` fields.
-    ti = TestItemFilters(name, tags)
-    return shouldrun(ti) ? expr : nothing
-end
-# Use a custom struct so it gives a nicer error than using a namedtuple.
-struct TestItemFilters
-    name::String
-    tags::Vector{Symbol}
-end
-
-# check if the expression is a macrocall as expected. if `strict` is `true`, then we allow
-# only `@testitem` and `@testsetup` calls, since these are all that are officially
-# supported (and in future we intend to enforce `strict` mode).
-function is_retestitem_macrocall(expr::Expr, strict::Bool)
-    if expr.head == :macrocall
-        name = expr.args[1]
-        if strict # check files follow intended usage
-            return name === Symbol("@testitem") || name === Symbol("@testsetup")
-        else
-            # we allow any macro that expands to be an `@testitem`... but we can still
-            # guard against the most common typos that we know aren't `@testitem`s
-            return name !== Symbol("@testset") && name !== Symbol("@test")
-        end
-    else
-        return false
-    end
-end
-function _throw_not_macrocall(expr)
-    # `Base.include` sets the `:SOURCE_PATH` before the `mapexpr` is first called
-    file = get(task_local_storage(), :SOURCE_PATH, "unknown")
-    msg = """
-    Test files must only include `@testitem` and `@testsetup` calls.
-    In $(repr(file)) got:
-        $(Base.remove_linenums!(expr))
-    """
-    error(msg)
-end
-
 # for each directory, kick off a recursive test-finding task
-function include_testfiles!(project_name, projectfile, paths, shouldrun; verbose_results::Bool, report::Bool, check_files::Bool)
-    ast_filter = create_ast_filter(shouldrun, check_files)
-    # if `check_files=true`, we checked files only have `@testitem` and `@testsetup` calls,
-    # and all testitem filtering was done at parse-time, else we have to also filter out
-    # testitems after the files have been evaluated.
-    # TODO: drop this when we always check files for correct usage at parse-time.
-    eval_time_filter = check_files ? Returns(true) : shouldrun
+function include_testfiles!(project_name, projectfile, paths, ti_filter::TestItemFilter, verbose_results::Bool, report::Bool)
     project_root = dirname(projectfile)
     subproject_root = nothing  # don't recurse into directories with their own Project.toml.
     root_node = DirNode(project_name; report, verbose=verbose_results)
@@ -799,7 +701,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun; verbose
                 continue
             end
             fpath = relpath(filepath, project_root)
-            file_node = FileNode(fpath, eval_time_filter; report, verbose=verbose_results)
+            file_node = FileNode(fpath, ti_filter; report, verbose=verbose_results)
             testitem_names = Set{String}() # to enforce that names in the same file are unique
             push!(dir_node, file_node)
             @debugv 1 "Including test items from file `$filepath`"
@@ -808,7 +710,7 @@ function include_testfiles!(project_name, projectfile, paths, shouldrun; verbose
                     task_local_storage(:__RE_TEST_ITEMS__, ($file_node, $testitem_names)) do
                         task_local_storage(:__RE_TEST_PROJECT__, $(project_root)) do
                             task_local_storage(:__RE_TEST_SETUPS__, $setup_channel) do
-                                Base.include($ast_filter, Main, $filepath)
+                                Base.include($ti_filter, Main, $filepath)
                             end
                         end
                     end
