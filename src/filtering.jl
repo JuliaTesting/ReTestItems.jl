@@ -1,3 +1,10 @@
+# Use a custom struct so accessing a non-existent field (i.e. trying to filer on anything
+# other than `name` or `tags`) gives a somewhat informative error.
+struct TestItemMetadata
+    name::String
+    tags::Vector{Symbol}
+end
+
 struct TestItemFilter{
         F<:Function,
         T<:Union{Nothing,Symbol,AbstractVector{Symbol}},
@@ -9,16 +16,12 @@ struct TestItemFilter{
     strict::Bool  # TODO: hardcode `strict=true`
 end
 
-# Use a custom struct so accessing a non-existent field (i.e. trying to filer on anything
-# other than `name` or `tags`) gives a somewhat informative error.
-struct TestItemMetadata
-    name::String
-    tags::Vector{Symbol}
+function (f::TestItemFilter)(ti::TestItemMetadata)
+    return f.shouldrun(ti)::Bool && _shouldrun(f.tags, ti) && _shouldrun(f.name, ti)
 end
-
-# TODO: restrict this to `TestItemMetadata` when we hardcode `strict=true`
-function (f::TestItemFilter)(ti::Union{TestItem,TestItemMetadata})
-    if f.strict
+# TODO: drop this method with we hardcode `strict=true`
+function (f::TestItemFilter)(ti::TestItem)
+    if f.strict # we were able to do all filtering already on the AST
         return true
     else
         return f.shouldrun(ti)::Bool && _shouldrun(f.tags, ti) && _shouldrun(f.name, ti)
@@ -48,14 +51,13 @@ end
 # Any other macro calls (e.g. `@testsetup`) are left as is.
 # If the `@testitem` call is not as expected, it is left as is so that it throws an error.
 #
-# If the filter function `f` returns `true`, keep the `@testitem` call, otherwise remove it.
 # Replacing the expression with `nothing` effectively removes it from the file.
 # `Base.include` will still call `Core.eval(M, nothing)` which has a tiny overhead,
 # but less than `Core.eval(M, :())`. We could instead replace `Base.include` with a
 # custom function that doesn't call `Core.eval(M, expr)` if `expr === nothing`, but
 # using `Base.include` means we benefit from improvements made upstream rather than
 # having to maintain our own version of that code.
-function filter_testitem(f, expr)
+function filter_testitem(f::TestItemFilter, expr)
     @assert expr.head == :macrocall
     if expr.args[1] !== Symbol("@testitem")
         return expr

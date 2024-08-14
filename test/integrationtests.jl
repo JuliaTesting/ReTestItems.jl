@@ -153,12 +153,31 @@ end
     end
     @test n_tests(results) == 0
 
-    # there is a `@testitem` tagged `b_tag` -- filter to just that testitem.
+    # there is a `@testitem "b"` tagged `:b_tag` -- filter to just that testitem.
     results = encased_testset() do
         runtests(ti -> :b_tag in ti.tags, pkg)
     end
     @test n_passed(results) == 1
     @test n_tests(results) == 1
+
+    # combining with `name` and `tags` keyword
+    results = encased_testset() do
+        runtests(ti -> :b_tag in ti.tags, pkg; name="b")
+    end
+    @test n_passed(results) == 1
+    @test n_tests(results) == 1
+
+    results = encased_testset() do
+        runtests(ti -> :b_tag in ti.tags, pkg; name="b", tags=:nope)
+    end
+    @test n_passed(results) == 0
+    @test n_tests(results) == 0
+
+    results = encased_testset() do
+        runtests(ti -> :b_tag in ti.tags, pkg; name="nope")
+    end
+    @test n_passed(results) == 0
+    @test n_tests(results) == 0
 
     ## TODO: Are we okay to remove these tests?
     ## passing a `shouldrun` function as the first arg has never been documented, and
@@ -1215,6 +1234,43 @@ end
         # ...and still throws even when filtering out all testitems
         @test_throws Exception runtests(Returns(false), path)
     end
+end
+
+# `strict=true` means we strictly require only `@testitem` and `@testsetup` calls in a file.
+@testset "`strict` keyword" begin
+    file = joinpath(TEST_FILES_DIR, "_strict_test.jl")
+    # used in `_strict_test.jl`
+    @eval begin
+        macro _other_macro(args...)
+            if length(args) == 1
+                name = "anon"
+                ex = args[1]
+            else
+                name = args[1]
+                ex = args[2]
+            end
+            quote
+                @testitem $(name) begin
+                    using Test
+                    $(ex)
+                end
+            end
+        end
+    end
+    filter_func(ti) = false
+    err_msg = "Test files must only include `@testitem` and `@testsetup` calls."
+    @test_throws err_msg runtests(file; strict=true)
+    @test_throws err_msg runtests(file; strict=true, name="ti 1")
+    @test_throws err_msg runtests(filter_func, file; strict=true, name="ti 1")
+    # `strict=false` means we allow other macros in the file.
+    results = encased_testset(() -> runtests(file; strict=false))
+    @test n_tests(results) == 3
+    results = encased_testset(() -> runtests(file; strict=false, name="ti"))
+    @test n_tests(results) == 1
+    results = encased_testset(() -> runtests(file; strict=false, name="anon"))
+    @test n_tests(results) == 1
+    results = encased_testset(() -> runtests(filter_func, file; strict=false))
+    @test n_tests(results) == 0
 end
 
 end # integrationtests.jl testset
