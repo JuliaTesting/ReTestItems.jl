@@ -57,7 +57,7 @@ end
 # custom function that doesn't call `Core.eval(M, expr)` if `expr === nothing`, but
 # using `Base.include` means we benefit from improvements made upstream rather than
 # having to maintain our own version of that code.
-function filter_testitem(f::TestItemFilter, expr)
+function filter_testitem(f, expr)
     @assert expr.head == :macrocall
     if expr.args[1] !== Symbol("@testitem")
         return expr
