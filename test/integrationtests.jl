@@ -141,7 +141,7 @@ end
     end
     @test n_tests(results) == 0
 
-    # there is a `@testitem "bar"` -- filer to just that testitem.
+    # there is a `@testitem "bar"` -- filter to just that testitem.
     results = encased_testset() do
         runtests(ti -> contains(ti.name, "bar"), pkg)
     end
@@ -152,6 +152,13 @@ end
         runtests(ti -> contains(ti.name, "bar_"), pkg)
     end
     @test n_tests(results) == 0
+
+    # there is a `@testitem` tagged `b_tag` -- filter to just that testitem.
+    results = encased_testset() do
+        runtests(ti -> :b_tag in ti.tags, pkg)
+    end
+    @test n_passed(results) == 1
+    @test n_tests(results) == 1
 
     ## TODO: Are we okay to remove these tests?
     ## passing a `shouldrun` function as the first arg has never been documented, and
@@ -175,6 +182,9 @@ end
     # end
     # @test n_tests(results_src_dir) == n_total
     # @test n_tests(results_test_dir) == 0
+
+    # can only filter on `ti.name` and `ti.tags` (at least for now)
+    @test_throws "no field file" runtests(ti -> contains(ti.file, "bar_"), pkg)
 end
 
 @testset "`@testitem` scoping rules" begin
@@ -1179,6 +1189,32 @@ end
     expected = VERSION < v"1.10" ? "syntax:" : ["ParseError:", "Expected `]`"]
     @test_throws expected runtests(file; nworkers=0)
     @test_throws expected runtests(file; nworkers=1)
+end
+
+@testset "invalid testitem combined with filter function" begin
+    # When filtering testitems from the AST (i.e. before evaluating the `@testitem` macro)
+    # we need to be sure *not to filter out incorrect usages of `@testitem`* and make sure
+    # these still throw errors.
+    # Note: filtering testitems can still mask some issues that would appear if all
+    # testitems were run, such as having testitems with duplicate names in the same,
+    for file in (
+        "_bad_tags1_test.jl",
+        "_bad_tags2_test.jl",
+        "_bad_name1_test.jl",
+        "_bad_name2_test.jl",
+        "_invalid_file1_test.jl",
+        "_invalid_file2_test.jl",
+        "_misuse_file1_test.jl",
+        "_misuse_file2_test.jl",
+        "_misuse_file3_test.jl",
+        "_parse_error_test.jl",
+    )
+        path = joinpath(TEST_FILES_DIR, file)
+        # make sure the file throws when run in full...
+        @test_throws Exception runtests(path)
+        # ...and still throws even when filtering out all testitems
+        @test_throws Exception runtests(Returns(false), path)
+    end
 end
 
 end # integrationtests.jl testset

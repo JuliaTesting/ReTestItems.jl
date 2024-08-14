@@ -1,4 +1,4 @@
-# Unit tests for internal helper functions
+# Unit tests for internal helper functions (i.e. not public API)
 using Test
 using ReTestItems
 
@@ -321,6 +321,62 @@ end
 
     ti = @testitem("x", skip=:(x = 1; x + y), _run=false, begin end)
     @test_throws UndefVarError(:y) should_skip(ti)
+end
+
+@testset "filtering.jl" begin
+    @testset "filter_testitem" begin
+        using ReTestItems: filter_testitem
+        ti = :(@testitem "TI" tags=[:foo, :bar] begin; @test true; end)
+        ts = :(@testsetup module TS; x = 1; end)
+        tx = :(@other_macro "TX" tags=[:foo, :bar] begin; @test true; end)
+        @test filter_testitem(Returns(true),  ti) == ti
+        @test filter_testitem(Returns(false), ti) == nothing
+        @test filter_testitem(Returns(true),  ts) == ts
+        @test filter_testitem(Returns(false), ts) == ts
+        @test filter_testitem(Returns(true),  tx) == tx
+        @test filter_testitem(Returns(false), tx) == tx
+    end
+    @testset "try_get_name" begin
+        using ReTestItems: try_get_name
+        ti = :(@testitem "TI" tags=[:foo, :bar] begin; @test true; end)
+        ti_wrong1 = :(@testitem tags=[:foo, :bar] begin; @test true; end)
+        ti_wrong2 = :(@testitem :TI begin; @test true; end)
+        @test try_get_name(ti) == "TI"
+        @test try_get_name(ti_wrong1) == nothing
+        @test try_get_name(ti_wrong2) == nothing
+    end
+    @testset "try_get_tags" begin
+        using ReTestItems: try_get_tags
+        ti = :(@testitem "TI" tags=[:foo, :bar] begin; @test true; end)
+        ti_no_tags = :(@testitem "TI" begin; @test true; end)
+        ti_bad_tags1 = :(@testitem "TI" tags="not a symbol" begin; @test true; end)
+        ti_bad_tags2 = :(@testitem "TI" tags=[:x, "not a symbol"] begin; @test true; end)
+        @test try_get_tags(ti) == Symbol[:foo, :bar]
+        @test try_get_tags(ti_no_tags) == Symbol[]
+        @test try_get_tags(ti_bad_tags1) == nothing
+        @test try_get_tags(ti_bad_tags2) == nothing
+    end
+    @testset "is_retestitem_macrocall" begin
+        using ReTestItems: is_retestitem_macrocall
+        # `@testitem` and `@testsetup` always correct
+        testitem = :(@testitem "TI" tags=[:foo, :bar] begin; @test true; end)
+        @test is_retestitem_macrocall(testitem, true)  == true
+        @test is_retestitem_macrocall(testitem, false) == true
+        testsetup = :(@testsetup module TS; x = 1; end)
+        @test is_retestitem_macrocall(testsetup, true)  == true
+        @test is_retestitem_macrocall(testsetup, false) == true
+        # `@testset` and `@test` always incorrect
+        testset = :(@testset "TS" begin; @test true; end)
+        @test is_retestitem_macrocall(testset, true)  == false
+        @test is_retestitem_macrocall(testset, false) == false
+        test = :(@test true)
+        @test is_retestitem_macrocall(test, true)  == false
+        @test is_retestitem_macrocall(test, false) == false
+        # other macros depend on the `strict` argument
+        test_other = :(@other_macro "TX" tags=[:foo, :bar] begin; @test true; end)
+        @test is_retestitem_macrocall(test_other, true)  == false
+        @test is_retestitem_macrocall(test_other, false) == true
+    end
 end
 
 end # internals.jl testset

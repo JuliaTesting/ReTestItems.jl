@@ -1,3 +1,3 @@
-@testitem "b" begin
+@testitem "b" tags=[:b_tag] begin
     @test true
 end
