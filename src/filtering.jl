@@ -46,15 +46,41 @@ end
 
 # Filter out `@testitem` calls based on the `name` and `tags` keyword passed to `runtests`.
 # Any other macro calls (e.g. `@testsetup`) are left as is.
+# If the `@testitem` call is not as expected, it is left as is so that it throws an error.
+#
+# If the filter function `f` returns `true`, keep the `@testitem` call, otherwise remove it.
+# Replacing the expression with `nothing` effectively removes it from the file.
+# `Base.include` will still call `Core.eval(M, nothing)` which has a tiny overhead,
+# but less than `Core.eval(M, :())`. We could instead replace `Base.include` with a
+# custom function that doesn't call `Core.eval(M, expr)` if `expr === nothing`, but
+# using `Base.include` means we benefit from improvements made upstream rather than
+# having to maintain our own version of that code.
 function filter_testitem(f, expr)
     @assert expr.head == :macrocall
     if expr.args[1] !== Symbol("@testitem")
         return expr
     end
-    @assert length(expr.args) >= 4  # must at least have: macro_name, line_number, name, body
-    @assert expr.args[2] isa LineNumberNode
+    # `@testitem` have have at least: macro_name, line_number, name, body
+    length(expr.args) < 4 && return expr
+    name = try_get_name(expr)
+    name === nothing && return expr
+    tags = try_get_tags(expr)
+    tags === nothing && return expr
+    ti = TestItemMetadata(name, tags)
+    return f(ti) ? expr : nothing
+end
+
+# Extract the name from a `@testitem`, return `nothing` if name is not of the expected type.
+function try_get_name(expr::Expr)
+    @assert expr.head == :macrocall && expr.args[1] == Symbol("@testitem")
     name = expr.args[3]
-    name isa String || return expr  # not as expected, leave the expr as is so it throws
+    return name isa String ? name : nothing
+end
+
+# Extract the tags from a `@testitem`, return `nothing` if tags is not of the expected type.
+# The absence of a `tags` keyword is the same as setting `tags=[]`
+function try_get_tags(expr::Expr)
+    @assert expr.head == :macrocall && expr.args[1] == Symbol("@testitem")
     tags = Symbol[]
     for args in expr.args[4:end]
         if args isa Expr && args.head == :(=) && args.args[1] == :tags
@@ -63,22 +89,16 @@ function filter_testitem(f, expr)
                 for tag in tags_arg.args
                     if tag isa QuoteNode && tag.value isa Symbol
                         push!(tags, tag.value)
-                    else  # not as expected, leave the expr as is so it throws
-                        return expr
+                    else
+                        return nothing
                     end
                 end
+            else
+                return nothing
             end
         end
     end
-    ti = TestItemMetadata(name, tags)
-    # If the filter function returns `true`, we keep the `@testitem` call, otherwise we remove it.
-    # Replacing the expression with `nothing` effectively removes it from the file.
-    # `Base.include` will still call `Core.eval(M, nothing)` which has a tiny overhead,
-    # but less than `Core.eval(M, :())`. We could instead replace `Base.include` with a
-    # custom function that doesn't call `Core.eval(M, expr)` if `expr === nothing`, but
-    # using `Base.include` means we benefit from improvements made upstream rather than
-    # having to maintain our own version of that code.
-    return f(ti) ? expr : nothing
+    return tags
 end
 
 # check if the expression is a macrocall as expected. if `strict` is `true`, then we allow
