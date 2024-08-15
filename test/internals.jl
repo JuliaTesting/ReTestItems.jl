@@ -375,4 +375,29 @@ end
     end
 end
 
+@testset "nestedrelpath" begin
+    using ReTestItems: nestedrelpath
+    @assert Base.Filesystem.path_separator == "/"
+    path = "test/dir/foo_test.jl"
+    @test nestedrelpath(path, "test")  == relpath(path, "test")  == "dir/foo_test.jl"
+    @test nestedrelpath(path, "test/") == relpath(path, "test/") == "dir/foo_test.jl"
+    @test nestedrelpath(path, "test/dir")  == relpath(path, "test/dir")  == "foo_test.jl"
+    @test nestedrelpath(path, "test/dir/") == relpath(path, "test/dir/") == "foo_test.jl"
+    @test nestedrelpath(path, "test/dir/foo_test.jl") == relpath(path, "test/dir/foo_test.jl") == "."
+
+    # unlike `relpath`: if `startdir` is not a prefix of `path`, the assumption is violated,
+    # and `path` is just returned as-is
+    @test nestedrelpath(path, "test/dir/foo_") == "test/dir/foo_test.jl"
+    @test nestedrelpath(path, "test/dir/other") == "test/dir/foo_test.jl"
+    @test nestedrelpath(path, "test/dir/other/bar_test.jl") == "test/dir/foo_test.jl"
+
+    @static if isdefined(Base, Symbol("@allocations")) # added in Julia v1.9
+        @test 2 >= @allocations(nestedrelpath(path, "test"))
+        @test 2 >= @allocations(nestedrelpath(path, "test/dir"))
+        @test 1 >= @allocations(nestedrelpath(path, "test/dir/foo_test.jl"))
+        @test 1 >= @allocations(nestedrelpath(path, "test/dir/other"))
+        @test 1 >= @allocations(nestedrelpath(path, "test/dir/other/bar_test.jl"))
+    end
+end
+
 end # internals.jl testset
