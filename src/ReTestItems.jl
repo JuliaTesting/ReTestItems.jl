@@ -376,8 +376,14 @@ function _runtests_in_current_env(
     nworker_threads = cfg.nworker_threads
     ntestitems = length(testitems.testitems)
     @debugv 1 "Done including tests in $paths"
-    @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds." *
-        " Scheduling $ntestitems tests on pid $(Libc.getpid())" *
+    @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds."
+    # TODO: make this a keyword to `runtests` that gets passed to `_runtests_in_current_env`
+    dryrun = parse(Bool, get(ENV, "RETESTITEMS_DRYRUN", "false"))::Bool
+    if dryrun
+        print_testitems(testitems)
+        return nothing
+    end
+    @info "Scheduling $ntestitems tests on pid $(Libc.getpid())" *
         (nworkers == 0 ? "" : " with $nworkers worker processes and $nworker_threads threads per worker.")
     try
         if nworkers == 0
