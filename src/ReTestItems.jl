@@ -633,17 +633,19 @@ function is_testsetup_file(filepath)
     )
 end
 
-# like `relpath` but assumes `path` is nested under `startdir`, else just returns `path`
-function nestedrelpath(path, startdir)
-    path == startdir && return "."
+# Like `relpath` but assumes `path` is nested under `startdir`, else just returns `path`.
+# Always returns a `SubString` to be type-stable.
+function nestedrelpath(path::T, startdir::AbstractString) where {T <: AbstractString}
+    path == startdir && return SubString{T}(".")
     relp = chopprefix(path, startdir)
+    relp == path && return relp
     sep = Base.Filesystem.path_separator
     if endswith(startdir, sep)
         return relp
     elseif startswith(relp, sep)
         return chopprefix(relp, sep)
-    else
-        return path
+    else # `startdir` was a prefix of `path` but not a directory
+        return SubString{T}(path)
     end
 end
 

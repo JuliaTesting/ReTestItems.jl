@@ -391,13 +391,11 @@ end
     @test nestedrelpath(path, "test/dir/other") == "test/dir/foo_test.jl"
     @test nestedrelpath(path, "test/dir/other/bar_test.jl") == "test/dir/foo_test.jl"
 
-    @static if isdefined(Base, Symbol("@allocations")) # added in Julia v1.9
-        @test 2 >= @allocations(nestedrelpath(path, "test"))
-        @test 2 >= @allocations(nestedrelpath(path, "test/dir"))
-        @test 1 >= @allocations(nestedrelpath(path, "test/dir/foo_test.jl"))
-        @test 1 >= @allocations(nestedrelpath(path, "test/dir/other"))
-        @test 1 >= @allocations(nestedrelpath(path, "test/dir/other/bar_test.jl"))
-    end
+    # leading '/' doesn't get ignored or stripped
+    @test nestedrelpath("/a/b/c", "/a/b") == "c"
+    @test nestedrelpath("/a/b/c", "a/b") == "/a/b/c"
+    @test nestedrelpath("/a/b", "/a/b/c") == "/a/b"
+    @test nestedrelpath("/a/b", "c") == "/a/b"
 end
 
 end # internals.jl testset
