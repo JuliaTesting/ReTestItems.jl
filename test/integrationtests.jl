@@ -1261,6 +1261,7 @@ end
         "_misuse_file1_test.jl",
         "_misuse_file2_test.jl",
         "_misuse_file3_test.jl",
+        "_misuse_file4_test.jl",
         "_parse_error_test.jl",
     )
         path = joinpath(TEST_FILES_DIR, file)
