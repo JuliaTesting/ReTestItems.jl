@@ -370,8 +370,8 @@ end
         @test !is_retestitem_macrocall(testset)
         @test !is_retestitem_macrocall(testset)
         test = :(@test true)
-        @test !is_retestitem_macrocall(test, true)  == false
-        @test !is_retestitem_macrocall(test, false) == false
+        @test !is_retestitem_macrocall(test)
+        @test !is_retestitem_macrocall(test)
         test_other = :(@other_macro "TX" tags=[:foo, :bar] begin; @test true; end)
         @test !is_retestitem_macrocall(test_other)
         @test !is_retestitem_macrocall(test_other)
