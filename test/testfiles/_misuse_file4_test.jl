@@ -3,14 +3,9 @@
     @test 1 == 1
 end
 
-@testsetup module StrictFileSetup
+@testsetup module Misuse4FileSetup
     export xyx
     xyx = 1
-end
-
-# this macro is defined in `integrationtests.jl` where this file is run.
-@_other_macro begin
-    @test 1 == 1
 end
 
 @_other_macro "other" begin

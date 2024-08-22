@@ -13,19 +13,17 @@ struct TestItemFilter{
     shouldrun::F
     tags::T
     name::N
-    strict::Bool  # TODO: hardcode `strict=true`
 end
 
 function (f::TestItemFilter)(ti::TestItemMetadata)
     return f.shouldrun(ti)::Bool && _shouldrun(f.tags, ti) && _shouldrun(f.name, ti)
 end
-# TODO: drop this method with we hardcode `strict=true`
+
+# This method is needed for filtering `TestItem`s that were created by
+# `___RAI_MACRO_NAME_DONT_USE` and so couldn't be filtered from the AST.
+# TODO: drop this method when we no longer support `___RAI_MACRO_NAME_DONT_USE`
 function (f::TestItemFilter)(ti::TestItem)
-    if f.strict # we were able to do all filtering already on the AST
-        return true
-    else
-        return f.shouldrun(ti)::Bool && _shouldrun(f.tags, ti) && _shouldrun(f.name, ti)
-    end
+    return f.shouldrun(ti)::Bool && _shouldrun(f.tags, ti) && _shouldrun(f.name, ti)
 end
 
 _shouldrun(name::AbstractString, ti) = name == ti.name
@@ -42,7 +40,7 @@ function (f::TestItemFilter)(expr::Expr)
         # rather than report an error about using only `@testitem` or `@testsetup`.
         Core.eval(Main, expr)
     end
-    is_retestitem_macrocall(expr, f.strict) || _throw_not_macrocall(expr)
+    is_retestitem_macrocall(expr) || _throw_not_macrocall(expr)
     expr = filter_testitem(f, expr)
     return expr
 end
@@ -103,19 +101,16 @@ function try_get_tags(expr::Expr)
     return tags
 end
 
-# check if the expression is a macrocall as expected. if `strict` is `true`, then we allow
-# only `@testitem` and `@testsetup` calls, since these are all that are officially
-# supported (and in future we intend to enforce `strict` mode).
-function is_retestitem_macrocall(expr::Expr, strict::Bool)
+# Macro used by RAI (corporate sponsor of this package)
+# TODO: drop support for this when RAI codebase is fully switched to ReTestItems.jl
+const ___RAI_MACRO_NAME_DONT_USE = Symbol("@test_rel")
+
+# Check if the expression is a macrocall as expected.
+# NOTE: Only `@testitem` and `@testsetup` calls are officially supported.
+function is_retestitem_macrocall(expr::Expr)
     if expr.head == :macrocall
         name = expr.args[1]
-        if strict
-            return name === Symbol("@testitem") || name === Symbol("@testsetup")
-        else
-            # we allow any macro that expands to be an `@testitem`... but we can still
-            # guard against the most common typos that we know aren't `@testitem`s
-            return name !== Symbol("@testset") && name !== Symbol("@test")
-        end
+        return name === Symbol("@testitem") || name === Symbol("@testsetup") || name === ___RAI_MACRO_NAME_DONT_USE
     else
         return false
     end

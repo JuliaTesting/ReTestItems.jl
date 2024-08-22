@@ -822,10 +822,45 @@ end
 
 @testset "error on code outside `@testitem`/`@testsetup`" begin
     err_msg = "Test files must only include `@testitem` and `@testsetup` calls."
-    expected = VERSION < v"1.8" ? Exception : err_msg
-    @test_throws expected runtests(joinpath(TEST_FILES_DIR, "_misuse_file1_test.jl"))
-    @test_throws expected runtests(joinpath(TEST_FILES_DIR, "_misuse_file2_test.jl"))
-    @test_throws expected runtests(joinpath(TEST_FILES_DIR, "_misuse_file3_test.jl"))
+    filter_func(ti) = false
+    @test_throws err_msg runtests(joinpath(TEST_FILES_DIR, "_misuse_file1_test.jl"))
+    @test_throws err_msg runtests(joinpath(TEST_FILES_DIR, "_misuse_file2_test.jl"))
+    @test_throws err_msg runtests(joinpath(TEST_FILES_DIR, "_misuse_file3_test.jl"))
+    @test_throws err_msg runtests(joinpath(TEST_FILES_DIR, "_misuse_file4_test.jl"), name="ti 1")
+    @test_throws err_msg runtests(filter_func, joinpath(TEST_FILES_DIR, "_misuse_file4_test.jl"))
+
+    # TODO: delete this when we drop our unofficial support for `___RAI_MACRO_NAME_DONT_USE`
+    @testset "unofficial RAI support" begin
+        # used in `_support_rai_test.jl`
+        @assert ReTestItems.___RAI_MACRO_NAME_DONT_USE == Symbol("@test_rel")
+        @eval begin
+            macro test_rel(args...)
+                if length(args) == 1
+                    name = "anon"
+                    ex = args[1]
+                else
+                    name = args[1]
+                    ex = args[2]
+                end
+                quote
+                    @testitem $(name) begin
+                        using Test
+                        $(ex)
+                    end
+                end
+            end
+        end
+        file = joinpath(TEST_FILES_DIR, "_support_rai_test.jl")
+        filter_func(ti) = false
+        results = encased_testset(() -> runtests(file))
+        @test n_tests(results) == 3
+        results = encased_testset(() -> runtests(file; name="ti"))
+        @test n_tests(results) == 1
+        results = encased_testset(() -> runtests(file; name="anon"))
+        @test n_tests(results) == 1
+        results = encased_testset(() -> runtests(filter_func, file))
+        @test n_tests(results) == 0
+    end
 end
 
 @testset "Duplicate names in same file throws" begin
@@ -1234,43 +1269,6 @@ end
         # ...and still throws even when filtering out all testitems
         @test_throws Exception runtests(Returns(false), path)
     end
-end
-
-# `strict=true` means we strictly require only `@testitem` and `@testsetup` calls in a file.
-@testset "`strict` keyword" begin
-    file = joinpath(TEST_FILES_DIR, "_strict_test.jl")
-    # used in `_strict_test.jl`
-    @eval begin
-        macro _other_macro(args...)
-            if length(args) == 1
-                name = "anon"
-                ex = args[1]
-            else
-                name = args[1]
-                ex = args[2]
-            end
-            quote
-                @testitem $(name) begin
-                    using Test
-                    $(ex)
-                end
-            end
-        end
-    end
-    filter_func(ti) = false
-    err_msg = "Test files must only include `@testitem` and `@testsetup` calls."
-    @test_throws err_msg runtests(file; strict=true)
-    @test_throws err_msg runtests(file; strict=true, name="ti 1")
-    @test_throws err_msg runtests(filter_func, file; strict=true, name="ti 1")
-    # `strict=false` means we allow other macros in the file.
-    results = encased_testset(() -> runtests(file; strict=false))
-    @test n_tests(results) == 3
-    results = encased_testset(() -> runtests(file; strict=false, name="ti"))
-    @test n_tests(results) == 1
-    results = encased_testset(() -> runtests(file; strict=false, name="anon"))
-    @test n_tests(results) == 1
-    results = encased_testset(() -> runtests(filter_func, file; strict=false))
-    @test n_tests(results) == 0
 end
 
 end # integrationtests.jl testset

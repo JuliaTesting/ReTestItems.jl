@@ -35,6 +35,7 @@ end
 # FilteredVector applies a filtering function `f` to items
 # when you try to `push!` and only puts if `f` returns true.
 # TODO: drop this when all filtering is done at the AST level
+# i.e. when we drop support for _RAI_MACRO_NAME
 struct FilteredVector{T} <: AbstractVector{T}
     f::Any
     vec::Vector{T}

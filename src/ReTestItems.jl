@@ -239,13 +239,6 @@ function runtests(
     validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
     timeout_profile_wait::Real=parse(Int, get(ENV, "RETESTITEMS_TIMEOUT_PROFILE_WAIT", "0")),
     gc_between_testitems::Bool=parse(Bool, get(ENV, "RETESTITEMS_GC_BETWEEN_TESTITEMS", string(nworkers > 1))),
-    # Only `@testitem` and `@testsetup` calls are officially supported, so we intend to
-    # change the default to `true` in a future release, and then drop this keyword altogether
-    # and just have files always be checked for correct usage. That would allow us to do all
-    # filtering of testitems on the AST rather than having to evaluate the files first (since
-    # we would be guaranteeing the AST has only contain `@testitem` and `@testsetup` calls).
-    # This is exposed as a keyword for now to help with the transition to the stricter behaviour.
-    strict::Bool=false
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = _validated_paths(paths, validate_paths)
@@ -257,7 +250,7 @@ function runtests(
     timeout_profile_wait >= 0 || throw(ArgumentError("`timeout_profile_wait` must be a non-negative number, got $(repr(timeout_profile_wait))"))
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
-    ti_filter = TestItemFilter(shouldrun, tags, name, strict)
+    ti_filter = TestItemFilter(shouldrun, tags, name)
     mkpath(RETESTITEMS_TEMP_FOLDER[]) # ensure our folder wasn't removed
     save_current_stdio()
     nworkers = max(0, nworkers)
