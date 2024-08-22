@@ -243,7 +243,6 @@ The `skip` expression is run in its own module, just like a test-item.
 No code inside a `@testitem` is run when a test-item is skipped.
 """
 macro testitem(nm, exs...)
-    @assert nm isa String "`@testitem` expects a `String` literal name as the first argument"
     default_imports = true
     retries = 0
     timeout = nothing
@@ -302,6 +301,7 @@ macro testitem(nm, exs...)
             end
         end
     end
+    @assert !_run || nm isa String "`@testitem` expects a `String` literal name as the first argument"
     if isempty(exs) || !(exs[end] isa Expr && exs[end].head == :block)
         error("expected `@testitem` to have a body")
     end
