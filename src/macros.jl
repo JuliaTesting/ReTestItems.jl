@@ -243,6 +243,7 @@ The `skip` expression is run in its own module, just like a test-item.
 No code inside a `@testitem` is run when a test-item is skipped.
 """
 macro testitem(nm, exs...)
+    @assert nm isa String "`@testitem` expects a `String` literal name as the first argument"
     default_imports = true
     retries = 0
     timeout = nothing
@@ -261,7 +262,10 @@ macro testitem(nm, exs...)
             push!(kw_seen, kw)
             if kw == :tags
                 tags = ex.args[2]
-                @assert tags isa Expr "`tags` keyword must be passed a collection of `Symbol`s"
+                @assert(
+                    tags isa Expr && all(t -> t isa QuoteNode && t.value isa Symbol, tags.args),
+                    "`tags` keyword must be passed a collection of `Symbol`s"
+                )
             elseif kw == :default_imports
                 default_imports = ex.args[2]
                 @assert default_imports isa Bool "`default_imports` keyword must be passed a `Bool`"

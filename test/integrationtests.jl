@@ -1256,6 +1256,7 @@ end
         "_bad_tags2_test.jl",
         "_bad_name1_test.jl",
         "_bad_name2_test.jl",
+        "_bad_name3_test.jl",
         "_invalid_file1_test.jl",
         "_invalid_file2_test.jl",
         "_misuse_file1_test.jl",
