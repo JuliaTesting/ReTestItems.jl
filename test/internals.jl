@@ -89,7 +89,7 @@ end
 
 @testset "only requested testfiles included" begin
     using ReTestItems: ReTestItems, include_testfiles!, identify_project, is_test_file, TestItemFilter
-    shouldrun = TestItemFilter(Returns(true), nothing, nothing, false)
+    shouldrun = TestItemFilter(Returns(true), nothing, nothing)
     verbose_results = false
     report = false
 
@@ -141,7 +141,7 @@ end
 
 @testset "testsetup files always included" begin
     using ReTestItems: include_testfiles!, is_test_file, is_testsetup_file, TestItemFilter
-    shouldrun = TestItemFilter(Returns(true), nothing, nothing, false)
+    shouldrun = TestItemFilter(Returns(true), nothing, nothing)
     verbose_results = false
     report = false
     proj = joinpath(pkgdir(ReTestItems), "Project.toml")
@@ -360,22 +360,21 @@ end
         using ReTestItems: is_retestitem_macrocall
         # `@testitem` and `@testsetup` always correct
         testitem = :(@testitem "TI" tags=[:foo, :bar] begin; @test true; end)
-        @test is_retestitem_macrocall(testitem, true)  == true
-        @test is_retestitem_macrocall(testitem, false) == true
+        @test is_retestitem_macrocall(testitem)
+        @test is_retestitem_macrocall(testitem)
         testsetup = :(@testsetup module TS; x = 1; end)
-        @test is_retestitem_macrocall(testsetup, true)  == true
-        @test is_retestitem_macrocall(testsetup, false) == true
-        # `@testset` and `@test` always incorrect
+        @test is_retestitem_macrocall(testsetup)
+        @test is_retestitem_macrocall(testsetup)
+        # other macros always wrong
         testset = :(@testset "TS" begin; @test true; end)
-        @test is_retestitem_macrocall(testset, true)  == false
-        @test is_retestitem_macrocall(testset, false) == false
+        @test !is_retestitem_macrocall(testset)
+        @test !is_retestitem_macrocall(testset)
         test = :(@test true)
-        @test is_retestitem_macrocall(test, true)  == false
-        @test is_retestitem_macrocall(test, false) == false
-        # other macros depend on the `strict` argument
+        @test !is_retestitem_macrocall(test, true)  == false
+        @test !is_retestitem_macrocall(test, false) == false
         test_other = :(@other_macro "TX" tags=[:foo, :bar] begin; @test true; end)
-        @test is_retestitem_macrocall(test_other, true)  == false
-        @test is_retestitem_macrocall(test_other, false) == true
+        @test !is_retestitem_macrocall(test_other)
+        @test !is_retestitem_macrocall(test_other)
     end
 end
 
