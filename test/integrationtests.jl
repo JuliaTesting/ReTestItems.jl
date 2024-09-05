@@ -1280,4 +1280,12 @@ end
     end
 end
 
+# see https://github.com/JuliaTesting/ReTestItems.jl/issues/177
+@testset "error code from running `@testitem` directly" begin
+    filename = joinpath(TEST_FILES_DIR, "_direct_testitem.jl")
+    cmd = `$(Base.julia_cmd()) --project $filename`
+    p = run(pipeline(ignorestatus(cmd); stdout, stderr), wait=true)
+    @test !success(p)
+end
+
 end # integrationtests.jl testset
