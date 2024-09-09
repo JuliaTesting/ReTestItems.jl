@@ -34,6 +34,8 @@ end
 
 # FilteredVector applies a filtering function `f` to items
 # when you try to `push!` and only puts if `f` returns true.
+# TODO: drop this when all filtering is done at the AST level
+# i.e. when we drop support for _RAI_MACRO_NAME
 struct FilteredVector{T} <: AbstractVector{T}
     f::Any
     vec::Vector{T}
@@ -50,7 +52,7 @@ struct FileNode
     testitems::FilteredVector{TestItem} # sorted by line number within file
 end
 
-function FileNode(path, f=default_shouldrun; report::Bool=false, verbose::Bool=false)
+function FileNode(path, f=Returns(true); report::Bool=false, verbose::Bool=false)
     junit = report ? JUnitTestSuite(path) : nothing
     return FileNode(path, DefaultTestSet(path; verbose), junit, FilteredVector(f, TestItem[]))
 end

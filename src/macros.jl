@@ -261,7 +261,10 @@ macro testitem(nm, exs...)
             push!(kw_seen, kw)
             if kw == :tags
                 tags = ex.args[2]
-                @assert tags isa Expr "`tags` keyword must be passed a collection of `Symbol`s"
+                @assert(
+                    tags isa Expr && all(t -> t isa QuoteNode && t.value isa Symbol, tags.args),
+                    "`tags` keyword must be passed a collection of `Symbol`s"
+                )
             elseif kw == :default_imports
                 default_imports = ex.args[2]
                 @assert default_imports isa Bool "`default_imports` keyword must be passed a `Bool`"
@@ -298,6 +301,7 @@ macro testitem(nm, exs...)
             end
         end
     end
+    @assert !_run || nm isa String "`@testitem` expects a `String` literal name as the first argument"
     if isempty(exs) || !(exs[end] isa Expr && exs[end].head == :block)
         error("expected `@testitem` to have a body")
     end
