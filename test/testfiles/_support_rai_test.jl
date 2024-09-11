@@ -10,10 +10,10 @@ end
 end
 
 # this macro is defined in `integrationtests.jl` where this file is run.
-@test_rel begin
+@test_rel(name="other A", code=begin
     @test 1 == 1
-end
+end)
 
-@test_rel "other" begin
-    @test 1 == 1
-end
+@test_rel(tags=[:xyz], name="other B", code=begin
+    @test 2 == 2
+end)
