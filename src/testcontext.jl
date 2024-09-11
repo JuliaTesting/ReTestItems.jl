@@ -94,6 +94,29 @@ end
 
 TestItems(graph) = TestItems(graph, TestItem[], 0)
 
+function print_testitems(tis::TestItems)
+    ntestitems = length(tis.testitems)
+    if ntestitems == 0
+        printstyled("No test items found\n"; bold=true)
+        return nothing
+    end
+    plural = ntestitems == 1 ? "" : "s"
+    printstyled("$ntestitems test item$plural found:\n"; bold=true)
+    print_testitems(tis.graph)
+end
+function print_testitems(dir::DirNode, indent::Int=0)
+    println("  "^indent, dir.path)
+    for child in dir.children
+        print_testitems(child, indent + 1)
+    end
+end
+function print_testitems(file::FileNode, indent::Int=0)
+    println("  "^indent, file.path)
+    for ti in file.testitems
+        printstyled("  "^(indent+1), ti.name, "\n"; bold=true)
+    end
+end
+
 ###
 ### record results
 ###
