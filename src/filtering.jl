@@ -38,17 +38,6 @@ function (f::TestItemFilter)(expr::Expr)
     return expr
 end
 
-function _throw_not_macrocall(expr)
-    # `Base.include` sets the `:SOURCE_PATH` before the `mapexpr` is first called
-    file = get(task_local_storage(), :SOURCE_PATH, "unknown")
-    msg = """
-    Test files must only include `@testitem` and `@testsetup` calls.
-    In $(repr(file)) got:
-        $(Base.remove_linenums!(expr))
-    """
-    error(msg)
-end
-
 # Filter out `@testitem` calls based on the `name` and `tags` keyword passed to `runtests`.
 # Any other macro calls (e.g. `@testsetup`) are left as is.
 # If the `@testitem` call is not as expected, it is left as is so that it throws an error.
@@ -112,6 +101,8 @@ end
 # Macro used by RAI (corporate sponsor of this package)
 # TODO: drop support for this when RAI codebase is fully switched to ReTestItems.jl
 const ___RAI_MACRO_NAME_DONT_USE = Symbol("@test_rel")
+# This logic is very similar to `try_get_tags` but we want to keep the two separate
+# so that this code is easy to delete when we drop support for the RAI macro.
 function __filter_rai(f, expr)
     @assert expr.head == :macrocall && expr.args[1] == ___RAI_MACRO_NAME_DONT_USE
     name = nothing
@@ -148,4 +139,15 @@ function is_retestitem_macrocall(expr::Expr)
     else
         return false
     end
+end
+
+function _throw_not_macrocall(expr)
+    # `Base.include` sets the `:SOURCE_PATH` before the `mapexpr` is first called
+    file = get(task_local_storage(), :SOURCE_PATH, "unknown")
+    msg = """
+    Test files must only include `@testitem` and `@testsetup` calls.
+    In $(repr(file)) got:
+        $(Base.remove_linenums!(expr))
+    """
+    error(msg)
 end
