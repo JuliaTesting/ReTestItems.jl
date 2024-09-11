@@ -835,12 +835,17 @@ end
         @assert ReTestItems.___RAI_MACRO_NAME_DONT_USE == Symbol("@test_rel")
         @eval begin
             macro test_rel(args...)
-                if length(args) == 1
-                    name = "anon"
-                    ex = args[1]
-                else
-                    name = args[1]
-                    ex = args[2]
+                local name::String
+                local ex::Expr
+                local tags = Symbol[]
+                for arg in args
+                    if arg.head == :(=) && arg.args[1] == :name
+                        name = arg.args[2]
+                    elseif arg.head == :(=) && arg.args[1] == :tags
+                        tags = arg.args[2]
+                    elseif arg.head == :(=) && arg.args[1] == :code
+                        ex = arg.args[2]
+                    end
                 end
                 quote
                     @testitem $(name) begin
@@ -856,7 +861,9 @@ end
         @test n_tests(results) == 3
         results = encased_testset(() -> runtests(file; name="ti"))
         @test n_tests(results) == 1
-        results = encased_testset(() -> runtests(file; name="anon"))
+        results = encased_testset(() -> runtests(file; name=r"other"))
+        @test n_tests(results) == 2
+        results = encased_testset(() -> runtests(file; tags=[:xyz]))
         @test n_tests(results) == 1
         results = encased_testset(() -> runtests(filter_func, file))
         @test n_tests(results) == 0

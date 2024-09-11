@@ -19,13 +19,6 @@ function (f::TestItemFilter)(ti::TestItemMetadata)
     return f.shouldrun(ti)::Bool && _shouldrun(f.tags, ti) && _shouldrun(f.name, ti)
 end
 
-# This method is needed for filtering `TestItem`s that were created by
-# `___RAI_MACRO_NAME_DONT_USE` and so couldn't be filtered from the AST.
-# TODO: drop this method when we no longer support `___RAI_MACRO_NAME_DONT_USE`
-function (f::TestItemFilter)(ti::TestItem)
-    return f.shouldrun(ti)::Bool && _shouldrun(f.tags, ti) && _shouldrun(f.name, ti)
-end
-
 _shouldrun(name::AbstractString, ti) = name == ti.name
 _shouldrun(pattern::Regex, ti) = contains(ti.name, pattern)
 _shouldrun(tags::AbstractVector{Symbol}, ti) = issubset(tags, ti.tags)
@@ -57,17 +50,21 @@ end
 # having to maintain our own version of that code.
 function filter_testitem(f, expr)
     @assert expr.head == :macrocall
-    if expr.args[1] !== Symbol("@testitem")
+    macro_name = expr.args[1]
+    if macro_name === Symbol("@testitem")
+        # `@testitem` have have at least: macro_name, line_number, name, body
+        length(expr.args) < 4 && return expr
+        name = try_get_name(expr)
+        name === nothing && return expr
+        tags = try_get_tags(expr)
+        tags === nothing && return expr
+        ti = TestItemMetadata(name, tags)
+        return f(ti) ? expr : nothing
+    elseif macro_name === Symbol("@testsetup")
         return expr
+    elseif macro_name === ___RAI_MACRO_NAME_DONT_USE # TODO: drop this branch when we can
+        return __filter_rai(f, expr)
     end
-    # `@testitem` have have at least: macro_name, line_number, name, body
-    length(expr.args) < 4 && return expr
-    name = try_get_name(expr)
-    name === nothing && return expr
-    tags = try_get_tags(expr)
-    tags === nothing && return expr
-    ti = TestItemMetadata(name, tags)
-    return f(ti) ? expr : nothing
 end
 
 # Extract the name from a `@testitem`, return `nothing` if name is not of the expected type.
@@ -104,6 +101,34 @@ end
 # Macro used by RAI (corporate sponsor of this package)
 # TODO: drop support for this when RAI codebase is fully switched to ReTestItems.jl
 const ___RAI_MACRO_NAME_DONT_USE = Symbol("@test_rel")
+# This logic is very similar to `try_get_tags` but we want to keep the two separate
+# so that this code is easy to delete when we drop support for the RAI macro.
+function __filter_rai(f, expr)
+    @assert expr.head == :macrocall && expr.args[1] == ___RAI_MACRO_NAME_DONT_USE
+    name = nothing
+    tags = Symbol[]
+    for args in expr.args[2:end]
+        if args isa Expr && args.head == :(=) && args.args[1] == :name && args.args[2] isa String
+            name = args.args[2]
+        elseif args isa Expr && args.head == :(=) && args.args[1] == :tags
+            tags_arg = args.args[2]
+            if tags_arg isa Expr && tags_arg.head == :vect
+                for tag in tags_arg.args
+                    if tag isa QuoteNode && tag.value isa Symbol
+                        push!(tags, tag.value)
+                    else
+                        return expr
+                    end
+                end
+            else
+                return expr
+            end
+        end
+    end
+    name === nothing && return expr
+    ti = TestItemMetadata(name, tags)
+    return f(ti) ? expr : nothing
+end
 
 # Check if the expression is a macrocall as expected.
 # NOTE: Only `@testitem` and `@testsetup` calls are officially supported.

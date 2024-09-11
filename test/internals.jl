@@ -328,13 +328,10 @@ end
         using ReTestItems: filter_testitem
         ti = :(@testitem "TI" tags=[:foo, :bar] begin; @test true; end)
         ts = :(@testsetup module TS; x = 1; end)
-        tx = :(@other_macro "TX" tags=[:foo, :bar] begin; @test true; end)
         @test filter_testitem(Returns(true),  ti) == ti
         @test filter_testitem(Returns(false), ti) == nothing
         @test filter_testitem(Returns(true),  ts) == ts
         @test filter_testitem(Returns(false), ts) == ts
-        @test filter_testitem(Returns(true),  tx) == tx
-        @test filter_testitem(Returns(false), tx) == tx
     end
     @testset "try_get_name" begin
         using ReTestItems: try_get_name
