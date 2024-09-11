@@ -33,7 +33,7 @@ mutable struct TestContext
 end
 
 struct FileNode
-    path::String
+    path::SubString{String}
     testset::DefaultTestSet
     junit::Union{JUnitTestSuite,Nothing}
     testitems::Vector{TestItem} # sorted by line number within file
@@ -49,7 +49,7 @@ Base.push!(f::FileNode, ti::TestItem) = push!(f.testitems, ti)
 walk(f, fn::FileNode) = foreach(f, fn.testitems)
 
 struct DirNode
-    path::String
+    path::SubString{String}
     testset::DefaultTestSet
     junit::Union{JUnitTestSuites,Nothing}
     children::Vector{Union{FileNode, DirNode}} # sorted lexically by path
