@@ -633,6 +633,22 @@ function is_testsetup_file(filepath)
     )
 end
 
+# Like `relpath` but assumes `path` is nested under `startdir`, else just returns `path`.
+# Always returns a `SubString` to be type-stable.
+function nestedrelpath(path::T, startdir::AbstractString) where {T <: AbstractString}
+    path == startdir && return SubString{T}(".")
+    relp = chopprefix(path, startdir)
+    relp == path && return relp
+    sep = Base.Filesystem.path_separator
+    if endswith(startdir, sep)
+        return relp
+    elseif startswith(relp, sep)
+        return chopprefix(relp, sep)
+    else # `startdir` was a prefix of `path` but not a directory
+        return SubString{T}(path)
+    end
+end
+
 # is `dir` the root of a subproject inside the current project?
 function _is_subproject(dir, current_projectfile)
     projectfile = _project_file(dir)
@@ -642,7 +658,7 @@ function _is_subproject(dir, current_projectfile)
     projectfile == current_projectfile && return false
     # a `test/Project.toml` is special and doesn't indicate a subproject
     current_project_dir = dirname(current_projectfile)
-    rel_projectfile = relpath(projectfile, current_project_dir)
+    rel_projectfile = nestedrelpath(projectfile, current_project_dir)
     rel_projectfile == joinpath("test", "Project.toml") && return false
     return true
 end
@@ -675,7 +691,7 @@ function include_testfiles!(project_name, projectfile, paths, ti_filter::TestIte
             subproject_root = root
             continue
         end
-        rpath = relpath(root, project_root)
+        rpath = nestedrelpath(root, project_root)
         startswith(rpath, hidden_re) && continue # skip hidden directories
         dir_node = DirNode(rpath; report, verbose=verbose_results)
         dir_nodes[rpath] = dir_node
@@ -693,7 +709,7 @@ function include_testfiles!(project_name, projectfile, paths, ti_filter::TestIte
             if !(is_testsetup_file(filepath) || (is_test_file(filepath) && is_requested(filepath, paths)))
                 continue
             end
-            fpath = relpath(filepath, project_root)
+            fpath = nestedrelpath(filepath, project_root)
             file_node = FileNode(fpath, ti_filter; report, verbose=verbose_results)
             testitem_names = Set{String}() # to enforce that names in the same file are unique
             push!(dir_node, file_node)
@@ -745,7 +761,7 @@ function _throw_duplicate_ids(testitems)
     seen = Dict{String,String}()
     for ti in testitems
         id = ti.id
-        source = string(relpath(ti.file, ti.project_root), ":", ti.line)
+        source = string(nestedrelpath(ti.file, ti.project_root), ":", ti.line)
         name = string(repr(ti.name), " at ", source)
         if haskey(seen, id)
             name1 = seen[id]

@@ -98,7 +98,7 @@ mutable struct JUnitTestSuite  # File
     counts::JUnitCounts
     testcases::Vector{JUnitTestCase}
 end
-JUnitTestSuite(name::String) = JUnitTestSuite(name, JUnitCounts(), JUnitTestCase[])
+JUnitTestSuite(name::AbstractString) = JUnitTestSuite(name, JUnitCounts(), JUnitTestCase[])
 
 mutable struct JUnitTestSuites
     const name::String
@@ -106,7 +106,7 @@ mutable struct JUnitTestSuites
     testsuites::Vector{JUnitTestSuite}
 end
 
-JUnitTestSuites(name::String) = JUnitTestSuites(name, JUnitCounts(), JUnitTestSuite[])
+JUnitTestSuites(name::AbstractString) = JUnitTestSuites(name, JUnitCounts(), JUnitTestSuite[])
 
 function junit_record!(suites1::JUnitTestSuites, suites2::JUnitTestSuites)
     update!(suites1.counts, suites2.counts)

@@ -375,4 +375,27 @@ end
     end
 end
 
+@testset "nestedrelpath" begin
+    using ReTestItems: nestedrelpath
+    @assert Base.Filesystem.path_separator == "/"
+    path = "test/dir/foo_test.jl"
+    @test nestedrelpath(path, "test")  == relpath(path, "test")  == "dir/foo_test.jl"
+    @test nestedrelpath(path, "test/") == relpath(path, "test/") == "dir/foo_test.jl"
+    @test nestedrelpath(path, "test/dir")  == relpath(path, "test/dir")  == "foo_test.jl"
+    @test nestedrelpath(path, "test/dir/") == relpath(path, "test/dir/") == "foo_test.jl"
+    @test nestedrelpath(path, "test/dir/foo_test.jl") == relpath(path, "test/dir/foo_test.jl") == "."
+
+    # unlike `relpath`: if `startdir` is not a prefix of `path`, the assumption is violated,
+    # and `path` is just returned as-is
+    @test nestedrelpath(path, "test/dir/foo_") == "test/dir/foo_test.jl"
+    @test nestedrelpath(path, "test/dir/other") == "test/dir/foo_test.jl"
+    @test nestedrelpath(path, "test/dir/other/bar_test.jl") == "test/dir/foo_test.jl"
+
+    # leading '/' doesn't get ignored or stripped
+    @test nestedrelpath("/a/b/c", "/a/b") == "c"
+    @test nestedrelpath("/a/b/c", "a/b") == "/a/b/c"
+    @test nestedrelpath("/a/b", "/a/b/c") == "/a/b"
+    @test nestedrelpath("/a/b", "c") == "/a/b"
+end
+
 end # internals.jl testset
