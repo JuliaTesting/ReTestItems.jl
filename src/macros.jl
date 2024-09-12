@@ -125,7 +125,7 @@ struct TestItem
     line::Int
     project_root::String
     code::Any
-    testsetups::Vector{TestSetup} # populated by runtests coordinator
+    testsetups::Dict{Symbol,TestSetup} # populated by runtests coordinator
     workerid::Base.RefValue{Int} # populated when the test item is scheduled
     testsets::Vector{DefaultTestSet} # populated when the test item is finished running
     eval_number::Base.RefValue{Int} # to keep track of how many items have been run so far
@@ -136,7 +136,7 @@ function TestItem(number, name, id, tags, default_imports, setups, retries, time
     _id = @something(id, repr(hash(name, hash(relpath(file, project_root)))))
     return TestItem(
         number, name, _id, tags, default_imports, setups, retries, timeout, skip, file, line, project_root, code,
-        TestSetup[],
+        Dict{Symbol,TestSetup}(),
         Ref{Int}(0),
         DefaultTestSet[],
         Ref{Int}(0),
