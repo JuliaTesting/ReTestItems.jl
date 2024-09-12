@@ -864,9 +864,12 @@ function runtestsetup(ts::TestSetup, ctx::TestContext; logs::Symbol)
         mod_expr = :(module $(gensym(ts.name)) end)
         # replace the module expr body with our @testsetup code
         mod_expr.args[3] = ts.code
-        newmod = _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : ts.logstore[]) do
+        log_testsetup_start(ts)
+        newmod, stats = @timed_with_compilation _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : ts.logstore[]) do
             with_source_path(() -> Core.eval(Main, mod_expr), ts.file)
         end
+        ts.stats[] = stats
+        log_testsetup_done(ts)
         # add the new module to our TestSetupModules
         mods.modules[ts.name] = newmod
         return nameof(newmod)
