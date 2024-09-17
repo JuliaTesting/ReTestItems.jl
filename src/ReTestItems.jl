@@ -349,7 +349,7 @@ function _runtests_in_current_env(
                 run_number = 1
                 max_runs = 1 + max(retries, testitem.retries)
                 while run_number ≤ max_runs
-                    res = runtestitem(testitem, ctx; test_end_expr, verbose_results, logs)
+                    res = runtestitem(testitem, ctx; test_end_expr, verbose_results, logs, timeout=something(testitem.timeout, testitem_timeout))
                     ts = res.testset
                     print_errors_and_captured_logs(testitem, run_number; logs)
                     report_empty_testsets(testitem, ts)
@@ -414,7 +414,7 @@ end
 # The provided `worker_num` is only for logging purposes, and not persisted as part of the worker.
 function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems; worker_num=nothing)
     w = Worker(; threads="$nworker_threads")
-    i = worker_num == nothing ? "" : " $worker_num"
+    i = worker_num === nothing ? "" : " $worker_num"
     # remote_fetch here because we want to make sure the worker is all setup before starting to eval testitems
     remote_fetch(w, quote
         using ReTestItems, Test
@@ -518,7 +518,7 @@ function manage_worker(
         end
         testitem.workerid[] = worker.pid
         timeout = something(testitem.timeout, default_timeout)
-        fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)))))
+        fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)), timeout=$timeout)))
         max_runs = 1 + max(retries, testitem.retries)
         try
             timer = Timer(timeout) do tm
@@ -919,10 +919,21 @@ end
 # when `runtestitem` called directly or `@testitem` called outside of `runtests`.
 function runtestitem(
     ti::TestItem, ctx::TestContext;
-    test_end_expr::Union{Nothing,Expr}=nothing, logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true,
+    test_end_expr::Union{Nothing,Expr}=nothing, logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true, timeout::Int=something(ti.timeout, DEFAULT_TESTITEM_TIMEOUT)
 )
     if should_skip(ti)::Bool
         return skiptestitem(ti, ctx; verbose_results)
+    end
+
+    # TODO: How to control this? Should we reuse `timeout_profile_wait`?
+    timer = Timer(timeout - clamp(0.2 * timeout, 0.25, 5.0)) do _
+        if logs !== :eager
+            @loglock _redirect_logs(debugpath(ti)) do
+                ccall(:jl_print_task_backtraces, Cvoid, ())
+            end
+        else
+            ccall(:jl_print_task_backtraces, Cvoid, ())
+        end
     end
     if test_end_expr === nothing
         has_test_end_expr = false
@@ -1012,6 +1023,7 @@ function runtestitem(
             (Test.Base).current_exceptions(),
             LineNumberNode(ti.line, ti.file)))
     finally
+        close(timer)
         # Make sure all test setup logs are commited to file
         foreach(ts->isassigned(ts.logstore) && flush(ts.logstore[]), ti.testsetups)
         ts1 = Test.pop_testset()
