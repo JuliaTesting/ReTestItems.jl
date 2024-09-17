@@ -97,6 +97,7 @@ function logfile_name(ts::TestSetup)
 end
 logpath(ti::TestItem, i=nothing) = joinpath(RETESTITEMS_TEMP_FOLDER[], logfile_name(ti, i))
 logpath(ts::TestSetup) = joinpath(RETESTITEMS_TEMP_FOLDER[], logfile_name(ts))
+debugpath(ti::TestItem, i=nothing) = logpath(ti, i) * ".task_backtraces"
 
 """
     _redirect_logs(f, target::Union{IO,String})
@@ -139,6 +140,7 @@ _has_logs(ts::TestSetup) = filesize(logpath(ts)) > 0
 # The path might not exist if a testsetup always throws an error and we don't get to actually
 # evaluate the test item.
 _has_logs(ti::TestItem, i=nothing) = (path = logpath(ti, i); (isfile(path) && filesize(path) > 0))
+_has_debug(ti::TestItem, i=nothing) = (path = debugpath(ti, i); isfile(path) && filesize(path) > 0)
 # Stats to help diagnose OOM issues.
 _mem_watermark() = string(
     # Tracks the peak memory usage of a process / worker
@@ -172,7 +174,7 @@ function print_errors_and_captured_logs(
 )
     ts = ti.testsets[run_number]
     has_errors = any_non_pass(ts)
-    has_logs = _has_logs(ti, run_number) || any(_has_logs, ti.testsetups)
+    has_logs = _has_logs(ti, run_number) || any(_has_logs, ti.testsetups) || _has_debug(ti, run_number)
     if has_errors || logs == :batched
         report_iob = IOContext(IOBuffer(), :color=>Base.get_have_color())
         println(report_iob)
@@ -193,6 +195,7 @@ function print_errors_and_captured_logs(
     end
     # If we have errors, keep the tesitem log file for JUnit report.
     !has_errors && rm(logpath(ti, run_number), force=true)
+    !has_errors && rm(debugpath(ti, run_number), force=true) # TODO: move the debug logs to the log file?
     return nothing
 end
 
@@ -217,14 +220,22 @@ function _print_captured_logs(io, ti::TestItem, run_number::Int)
     for setup in ti.testsetups
         _print_captured_logs(io, setup, ti)
     end
+    has_debug = _has_debug(ti, run_number)
     has_logs = _has_logs(ti, run_number)
-    bold_text = has_logs ? "Captured Logs" : "No Captured Logs"
+    has_printable = has_logs || has_debug
+
+    bold_text = has_printable ? "Captured Logs" : "No Captured Logs"
     printstyled(io, bold_text; bold=true, color=Base.info_color())
     print(io, " for test item $(repr(ti.name)) at ")
     printstyled(io, _file_info(ti); bold=true, color=:default)
     println(io, _on_worker(ti))
-    has_logs && open(logpath(ti, run_number), "r") do logstore
-        write(io, logstore)
+    if has_printable
+        has_logs && open(logpath(ti, run_number), "r") do logstore
+            write(io, logstore)
+        end
+        has_debug && open(debugpath(ti, run_number), "r") do logstore
+            write(io, logstore)
+        end
     end
     return nothing
 end
