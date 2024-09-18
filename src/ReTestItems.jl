@@ -220,13 +220,14 @@ will be run.
    for more information on triggered profiles. Note you can use `worker_init_expr` to tweak the profile settings on workers.
 - `failfast::Bool=false`: If true, no additional testitems are run after a testitem fails.
   A testitem is considered to have failed if it does not pass after retries.
-  Note that testitems already running on other workers in parallel with the failing testitem are allowed to complete.
+  Note that in the current implementation testitems already running on other workers in parallel with the failing testitem are allowed to complete,
+  but this may be improved in a future version.
   Can also be set using the `RETESTITEMS_FAILFAST` environment variable.
 - `testitem_failfast::Bool=failfast`: If true, a testitem stops as soon as there is a test failure or error.
   Can also be set using the `RETESTITEMS_TESTITEM_FAILFAST` environment variable.
   Defaults to the value passed to the `failfast` keyword.
   If a `@testitem` sets its own `failfast` keyword, then that takes precedence.
-  The `testitem_failfast` keyword only takes effect in Julia v1.9+ and is ignored in earlier Julia versions.
+  Note that the `testitem_failfast` keyword only takes effect in Julia v1.9+ and is ignored in earlier Julia versions.
 """
 function runtests end
 
