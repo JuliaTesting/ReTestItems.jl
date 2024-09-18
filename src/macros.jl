@@ -320,7 +320,7 @@ macro testitem(nm, exs...)
                 $store_test_item($ti)
                 $ti
             else # We are not in a `runtests` call, so we run the testitem immediately.
-                $runtestitem($ti)
+                $runtestitem($ti; catch_test_error=false)
                 $nothing
             end
         end

@@ -919,7 +919,7 @@ end
 # when `runtestitem` called directly or `@testitem` called outside of `runtests`.
 function runtestitem(
     ti::TestItem, ctx::TestContext;
-    test_end_expr::Union{Nothing,Expr}=nothing, logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true,
+    test_end_expr::Union{Nothing,Expr}=nothing, logs::Symbol=:eager, verbose_results::Bool=true, finish_test::Bool=true, catch_test_error::Bool=true,
 )
     if should_skip(ti)::Bool
         return skiptestitem(ti, ctx; verbose_results)
@@ -1017,10 +1017,16 @@ function runtestitem(
         ts1 = Test.pop_testset()
         task_local_storage()[:__TESTITEM_ACTIVE__] = prev
         @assert ts1 === ts
-        try
-            finish_test && Test.finish(ts) # This will throw an exception if any of the tests failed.
-        catch e
-            e isa TestSetException || rethrow()
+        if finish_test
+            if catch_test_error
+                try
+                    Test.finish(ts) # This will throw an exception if any of the tests failed.
+                catch e
+                    e isa TestSetException || rethrow()
+                end
+            else
+                Test.finish(ts)
+            end
         end
     end
     @debugv 1 "Test item $(repr(name)) done$(_on_worker())."
