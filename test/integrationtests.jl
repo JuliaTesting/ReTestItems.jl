@@ -682,7 +682,7 @@ end
     tmpdir = joinpath("/tmp", "JL_RETESTITEMS_TEST_TMPDIR")
     # must run with `testitem_timeout < 20` for test to timeout as expected.
     # and must run with `nworkers > 0` for retries to be supported.
-    results = encased_testset(()->runtests(file; nworkers=1, retries=2, testitem_timeout=3))
+    results = encased_testset(()->runtests(file; nworkers=1, retries=2, testitem_timeout=5))
     # Test we _ran_ each test-item the expected number of times
     read_count(x) = parse(Int, read(x, String))
     # Passes on second attempt, so only need to retry once.
@@ -713,6 +713,28 @@ end
     end
     rm(tmpdir; force=true)
 end
+
+# There was previously a bug where if `runtests` were called from inside another `@testset`
+# and `nworkers=0`, then `retries` and `failfast` were ignored, i.e. failing testitems were
+# not retried and did not cause the tests to stop, due to how we were checking whether or
+# not a test had failed. Running `runtests` inside `encased_testset` was sufficient to
+# reproduce this bug.
+@testset "bugfix: `runtests` in a testset" begin
+    using IOCapture
+    # test `retries` works
+    file = joinpath(TEST_FILES_DIR, "_failing_test.jl")
+    c = IOCapture.capture() do
+        encased_testset(() -> runtests(file, nworkers=0, retries=1))
+    end
+    @test contains(c.output, "Retrying")
+    # test `failfast` works
+    file = joinpath(TEST_FILES_DIR, "_failfast_failure_tests.jl")
+    c = IOCapture.capture() do
+        encased_testset(() -> runtests(file, nworkers=0, failfast=true))
+    end
+    @test contains(c.output, "[ Fail Fast: 2/3 test items were run.")
+end
+
 
 @testset "testitem_timeout" begin
     file = joinpath(TEST_FILES_DIR, "_timeout_tests.jl")
@@ -1286,6 +1308,199 @@ end
     cmd = `$(Base.julia_cmd()) --project $filename`
     p = run(pipeline(ignorestatus(cmd); stdout, stderr), wait=true)
     @test !success(p)
+end
+
+@testset "runtests `failfast` keyword" begin
+    using IOCapture
+    # Each file has 3 testitems, with the second test item "bad" failing in some way.
+    @testset "$case" for (case, filename) in (
+        :failure => "_failfast_failure_tests.jl",
+        :error   => "_failfast_error_tests.jl",
+        :timeout => "_failfast_timeout_tests.jl",
+        :crash   => "_failfast_crash_tests.jl",
+    )
+        testitem_timeout = 5
+        file = joinpath(TEST_FILES_DIR, filename)
+        # For 0 or 1 workers, we expect to fail on the second testitem out of 3.
+        # If running with 3 workers, then all 3 testitems will be running in parallel,
+        # so we expect to see all 3 testitems run, even though one fails.
+        @testset "nworkers=$nworkers" for nworkers in (0, 1, 3)
+            # println("$case, $nworkers")
+            if case in (:crash, :timeout) && nworkers == 0
+                # if no workers, can't recover from a crash, and timeout not supported.
+                @test_skip case
+                continue
+            end
+            c = IOCapture.capture() do
+                encased_testset(() -> runtests(file; nworkers, testitem_timeout, retries=1, failfast=true))
+            end
+            results = c.value
+            if nworkers == 3
+                @test n_tests(results) == 3
+                @test n_passed(results) == 2
+            else
+                @test n_tests(results) == 2
+                @test n_passed(results) == 1
+            end
+            # @show c.output
+            @test contains(c.output, "Retrying")  # check retries are happening
+            @test count(r"\[ Fail Fast:", c.output) == 2
+            msg = "[ Fail Fast: Test item \"bad\" at test/testfiles/$filename:4 failed. Cancelling tests."
+            @test contains(c.output, msg)
+            if nworkers == 3
+                @test contains(c.output, "[ Fail Fast: 3/3 test items were run.")
+            else
+                @test contains(c.output, "[ Fail Fast: 2/3 test items were run.")
+            end
+        end # nworkers
+    end # case
+    # When there are failing test items running in parallel on 2 different workers, both
+    # failure should be reported, but there should only ever be one "Cancelling" message.
+    @testset "multiple failures" begin
+        file = joinpath(TEST_FILES_DIR, "_failfast_multiple_failure_tests.jl")
+        c = IOCapture.capture() do
+            encased_testset(() -> runtests(file; nworkers=2, failfast=true))
+        end
+        results = c.value
+        @test n_tests(results) == 2
+        @test n_passed(results) == 0
+        @test count(r"Cancelling tests.", c.output) == 1
+        @test count(r"\[ Fail Fast:", c.output) == 2
+        @test contains(c.output, "[ Fail Fast: 2/3 test items were run.")
+    end
+    # test setting `failfast` via environment variable
+    @testset "ENV var" begin
+        file = joinpath(TEST_FILES_DIR, "_failfast_failure_tests.jl")
+        c = withenv("RETESTITEMS_FAILFAST" => "true") do
+            IOCapture.capture() do
+                encased_testset(()->runtests(file))
+            end
+        end
+        results = c.value
+        @test n_tests(results) == 2
+        @test n_passed(results) == 1
+        @test contains(c.output, "[ Fail Fast: 2/3 test items were run.")
+    end
+end
+
+# In Julia v1.9, `@testset` supports its own `failfast` keyword
+# See https://github.com/JuliaLang/julia/commit/88def1afe16acdfe41b15dc956742359d837ce04
+# Test that we are not rethrowing a `Test.FailFastError`.
+if VERSION >= v"1.9"
+    @testset "Handle `@testset failfast=true`" begin
+        file = joinpath(TEST_FILES_DIR, "_testset_failfast_tests.jl")
+        results = encased_testset(()->runtests(file))
+        # We should only see that a single test-item ran and had a single test failure,
+        # we should not see a `Test.FailFastError` error.
+        @test n_tests(results) == 1
+        @test length(non_passes(results)) == 1
+        @test length(errors(results)) == 0
+    end
+end
+
+# In earlier versions of ReTestItems, if the testitem threw an error (outside of an `@test`)
+# we would report the time taken as `"0 secs"` in the DONE log message, because we didn't
+# have any timing info in `@timed_wth_compilation`. Now we should fallback to the timing
+# info in the testset, which for this tests should be non-zero.
+@testset "DONE time reported when testitem throws" begin
+    using IOCapture
+    file = joinpath(TEST_FILES_DIR, "_error_test.jl")
+    c = IOCapture.capture() do
+        encased_testset(()->runtests(file))
+    end
+    expected = r"DONE  \(1/1\) test item \"Test that throws outside of a @test\" (\d.\d) secs"
+    m = match(expected, c.output)
+    @test m != nothing
+    @test parse(Float64, only(m)) > 0
+end
+
+# `testitem_failfast` only support in Julia v1.9+ because it relies on the
+# `Test.DefaultTestSet` having `failfast`, which was added in v1.9.
+@testset "runtests `testitem_failfast` keyword" begin
+if VERSION < v"1.9.0-"
+    @test_skip :testitem_failfast
+else
+    using IOCapture
+    file = joinpath(TEST_FILES_DIR, "_testitem_failfast_tests.jl")
+    c = IOCapture.capture() do
+        encased_testset(()->runtests(file; testitem_failfast=true))
+    end
+    d1 = r"DONE  \(1/2\) test item \"Failure at toplevel\" \d.\d secs \(Failed Fast\)"
+    d2 = r"DONE  \(2/2\) test item \"Failure in nested testset\" \d.\d secs \(Failed Fast\)"
+    @test contains(c.output, d1)
+    @test contains(c.output, d2)
+    results = c.value
+    # 1st testitem should have a test failure, then not run the other tests
+    # 2nd testitem should have a test pass then a test failure, then not run the other tests
+    @test n_tests(results) == 3
+    @test n_passed(results) == 1
+    @test length(failures(results)) == 2
+
+    # Same tests, but this time each `@testitem` set `failfast=true`
+    file = joinpath(TEST_FILES_DIR, "_testitem_failfast_set_tests.jl")
+    c = IOCapture.capture() do
+        # `@testitem failfast=true` takes precedence over `testitem_failfast=false`
+        encased_testset(()->runtests(file; testitem_failfast=false))
+    end
+    d1 = r"DONE  \(1/2\) test item \"Failure at toplevel\" \d.\d secs \(Failed Fast\)"
+    d2 = r"DONE  \(2/2\) test item \"Failure in nested testset\" \d.\d secs \(Failed Fast\)"
+    @test contains(c.output, d1)
+    @test contains(c.output, d2)
+    results = c.value
+    # 1st testitem should have a test failure, then not run the other tests
+    # 2nd testitem should have a test pass then a test failure, then not run the other tests
+    @test n_tests(results) == 3
+    @test n_passed(results) == 1
+    @test length(failures(results)) == 2
+    @testset "ENV var" begin
+        file = joinpath(TEST_FILES_DIR, "_testitem_failfast_tests.jl")
+        results = withenv("RETESTITEMS_TESTITEM_FAILFAST" => "true") do
+            encased_testset(()->runtests(file))
+        end
+        @test n_tests(results) == 3
+        @test n_passed(results) == 1
+        @test length(failures(results)) == 2
+    end
+    @testset "`testitem_failfast` defaults to `failfast`" begin
+        # Passing `failfast=true` should also set `testitem_failfast=true`
+        file = joinpath(TEST_FILES_DIR, "_testitem_failfast_tests.jl")
+        c = IOCapture.capture() do
+            encased_testset(()->runtests(file; failfast=true))
+        end
+        d1 = r"DONE  \(1/2\) test item \"Failure at toplevel\" \d.\d secs \(Failed Fast\)"
+        d2 = r"DONE  \(2/2\)"
+        @test contains(c.output, d1)
+        @test !contains(c.output, d2)
+        @test contains(c.output, "[ Fail Fast: 1/2 test items were run.")
+        results = c.value
+        # 1st testitem should have a test failure, then not run the other tests
+        # 2nd testitem should not run
+        @test n_tests(results) == 1
+        @test n_passed(results) == 0
+        @test length(failures(results)) == 1
+    end
+    @testset "`testitem_failfast` can be disabled when `failfast=true`" begin
+        file = joinpath(TEST_FILES_DIR, "_testitem_failfast_tests.jl")
+        c = IOCapture.capture() do
+            withenv("RETESTITEMS_TESTITEM_FAILFAST" => "false") do
+                encased_testset(()->runtests(file; failfast=true))
+            end
+        end
+        d1 = r"DONE  \(1/2\) test item \"Failure at toplevel\" \d.\d secs"
+        d2 = r"DONE  \(2/2\)"
+        @test contains(c.output, d1)
+        @test !contains(c.output, d2)
+        @test !contains(c.output, "(Failed Fast)")
+        @test contains(c.output, "[ Fail Fast: 1/2 test items were run.")
+        results = c.value
+        # 1st testitem should have a failure, a error, another failure, then a pass
+        # 2nd testitem should not run
+        @test n_tests(results) == 4
+        @test n_passed(results) == 1
+        @test length(failures(results)) == 2
+        @test length(errors(results)) == 1
+    end
+end # VERSION
 end
 
 end # integrationtests.jl testset

@@ -12,7 +12,7 @@ using ReTestItems
     for nworkers in 1:10
         for nitems in 1:10
             testitems = [@testitem("ti-$i", _run=false, begin end) for i in 1:nitems]
-            starts = get_starting_testitems(TestItems(graph, testitems, 0), nworkers)
+            starts = get_starting_testitems(TestItems(graph, testitems), nworkers)
             startitems = [x for x in starts if !isnothing(x)]
             @test length(starts) == nworkers
             @test length(startitems) == min(nworkers, nitems)
@@ -169,7 +169,7 @@ end # `include_testfiles!` testset
 @testset "report_empty_testsets" begin
     using ReTestItems: TestItem, report_empty_testsets, PerfStats, ScheduledForEvaluation
     using Test: DefaultTestSet, Fail, Error
-    ti = TestItem(Ref(42), "Dummy TestItem", "DummyID", [], false, [], 0, nothing, false, "source/path", 42, ".", nothing)
+    ti = TestItem(Ref(42), "Dummy TestItem", "DummyID", [], false, [], 0, nothing, false, nothing, "source/path", 42, ".", nothing)
 
     ts = DefaultTestSet("Empty testset")
     report_empty_testsets(ti, ts)

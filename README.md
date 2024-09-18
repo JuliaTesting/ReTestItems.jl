@@ -95,7 +95,6 @@ Filtering by `name` and `tags` can be combined to run only test-items that match
 julia> runtests("test/Database/"; tags=:regression, name=r"^issue")
 ```
 
-
 #### Running tests in parallel
 
 You can run tests in parallel on multiple worker processes using the `nworkers` keyword.
@@ -116,6 +115,21 @@ thread
 threadpools](https://docs.julialang.org/en/v1/manual/multi-threading/#man-threadpools)).
 
 Note ReTestItems.jl uses distributed parallelism, not multi-threading, to run test-items in parallel.
+
+#### Stopping tests early
+
+You can set `runtests` to stop on the first test-item failure by passing `failfast=true`.
+
+
+> [!NOTE]
+> Note `failfast` prevents any new test-items starting to run after the first test-item failure, but
+> test-items that were already running on another worker in parallel with the failing test will complete and appear in the test report.
+> Tests that were not run will not appear in the test report.
+>
+> This may be improved in a future version of ReTestItems.jl, so that all test-items running in parallel are stopped on when one test-item fails
+
+If you want individual test-items to stop on their first test failure, but not stop the whole `runtests` early, you can instead pass just `testitem_failfast=true` to `runtests`.
+
 
 ## Writing tests
 
@@ -194,6 +208,19 @@ The `skip` keyword allows you to define the condition under which a test needs t
 for example if it can only be run on a certain platform.
 See [filtering tests](#filtering-tests) for controlling which tests run in a particular `runtests` call.
 
+#### Failing early
+
+Each test-item can control whether or not it stops on the first failure using the `failfast` keyword.
+
+```julia
+@testitem "stops on first failure" failfast=true begin
+    @test 1 + 1 == 3
+    @test 2 * 2 == 4
+end
+```
+
+If a test-items set the `failfast` then that value takes precedence over the `testitem_failfast` keyword passed to `runtests`.
+
 #### Post-testitem hook
 
 If there is something that should be checked after every single `@testitem`, then it's possible to pass an expression to `runtests` using the `test_end_expr` keyword.
@@ -255,7 +282,7 @@ runtests("frobble_tests.jl"; nworkers, worker_init_expr)
       using ReTestItems, MyPackage
       runtests(MyPackage)
       ```
-    - Pass to `runtests` any configuration you want your tests to run with, such as `retries`, `testitem_timeout`, `nworkers`, `nworker_threads`, `worker_init_expr`, `test_end_expr`.
+    - Pass to `runtests` any configuration you want your tests to run with, such as `retries`, `failfast`, `testitem_failfast`, `testitem_timeout`, `nworkers`, `nworker_threads`, `worker_init_expr`, `test_end_expr`.
       See the [`runtests`](https://docs.juliahub.com/General/ReTestItems/stable/autodocs/#ReTestItems.runtests) docstring for details.
 
 ---

@@ -121,6 +121,7 @@ struct TestItem
     retries::Int
     timeout::Union{Int,Nothing} # in seconds
     skip::Union{Bool,Expr}
+    failfast::Union{Bool,Nothing}
     file::String
     line::Int
     project_root::String
@@ -132,10 +133,10 @@ struct TestItem
     stats::Vector{PerfStats} # populated when the test item is finished running
     scheduled_for_evaluation::ScheduledForEvaluation # to keep track of whether the test item has been scheduled for evaluation
 end
-function TestItem(number, name, id, tags, default_imports, setups, retries, timeout, skip, file, line, project_root, code)
+function TestItem(number, name, id, tags, default_imports, setups, retries, timeout, skip, failfast, file, line, project_root, code)
     _id = @something(id, repr(hash(name, hash(relpath(file, project_root)))))
     return TestItem(
-        number, name, _id, tags, default_imports, setups, retries, timeout, skip, file, line, project_root, code,
+        number, name, _id, tags, default_imports, setups, retries, timeout, skip, failfast, file, line, project_root, code,
         TestSetup[],
         Ref{Int}(0),
         DefaultTestSet[],
@@ -241,6 +242,14 @@ expression that returns a `Bool` to determine if the testitem should be skipped.
 
 The `skip` expression is run in its own module, just like a test-item.
 No code inside a `@testitem` is run when a test-item is skipped.
+
+If a `@testitem` should stop running on the first test failure, then you can set the `failfast` keyword.
+
+    @testitem "stop early" failfast=true begin
+        @test false
+        @test true
+        @test error("oops")
+    end
 """
 macro testitem(nm, exs...)
     default_imports = true
@@ -249,6 +258,7 @@ macro testitem(nm, exs...)
     tags = Symbol[]
     setup = Any[]
     skip = false
+    failfast = nothing
     _id = nothing
     _run = true  # useful for testing `@testitem` itself
     _source = QuoteNode(__source__)
@@ -284,6 +294,9 @@ macro testitem(nm, exs...)
                 skip = ex.args[2]
                 # If the `Expr` doesn't evaluate to a Bool, throws at runtime.
                 @assert skip isa Union{Bool,Expr} "`skip` keyword must be passed a `Bool`"
+            elseif kw == :failfast
+                failfast = ex.args[2]
+                @assert failfast isa Bool "`failfast` keyword must be passed a `Bool`. Got `failfast=$failfast`"
             elseif kw == :_id
                 _id = ex.args[2]
                 # This will always be written to the JUnit XML as a String, require the user
@@ -309,7 +322,7 @@ macro testitem(nm, exs...)
     ti = gensym(:ti)
     esc(quote
         let $ti = $TestItem(
-            $Ref(0), $nm, $_id, $tags, $default_imports, $setup, $retries, $timeout, $skip,
+            $Ref(0), $nm, $_id, $tags, $default_imports, $setup, $retries, $timeout, $skip, $failfast,
             $String($_source.file), $_source.line,
             $gettls(:__RE_TEST_PROJECT__, "."),
             $q,
