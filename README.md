@@ -120,14 +120,15 @@ Note ReTestItems.jl uses distributed parallelism, not multi-threading, to run te
 
 You can set `runtests` to stop on the first test-item failure by passing `failfast=true`.
 
+
 > [!NOTE]
 > Note `failfast` prevents any new test-items starting to run after the first test-item failure, but
-> test-itemss that were already running on another worker in parallel with the failing test will complete and appear in the test report.
+> test-items that were already running on another worker in parallel with the failing test will complete and appear in the test report.
 > Tests that were not run will not appear in the test report.
 >
-> This may be improved in a future version of ReTestItems.jl, so that even test-items running in parallel are stopped on when one test-item fails
+> This may be improved in a future version of ReTestItems.jl, so that all test-items running in parallel are stopped on when one test-item fails
 
-If you want individual test-items to stop on their first test failure, you can pass `testitem_failfast=true` to `runtests`.
+If you want individual test-items to stop on their first test failure, but not stop the whole `runtests` early, you can instead pass just `testitem_failfast=true` to `runtests`.
 
 
 ## Writing tests
