@@ -242,6 +242,24 @@ function runtests(shouldrun, pkg::Module; kw...)
     return runtests(shouldrun, dir; kw...)
 end
 
+@kwdef struct _Config
+    nworkers::Int
+    nworker_threads::String
+    worker_init_expr::Expr
+    test_end_expr::Expr
+    testitem_timeout::Float64
+    testitem_failfast::Bool
+    failfast::Bool
+    retries::Int
+    logs::Symbol
+    report::Bool
+    verbose_results::Bool
+    timeout_profile_wait::Int
+    memory_threshold::Float64
+    gc_between_testitems::Bool
+end
+
+
 function runtests(
     shouldrun,
     paths::AbstractString...;
@@ -276,20 +294,21 @@ function runtests(
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
     ti_filter = TestItemFilter(shouldrun, tags, name)
-    mkpath(RETESTITEMS_TEMP_FOLDER[]) # ensure our folder wasn't removed
-    save_current_stdio()
     nworkers = max(0, nworkers)
     retries = max(0, retries)
-    timeout = ceil(Int, testitem_timeout)
+    testitem_timeout = ceil(Int, testitem_timeout)
     timeout_profile_wait = ceil(Int, timeout_profile_wait)
     (timeout_profile_wait > 0 && Sys.iswindows()) && @warn "CPU profiles on timeout is not supported on Windows, ignoring `timeout_profile_wait`"
+    mkpath(RETESTITEMS_TEMP_FOLDER[]) # ensure our folder wasn't removed
+    save_current_stdio()
+    cfg = _Config(; nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, testitem_failfast, failfast, retries, logs, report, verbose_results, timeout_profile_wait, memory_threshold, gc_between_testitems)
     debuglvl = Int(debug)
     if debuglvl > 0
         LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
-            _runtests(ti_filter, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, gc_between_testitems, failfast, testitem_failfast)
+            _runtests(ti_filter, paths′, cfg)
         end
     else
-        return _runtests(ti_filter, paths′, nworkers, nworker_threads, worker_init_expr, test_end_expr, timeout, retries, memory_threshold, verbose_results, debuglvl, report, logs, timeout_profile_wait, gc_between_testitems, failfast, testitem_failfast)
+        return _runtests(ti_filter, paths′, cfg)
     end
 end
 
@@ -303,7 +322,7 @@ end
 # By tracking and reusing test environments, we can avoid this issue.
 const TEST_ENVS = Dict{String, String}()
 
-function _runtests(ti_filter, paths, nworkers::Int, nworker_threads::String, worker_init_expr::Expr, test_end_expr::Expr, testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int, gc_between_testitems::Bool, failfast::Bool, testitem_failfast::Bool)
+function _runtests(ti_filter, paths, cfg::_Config)
     # Don't recursively call `runtests` e.g. if we `include` a file which calls it.
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
@@ -323,7 +342,7 @@ function _runtests(ti_filter, paths, nworkers::Int, nworker_threads::String, wor
         if is_running_test_runtests_jl(proj_file)
             # Assume this is `Pkg.test`, so test env already active.
             @debugv 2 "Running in current environment `$(Base.active_project())`"
-            return _runtests_in_current_env(ti_filter, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, gc_between_testitems, failfast, testitem_failfast)
+            return _runtests_in_current_env(ti_filter, paths, proj_file, cfg)
         else
             @debugv 1 "Activating test environment for `$proj_file`"
             orig_proj = Base.active_project()
@@ -336,7 +355,7 @@ function _runtests(ti_filter, paths, nworkers::Int, nworker_threads::String, wor
                     testenv = TestEnv.activate()
                     TEST_ENVS[proj_file] = testenv
                 end
-                _runtests_in_current_env(ti_filter, paths, proj_file, nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, retries, memory_threshold, verbose_results, debug, report, logs, timeout_profile_wait, gc_between_testitems, failfast, testitem_failfast)
+                _runtests_in_current_env(ti_filter, paths, proj_file, cfg)
             finally
                 Base.set_active_project(orig_proj)
             end
@@ -345,16 +364,16 @@ function _runtests(ti_filter, paths, nworkers::Int, nworker_threads::String, wor
 end
 
 function _runtests_in_current_env(
-    ti_filter, paths, projectfile::String, nworkers::Int, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    testitem_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol,
-    timeout_profile_wait::Int, gc_between_testitems::Bool, failfast::Bool, testitem_failfast::Bool,
+    ti_filter, paths, projectfile::String, cfg::_Config
 )
     start_time = time()
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
     @info "Scanning for test items in project `$proj_name` at paths: $(join(paths, ", "))"
     inc_time = time()
     @debugv 1 "Including tests in $paths"
-    testitems, _ = include_testfiles!(proj_name, projectfile, paths, ti_filter, verbose_results, report)
+    testitems, _ = include_testfiles!(proj_name, projectfile, paths, ti_filter, cfg.verbose_results, cfg.report)
+    nworkers = cfg.nworkers
+    nworker_threads = cfg.nworker_threads
     ntestitems = length(testitems.testitems)
     @debugv 1 "Done including tests in $paths"
     @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds." *
@@ -362,7 +381,7 @@ function _runtests_in_current_env(
         (nworkers == 0 ? "" : " with $nworkers worker processes and $nworker_threads threads per worker.")
     try
         if nworkers == 0
-            length(worker_init_expr.args) > 0 && error("worker_init_expr is set, but will not run because number of workers is 0.")
+            length(cfg.worker_init_expr.args) > 0 && error("worker_init_expr is set, but will not run because number of workers is 0.")
             # This is where we disable printing for the serial executor case.
             Test.TESTSET_PRINT_ENABLE[] = false
             ctx = TestContext(proj_name, ntestitems)
@@ -373,14 +392,14 @@ function _runtests_in_current_env(
                 testitem.eval_number[] = i
                 @atomic :monotonic testitems.count += 1
                 run_number = 1
-                max_runs = 1 + max(retries, testitem.retries)
+                max_runs = 1 + max(cfg.retries, testitem.retries)
                 is_non_pass = false
                 while run_number ≤ max_runs
-                    res = runtestitem(testitem, ctx; test_end_expr, verbose_results, logs, failfast=testitem_failfast)
+                    res = runtestitem(testitem, ctx; cfg.test_end_expr, cfg.verbose_results, cfg.logs, failfast=cfg.testitem_failfast)
                     ts = res.testset
-                    print_errors_and_captured_logs(testitem, run_number; logs)
+                    print_errors_and_captured_logs(testitem, run_number; cfg.logs)
                     report_empty_testsets(testitem, ts)
-                    if gc_between_testitems
+                    if cfg.gc_between_testitems
                         @debugv 2 "Running GC"
                         GC.gc(true)
                     end
@@ -392,7 +411,7 @@ function _runtests_in_current_env(
                         break
                     end
                 end
-                if failfast && is_non_pass
+                if cfg.failfast && is_non_pass
                     cancel!(testitems)
                     print_failfast_cancellation(testitem)
                     break
@@ -413,7 +432,7 @@ function _runtests_in_current_env(
             @sync for i in 1:nworkers
                 @spawn begin
                     with_logger(original_logger) do
-                        $workers[$i] = robust_start_worker($proj_name, $nworker_threads, $worker_init_expr, $ntestitems; worker_num=$i)
+                        $workers[$i] = robust_start_worker($proj_name, $(cfg.nworker_threads), $(cfg.worker_init_expr), $ntestitems; worker_num=$i)
                     end
                 end
             end
@@ -424,15 +443,15 @@ function _runtests_in_current_env(
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
-                        manage_worker($w, $proj_name, $testitems, $ti, $nworker_threads, $worker_init_expr, $test_end_expr, $testitem_timeout, $retries, $memory_threshold, $verbose_results, $debug, $report, $logs, $timeout_profile_wait, $gc_between_testitems, $failfast, $testitem_failfast)
+                        manage_worker($w, $proj_name, $testitems, $ti, $cfg)
                     end
                 end
             end
         end
         Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
         record_results!(testitems)
-        report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
-        if failfast && is_cancelled(testitems)
+        cfg.report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
+        if cfg.failfast && is_cancelled(testitems)
             # Let users know if not all tests ran. Print this just above the final report as
             # there might have been other logs printed since the cancellation was printed.
             print_failfast_summary(testitems)
@@ -450,8 +469,8 @@ end
 
 # Start a new `Worker` with `nworker_threads` threads and run `worker_init_expr` on it.
 # The provided `worker_num` is only for logging purposes, and not persisted as part of the worker.
-function start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems; worker_num=nothing)
-    w = Worker(; threads="$nworker_threads")
+function start_worker(proj_name, nworker_threads::String, worker_init_expr::Expr, ntestitems::Int; worker_num=nothing)
+    w = Worker(; threads=nworker_threads)
     i = worker_num == nothing ? "" : " $worker_num"
     # remote_fetch here because we want to make sure the worker is all setup before starting to eval testitems
     remote_fetch(w, quote
@@ -554,25 +573,23 @@ function record_test_error!(testitem, msg, elapsed_seconds::Real=0.0)
 end
 
 function manage_worker(
-    worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, nworker_threads, worker_init_expr::Expr, test_end_expr::Expr,
-    default_timeout::Int, retries::Int, memory_threshold::Real, verbose_results::Bool, debug::Int, report::Bool, logs::Symbol, timeout_profile_wait::Int,
-    gc_between_testitems::Bool, failfast::Bool, testitem_failfast::Bool,
+    worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, cfg::_Config,
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
-    memory_threshold_percent = 100*memory_threshold
+    memory_threshold_percent = 100 * cfg.memory_threshold
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
         if memory_percent() > memory_threshold_percent
             @warn "Memory usage ($(Base.Ryu.writefixed(memory_percent(), 1))%) is higher than threshold ($(Base.Ryu.writefixed(memory_threshold_percent, 1))%). Restarting worker process to try to free memory."
             terminate!(worker)
             wait(worker)
-            worker = robust_start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
+            worker = robust_start_worker(proj_name, cfg.nworker_threads, cfg.worker_init_expr, ntestitems)
         end
         testitem.workerid[] = worker.pid
-        timeout = something(testitem.timeout, default_timeout)
-        fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(test_end_expr)), verbose_results=$verbose_results, logs=$(QuoteNode(logs)), failfast=$testitem_failfast)))
-        max_runs = 1 + max(retries, testitem.retries)
+        timeout = something(testitem.timeout, cfg.testitem_timeout)
+        fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(cfg.test_end_expr)), verbose_results=$(cfg.verbose_results), logs=$(QuoteNode(cfg.logs)), failfast=$(cfg.testitem_failfast))))
+        max_runs = 1 + max(cfg.retries, testitem.retries)
         try
             timer = Timer(timeout) do tm
                 close(tm)
@@ -598,9 +615,9 @@ function manage_worker(
                 ts = testitem_result.testset
                 push!(testitem.testsets, ts)
                 push!(testitem.stats, testitem_result.stats)
-                print_errors_and_captured_logs(testitem, run_number; logs)
+                print_errors_and_captured_logs(testitem, run_number; cfg.logs)
                 report_empty_testsets(testitem, ts)
-                if gc_between_testitems
+                if cfg.gc_between_testitems
                     @debugv 2 "Running GC on $worker"
                     remote_fetch(worker, :(GC.gc(true)))
                 end
@@ -609,7 +626,7 @@ function manage_worker(
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
                 else
-                    if failfast && is_non_pass
+                    if cfg.failfast && is_non_pass
                         already_cancelled = cancel!(testitems)
                         already_cancelled || print_failfast_cancellation(testitem)
                     end
@@ -623,10 +640,10 @@ function manage_worker(
             @debugv 2 "Error" exception=e
             # Handle the exception
             if e isa TimeoutException
-                if timeout_profile_wait > 0
+                if cfg.timeout_profile_wait > 0
                     @warn "$worker timed out running test item $(repr(testitem.name)) after $timeout seconds. \
                         A CPU profile will be triggered on the worker and then it will be terminated."
-                    trigger_profile(worker, timeout_profile_wait, :timeout)
+                    trigger_profile(worker, cfg.timeout_profile_wait, :timeout)
                 end
                 terminate!(worker, :timeout)
                 wait(worker)
@@ -654,7 +671,7 @@ function manage_worker(
             end
             # Handle retries
             if run_number == max_runs
-                if failfast
+                if cfg.failfast
                     already_cancelled = cancel!(testitems)
                     already_cancelled || print_failfast_cancellation(testitem)
                 end
@@ -666,7 +683,7 @@ function manage_worker(
             end
             # The worker was terminated, so replace it unless there are no more testitems to run
             if testitem !== nothing
-                worker = robust_start_worker(proj_name, nworker_threads, worker_init_expr, ntestitems)
+                worker = robust_start_worker(proj_name, cfg.nworker_threads, cfg.worker_init_expr, ntestitems)
             end
             # Now loop back around to reschedule the testitem
             continue
