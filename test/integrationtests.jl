@@ -1503,4 +1503,8 @@ else
 end # VERSION
 end
 
+@testset "`test_end_expr` must be `:block`" begin
+    @test_throws "`test_end_expr` must be a `:block` expression" runtests(; test_end_expr=:(@assert false))
+end
+
 end # integrationtests.jl testset
