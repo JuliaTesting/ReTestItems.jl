@@ -1,6 +1,6 @@
 module ReTestItems
 
-using Base: @lock
+using Base: @lock, @kwdef
 using Dates: DateTime, ISODateTimeFormat, format, now, unix2datetime
 using Test: Test, DefaultTestSet, TestSetException
 using .Threads: @spawn, nthreads
