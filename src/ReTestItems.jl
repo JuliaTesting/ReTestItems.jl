@@ -247,7 +247,7 @@ end
     nworker_threads::String
     worker_init_expr::Expr
     test_end_expr::Expr
-    testitem_timeout::Float64
+    testitem_timeout::Int
     testitem_failfast::Bool
     failfast::Bool
     retries::Int
