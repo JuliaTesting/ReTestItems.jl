@@ -449,13 +449,13 @@ function _runtests_in_current_env(
             end
         end
         Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
+        # Let users know if tests are done, and if all of them ran (or if we failed fast).
+        # Print this above the final report as there might have been other logs printed
+        # since a failfast-cancellation was printed, but print it ASAP after tests finish
+        # in case any of the recording/reporting steps have an issue.
+        print_completion_summary(testitems; failedfast=(cfg.failfast && is_cancelled(testitems)))
         record_results!(testitems)
         cfg.report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
-        if cfg.failfast && is_cancelled(testitems)
-            # Let users know if not all tests ran. Print this just above the final report as
-            # there might have been other logs printed since the cancellation was printed.
-            print_failfast_summary(testitems)
-        end
         Test.finish(testitems) # print summary of total passes/failures/errors
     finally
         Test.TESTSET_PRINT_ENABLE[] = true
