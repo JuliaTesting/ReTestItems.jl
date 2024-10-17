@@ -191,6 +191,7 @@ function write_junit_file(path::AbstractString, junit::Union{JUnitTestSuites,JUn
     open(path, "w") do io
         write_junit_file(io, junit)
     end
+    @debugv 1 "Done writing JUnit XML file to $(repr(path))"
     return nothing
 end
 
@@ -201,6 +202,7 @@ function write_junit_file(io::IO, junit::Union{JUnitTestSuites,JUnitTestSuite})
 end
 
 function write_junit_xml(io, junit::JUnitTestSuites)
+    @debugv 2 "Writing JUnit XML for testsuites $(junit.name)"
     write(io, "\n<testsuites")
     write_counts(io, junit.counts)
     write(io, ">")
@@ -212,6 +214,7 @@ function write_junit_xml(io, junit::JUnitTestSuites)
 end
 
 function write_junit_xml(io, ts::JUnitTestSuite)
+    @debugv 2 "Writing JUnit XML for testsuite $(ts.name)"
     write(io, "\n<testsuite name=", xml_markup(ts.name))
     write_counts(io, ts.counts)
     write(io, ">")
@@ -258,6 +261,7 @@ function write_dd_tags(io, tc::JUnitTestCase)
 end
 
 function write_junit_xml(io, tc::JUnitTestCase)
+    @debugv 2 "Writing JUnit XML for testcase $(tc.name)"
     write(io, "\n\t<testcase name=", xml_markup(tc.name))
     write_counts(io, tc.counts)
     write(io, ">")
