@@ -25,6 +25,8 @@ end
         # releases so we may as well skip them (so PkgEval doesn't always fail for us).
         if isempty(VERSION.prerelease)
             include("junit_xml.jl")
+        else
+            @warn "Skipping JUnit XML reference tests on unrelease Julia version" VERSION
         end
     end
 
