@@ -456,14 +456,17 @@ function _runtests_in_current_env(
         print_completion_summary(testitems; failedfast=(cfg.failfast && is_cancelled(testitems)))
         record_results!(testitems)
         cfg.report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
+        @debugv 1 "Calling Test.finish(testitems)"
         Test.finish(testitems) # print summary of total passes/failures/errors
     finally
         Test.TESTSET_PRINT_ENABLE[] = true
-        # Cleanup test setup logs
+        @debugv 1 "Cleaning up test setup logs"
         foreach(Iterators.filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER[], join=true))) do logfile
             rm(logfile; force=true)  # `force` to ignore error if file already cleaned up
         end
+        @debugv 1 "Done cleaning up test setup logs"
     end
+    @debugv 1 "DONE"
     return nothing
 end
 
