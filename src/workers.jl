@@ -159,7 +159,7 @@ function Worker(;
     exeflags=`--threads=$threads`,
     connect_timeout::Int=60,
     worker_redirect_io::IO=stdout,
-    worker_redirect_fn=(io, pid, line)->println(io, "  Worker $num/$pid:  $line")
+    worker_redirect_fn=(io, pid, line)->println(io, "  Worker $num|$pid:  $line")
 )
     # below copied from Distributed.launch
     env = Dict{String, String}(env)
