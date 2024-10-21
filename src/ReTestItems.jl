@@ -443,7 +443,7 @@ function _runtests_in_current_env(
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
-                        manage_worker($w, $proj_name, $testitems, $ti, $cfg)
+                        manage_worker($w, $proj_name, $testitems, $ti, $cfg; worker_num=$i)
                     end
                 end
             end
@@ -575,8 +575,10 @@ function record_test_error!(testitem, msg, elapsed_seconds::Real=0.0)
     return testitem
 end
 
+# The provided `worker_num` is only for logging purposes, and not persisted as part of the worker.
 function manage_worker(
-    worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, cfg::_Config,
+    worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, cfg::_Config;
+    worker_num::Int
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
@@ -584,7 +586,7 @@ function manage_worker(
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
         if memory_percent() > memory_threshold_percent
-            @warn "Memory usage ($(Base.Ryu.writefixed(memory_percent(), 1))%) is higher than threshold ($(Base.Ryu.writefixed(memory_threshold_percent, 1))%). Restarting worker process to try to free memory."
+            @warn "Memory usage ($(Base.Ryu.writefixed(memory_percent(), 1))%) is higher than threshold ($(Base.Ryu.writefixed(memory_threshold_percent, 1))%). Restarting process for worker $worker_num to try to free memory."
             terminate!(worker)
             wait(worker)
             worker = robust_start_worker(proj_name, cfg.nworker_threads, cfg.worker_init_expr, ntestitems)
@@ -692,6 +694,7 @@ function manage_worker(
             continue
         end
     end
+    @info "All tests on worker $worker_num completed. Closing $worker."
     close(worker)
     return nothing
 end
