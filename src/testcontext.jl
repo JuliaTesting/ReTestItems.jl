@@ -108,9 +108,12 @@ is_cancelled(t::TestItems) = @atomic t.cancelled
 ###
 
 function record_results!(ti::TestItems)
+    @debugv 1 "Recording testitem results"
     foreach(ti.graph.children) do child
         record_results!(ti.graph, child)
     end
+    @debugv 1 "Done recording testitem results"
+    return ti
 end
 
 function record_results!(dir::DirNode, child_dir::DirNode)

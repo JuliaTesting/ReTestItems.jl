@@ -7,7 +7,7 @@ using .Threads: @spawn, nthreads
 using Pkg: Pkg
 using TestEnv
 using Logging
-using LoggingExtras
+using LoggingExtras: LoggingExtras, @debugv
 
 export runtests, runtestitem
 export @testsetup, @testitem
@@ -443,27 +443,30 @@ function _runtests_in_current_env(
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
-                        manage_worker($w, $proj_name, $testitems, $ti, $cfg)
+                        manage_worker($w, $proj_name, $testitems, $ti, $cfg; worker_num=$i)
                     end
                 end
             end
         end
         Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
+        # Let users know if tests are done, and if all of them ran (or if we failed fast).
+        # Print this above the final report as there might have been other logs printed
+        # since a failfast-cancellation was printed, but print it ASAP after tests finish
+        # in case any of the recording/reporting steps have an issue.
+        print_completion_summary(testitems; failedfast=(cfg.failfast && is_cancelled(testitems)))
         record_results!(testitems)
         cfg.report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
-        if cfg.failfast && is_cancelled(testitems)
-            # Let users know if not all tests ran. Print this just above the final report as
-            # there might have been other logs printed since the cancellation was printed.
-            print_failfast_summary(testitems)
-        end
+        @debugv 1 "Calling Test.finish(testitems)"
         Test.finish(testitems) # print summary of total passes/failures/errors
     finally
         Test.TESTSET_PRINT_ENABLE[] = true
-        # Cleanup test setup logs
+        @debugv 1 "Cleaning up test setup logs"
         foreach(Iterators.filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER[], join=true))) do logfile
             rm(logfile; force=true)  # `force` to ignore error if file already cleaned up
         end
+        @debugv 1 "Done cleaning up test setup logs"
     end
+    @debugv 1 "DONE"
     return nothing
 end
 
@@ -572,8 +575,10 @@ function record_test_error!(testitem, msg, elapsed_seconds::Real=0.0)
     return testitem
 end
 
+# The provided `worker_num` is only for logging purposes, and not persisted as part of the worker.
 function manage_worker(
-    worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, cfg::_Config,
+    worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, cfg::_Config;
+    worker_num::Int
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
@@ -581,7 +586,7 @@ function manage_worker(
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
         if memory_percent() > memory_threshold_percent
-            @warn "Memory usage ($(Base.Ryu.writefixed(memory_percent(), 1))%) is higher than threshold ($(Base.Ryu.writefixed(memory_threshold_percent, 1))%). Restarting worker process to try to free memory."
+            @warn "Memory usage ($(Base.Ryu.writefixed(memory_percent(), 1))%) is higher than threshold ($(Base.Ryu.writefixed(memory_threshold_percent, 1))%). Restarting process for worker $worker_num to try to free memory."
             terminate!(worker)
             wait(worker)
             worker = robust_start_worker(proj_name, cfg.nworker_threads, cfg.worker_init_expr, ntestitems)
@@ -679,7 +684,7 @@ function manage_worker(
                 run_number = 1
             else
                 run_number += 1
-                @info "Retrying $(repr(testitem.name)) on a new worker process. Run=$run_number."
+                @info "Retrying $(repr(testitem.name)) on a new worker $worker_num process. Run=$run_number."
             end
             # The worker was terminated, so replace it unless there are no more testitems to run
             if testitem !== nothing
@@ -689,7 +694,9 @@ function manage_worker(
             continue
         end
     end
+    @info "All tests on worker $worker_num completed. Closing $worker."
     close(worker)
+    @debugv 1 "Worker $worker_num closed: $(worker)"
     return nothing
 end
 

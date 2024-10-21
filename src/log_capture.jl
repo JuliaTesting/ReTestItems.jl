@@ -310,9 +310,13 @@ end
 # So that the user is warned that not all tests were run.
 # We don't use loglock here, because this is only called once on the coordinator after all
 # tasks running tests have stopped and we're printing the final test report.
-function print_failfast_summary(t::TestItems)
+function print_completion_summary(t::TestItems; failedfast::Bool)
     io = DEFAULT_STDOUT[]
-    printstyled(io, "[ Fail Fast: "; bold=true, color=Base.warn_color())
+    if failedfast
+        printstyled(io, "[ Fail Fast: "; bold=true, color=Base.warn_color())
+    else
+        printstyled(io, "[ Tests Completed: "; bold=true, color=Base.info_color())
+    end
     println(io, "$(t.count)/$(length(t.testitems)) test items were run.")
     return nothing
 end
