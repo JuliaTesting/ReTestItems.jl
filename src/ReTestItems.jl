@@ -696,6 +696,7 @@ function manage_worker(
     end
     @info "All tests on worker $worker_num completed. Closing $worker."
     close(worker)
+    @debugv 1 "Worker $worker_num closed: $(worker)"
     return nothing
 end
 
