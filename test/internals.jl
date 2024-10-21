@@ -320,7 +320,13 @@ end
     @test_throws "Test item \"x\" `skip` keyword must be a `Bool`, got `skip=2`" should_skip(ti)
 
     ti = @testitem("x", skip=:(x = 1; x + y), _run=false, begin end)
-    @test_throws UndefVarError(:y) should_skip(ti)
+    if v"1.11-" < VERSION < v"1.11.2"
+        # Testing for a specific UndefVarError was broken in v1.11.0 and v1.11.1, see:
+        # https://github.com/JuliaLang/julia/issues/54082
+        @test_throws UndefVarError should_skip(ti)
+    else
+        @test_throws UndefVarError(:y) should_skip(ti)
+    end
 end
 
 @testset "filtering.jl" begin

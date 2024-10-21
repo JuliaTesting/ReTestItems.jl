@@ -20,7 +20,14 @@ end
         include("macros.jl")
         include("integrationtests.jl")
         include("log_capture.jl")
-        include("junit_xml.jl")
+        # junit_xml reference tests are very sensitive to changes in text output which is not
+        # stable across minor Julia versions, i.e. we expect these to fail on upcoming Julia
+        # releases so we may as well skip them (so PkgEval doesn't always fail for us).
+        if isempty(VERSION.prerelease)
+            include("junit_xml.jl")
+        else
+            @warn "Skipping JUnit XML reference tests on unrelease Julia version" VERSION
+        end
     end
 
     # After all tests have run, check we didn't leave Test printing disabled.

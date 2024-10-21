@@ -12,6 +12,7 @@ using ReTestItems
 using DeepDiffs: deepdiff
 
 # remove things that vary on each run: timestamps, run times, line numbers, repo locations
+# or which depend on the Julia VERSION being used
 function remove_variables(str)
     return replace(str,
         # Replace timestamps and times with "0"
@@ -33,7 +34,11 @@ function remove_variables(str)
         r"`" => "",
         # Remove blank lines in error messages (these were add in v1.9+)
         # https://github.com/JuliaLang/julia/commit/ba1e568966f82f4732f9a906ab186b02741eccb0
-        r"\n\n" => "\n"
+        r"\n\n" => "\n",
+        # Remove the extra info added to `UndefVarError` messages in Julia v1.11
+        # e.g. "UndefVarError: `x` not defined in ..." => "UndefVarError: x not defined"
+        # see: https://github.com/JuliaLang/julia/commit/449c7a2504191a96cfd382e0dbc0b40bf922cd6d
+        r"UndefVarError: `(?<var>[^`]*)` not defined in (.+)" => s"UndefVarError: \g<var> not defined",
     )
 end
 
