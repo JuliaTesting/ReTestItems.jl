@@ -689,7 +689,7 @@ function manage_worker(
                 run_number = 1
             else
                 run_number += 1
-                @info "Retrying $(repr(testitem.name)) on a new worker process. Run=$run_number."
+                @info "Retrying $(repr(testitem.name)) on a new worker $worker_num process. Run=$run_number."
             end
             # The worker was terminated, so replace it unless there are no more testitems to run
             if testitem !== nothing
