@@ -7,7 +7,7 @@ using .Threads: @spawn, nthreads
 using Pkg: Pkg
 using TestEnv
 using Logging
-using LoggingExtras
+using LoggingExtras: LoggingExtras, @debugv
 
 export runtests, runtestitem
 export @testsetup, @testitem

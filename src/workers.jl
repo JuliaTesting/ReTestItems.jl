@@ -1,6 +1,7 @@
 module Workers
 
 using Sockets, Serialization
+using LoggingExtras: @debugv
 
 export Worker, remote_eval, remote_fetch, terminate!, WorkerTerminatedException
 export trigger_profile
