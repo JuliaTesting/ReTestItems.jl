@@ -1017,10 +1017,10 @@ end
 @testset "worker always crashes immediately" begin
     file = joinpath(TEST_FILES_DIR, "_happy_tests.jl")
 
-    # We have occassionally seen the Process exist with the expected signal.
+    # We have occassionally seen the Process exit without the expected signal.
     @assert typemin(Int32) == -2147483648
-    terminated_err_log_1 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker process \(retry 1/2\)."
-    terminated_err_log_2 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker process \(retry 2/2\)."
+    terminated_err_log_1 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker \d process \(retry 1/2\)."
+    terminated_err_log_2 = r"Error: Worker\(pid=\d+, terminated=true, termsignal=(6|-2147483648)\) terminated unexpectedly. Starting new worker \d process \(retry 2/2\)."
 
     worker_init_expr = :(@eval ccall(:abort, Cvoid, ()))
     # We don't use IOCapture for capturing logs as that seems to hang when the worker crashes.
