@@ -52,7 +52,8 @@ Base.fetch(f::Future) = fetch(f.value)
 
 mutable struct Worker
     lock::ReentrantLock # protects the .futures field; no other fields are modified after construction
-    pid::Int
+    num::Int # user given ID
+    pid::Int # process ID
     process::Base.Process
     socket::TCPSocket
     messages::Task
@@ -73,7 +74,7 @@ end
 function terminate!(w::Worker, from::Symbol=:manual)
     already_terminated = @atomicswap :monotonic w.terminated = true
     if !already_terminated
-        @debug "terminating worker $(w.pid) from $from"
+        @debug "terminating $worker from $from"
     end
     wte = WorkerTerminatedException(w)
     @lock w.lock begin
@@ -114,7 +115,7 @@ end
 # Called when timeout_profile_wait is non-zero.
 function trigger_profile(w::Worker, timeout_profile_wait, from::Symbol=:manual)
     if !Sys.iswindows()
-        @debug "sending profile request to worker $(w.pid) from $from"
+        @debug "sending profile request to $worker from $from"
         if Sys.islinux()
             kill(w.process, 10)  # SIGUSR1
         elseif Sys.isbsd()
@@ -144,21 +145,22 @@ end
 # wait until our spawned tasks have all finished
 Base.wait(w::Worker) = fetch(w.process_watch) && fetch(w.messages) && fetch(w.output)
 
-Base.show(io::IO, w::Worker) = print(io, "Worker(pid=$(w.pid)", w.terminated ? ", terminated=true, termsignal=$(w.process.termsignal)" : "", ")")
+Base.show(io::IO, w::Worker) = print(io, "Worker(num=$(w.num), pid=$(w.pid)", w.terminated ? ", terminated=true, termsignal=$(w.process.termsignal)" : "", ")")
 
 # used in testing to ensure all created workers are
 # eventually cleaned up properly
 const GLOBAL_CALLBACK_PER_WORKER = Ref{Any}()
 
 function Worker(;
+    num::Int=rand(1:typemax(Int32)),
     env::AbstractDict=ENV,
     dir::String=pwd(),
     threads::String="auto",
     exeflags=`--threads=$threads`,
     connect_timeout::Int=60,
     worker_redirect_io::IO=stdout,
-    worker_redirect_fn=(io, pid, line)->println(io, "  Worker $pid:  $line")
-    )
+    worker_redirect_fn=(io, pid, line)->println(io, "  Worker $num $pid:  $line")
+)
     # below copied from Distributed.launch
     env = Dict{String, String}(env)
     pathsep = Sys.iswindows() ? ";" : ":"
@@ -194,7 +196,7 @@ function Worker(;
             return Sockets.connect(parse(Int, split(port_str, ':')[2]))
         end
         # create worker
-        w = Worker(ReentrantLock(), pid, proc, sock, Task(nothing), Task(nothing), Task(nothing), Dict{UInt64, Future}(), false)
+        w = Worker(ReentrantLock(), num, pid, proc, sock, Task(nothing), Task(nothing), Task(nothing), Dict{UInt64, Future}(), false)
         ## start a task to watch for worker process termination, notify the event when the task starts
         e1 = Threads.Event()
         w.process_watch = Threads.@spawn watch_and_terminate!(w, $e1)
@@ -233,7 +235,7 @@ function redirect_worker_output(io::IO, w::Worker, fn, proc, ev::Threads.Event)
             end
         end
     catch e
-        # @error "Error redirecting worker output $(w.pid)" exception=(e, catch_backtrace())
+        # @error "Error redirecting $worker output" exception=(e, catch_backtrace())
         terminate!(w, :redirect_worker_output)
         e isa EOFError || e isa Base.IOError || rethrow()
     finally
@@ -252,13 +254,13 @@ function process_responses(w::Worker, ev::Threads.Event)
         while isopen(w.socket) && !w.terminated
             # get the next Response from the worker
             r = deserialize(w.socket)
-            @assert r isa Response "Received invalid response from worker $(w.pid): $(r)"
-            # println("Received response $(r) from worker $(w.pid)")
+            @assert r isa Response "Received invalid response from $worker: $(r)"
+            # println("Received response $(r) from $worker")
             @lock lock begin
-                @assert haskey(reqs, r.id) "Received response for unknown request $(r.id) from worker $(w.pid)"
+                @assert haskey(reqs, r.id) "Received response for unknown request $(r.id) from $worker"
                 # look up the Future for this request
                 fut = pop!(reqs, r.id)
-                @assert !isready(fut.value) "Received duplicate response for request $(r.id) from worker $(w.pid)"
+                @assert !isready(fut.value) "Received duplicate response for request $(r.id) from $worker"
                 if r.error !== nothing
                     # this allows rethrowing the exception from the worker to the caller
                     close(fut.value, r.error)
@@ -268,7 +270,7 @@ function process_responses(w::Worker, ev::Threads.Event)
             end
         end
     catch e
-        # @error "Error processing responses from worker $(w.pid)" exception=(e, catch_backtrace())
+        # @error "Error processing responses from $worker" exception=(e, catch_backtrace())
         terminate!(w, :process_responses)
         e isa EOFError || e isa Base.IOError || rethrow()
     end
