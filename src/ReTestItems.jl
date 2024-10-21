@@ -471,10 +471,8 @@ function _runtests_in_current_env(
 end
 
 # Start a new `Worker` with `nworker_threads` threads and run `worker_init_expr` on it.
-# The provided `worker_num` is only for logging purposes, and not persisted as part of the worker.
-function start_worker(proj_name, nworker_threads::String, worker_init_expr::Expr, ntestitems::Int; worker_num=nothing)
-    w = Worker(; threads=nworker_threads)
-    i = worker_num == nothing ? "" : " $worker_num"
+function start_worker(proj_name, nworker_threads::String, worker_init_expr::Expr, ntestitems::Int; worker_num)
+    w = Worker(; threads=nworker_threads, num=worker_num)
     # remote_fetch here because we want to make sure the worker is all setup before starting to eval testitems
     remote_fetch(w, quote
         using ReTestItems, Test
@@ -482,7 +480,8 @@ function start_worker(proj_name, nworker_threads::String, worker_init_expr::Expr
         const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)
         GLOBAL_TEST_CONTEXT.setups_evaled = ReTestItems.TestSetupModules()
         nthreads_str = $nworker_threads
-        @info "Starting test worker$($i) on pid = $(Libc.getpid()), with $nthreads_str threads"
+        num = $worker_num
+        @info "Starting test worker $(num) on pid=$(Libc.getpid()), with $(nthreads_str) threads"
         $(worker_init_expr.args...)
         nothing
     end)
@@ -589,7 +588,7 @@ function manage_worker(
             @warn "Memory usage ($(Base.Ryu.writefixed(memory_percent(), 1))%) is higher than threshold ($(Base.Ryu.writefixed(memory_threshold_percent, 1))%). Restarting process for worker $worker_num to try to free memory."
             terminate!(worker)
             wait(worker)
-            worker = robust_start_worker(proj_name, cfg.nworker_threads, cfg.worker_init_expr, ntestitems)
+            worker = robust_start_worker(proj_name, cfg.nworker_threads, cfg.worker_init_expr, ntestitems; worker_num)
         end
         testitem.workerid[] = worker.pid
         timeout = something(testitem.timeout, cfg.testitem_timeout)
@@ -688,7 +687,7 @@ function manage_worker(
             end
             # The worker was terminated, so replace it unless there are no more testitems to run
             if testitem !== nothing
-                worker = robust_start_worker(proj_name, cfg.nworker_threads, cfg.worker_init_expr, ntestitems)
+                worker = robust_start_worker(proj_name, cfg.nworker_threads, cfg.worker_init_expr, ntestitems; worker_num)
             end
             # Now loop back around to reschedule the testitem
             continue
