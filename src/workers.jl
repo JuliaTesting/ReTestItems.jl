@@ -1,7 +1,6 @@
 module Workers
 
 using Sockets, Serialization
-using LoggingExtras: @debugv
 
 export Worker, remote_eval, remote_fetch, terminate!, WorkerTerminatedException
 export trigger_profile
@@ -129,7 +128,7 @@ end
 # gracefully terminate a worker by sending a shutdown message
 # and waiting for the other tasks to perform worker shutdown
 function Base.close(w::Worker)
-    @debugv 2 "closing worker $(w.pid)"
+    @debug "closing $worker"
     if !w.terminated && isopen(w.socket)
         req = Request(Symbol(), :(), rand(UInt64), true)
         @lock w.lock begin
@@ -137,7 +136,7 @@ function Base.close(w::Worker)
             flush(w.socket)
         end
     end
-    @debugv 2 "waiting for worker $(w.pid) to terminate"
+    @debug "waiting for $worker to terminate"
     wait(w)
     return
 end
