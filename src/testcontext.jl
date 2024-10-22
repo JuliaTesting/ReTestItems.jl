@@ -156,7 +156,7 @@ function get_starting_testitems(ti::TestItems, n)
     len = length(ti.testitems)
     step = max(1, len / n)
     testitems = [ti.testitems[round(Int, i)] for i in 1:step:len]
-    @debugv 2 "get_starting_testitems" len n allunique(testitems)
+    @debugv 2 "get_starting_testitems len=$len n=$n allunique=$(allunique(testitems))"
     @assert length(testitems) == min(n, len) && allunique(testitems)
     for (i, t) in enumerate(testitems)
         @atomic t.scheduled_for_evaluation.value = true
