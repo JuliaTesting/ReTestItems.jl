@@ -73,7 +73,7 @@ end
 function terminate!(w::Worker, from::Symbol=:manual)
     already_terminated = @atomicswap :monotonic w.terminated = true
     if !already_terminated
-        @debug "terminating worker $(w.pid) from $from"
+        @debug "terminating $(w) from $(from)"
     end
     wte = WorkerTerminatedException(w)
     @lock w.lock begin
@@ -114,7 +114,7 @@ end
 # Called when timeout_profile_wait is non-zero.
 function trigger_profile(w::Worker, timeout_profile_wait, from::Symbol=:manual)
     if !Sys.iswindows()
-        @debug "sending profile request to worker $(w.pid) from $from"
+        @debug "sending profile request to $(w) from $(from)"
         if Sys.islinux()
             kill(w.process, 10)  # SIGUSR1
         elseif Sys.isbsd()
@@ -233,7 +233,7 @@ function redirect_worker_output(io::IO, w::Worker, fn, proc, ev::Threads.Event)
             end
         end
     catch e
-        # @error "Error redirecting worker output $(w.pid)" exception=(e, catch_backtrace())
+        # @error "Error redirecting $(w) output" exception=(e, catch_backtrace())
         terminate!(w, :redirect_worker_output)
         e isa EOFError || e isa Base.IOError || rethrow()
     finally
@@ -252,13 +252,13 @@ function process_responses(w::Worker, ev::Threads.Event)
         while isopen(w.socket) && !w.terminated
             # get the next Response from the worker
             r = deserialize(w.socket)
-            @assert r isa Response "Received invalid response from worker $(w.pid): $(r)"
-            # println("Received response $(r) from worker $(w.pid)")
+            @assert r isa Response "Received invalid response from $(w): $(r)"
+            # println("Received response $(r) from $(w)")
             @lock lock begin
-                @assert haskey(reqs, r.id) "Received response for unknown request $(r.id) from worker $(w.pid)"
+                @assert haskey(reqs, r.id) "Received response for unknown request $(r.id) from $(w)"
                 # look up the Future for this request
                 fut = pop!(reqs, r.id)
-                @assert !isready(fut.value) "Received duplicate response for request $(r.id) from worker $(w.pid)"
+                @assert !isready(fut.value) "Received duplicate response for request $(r.id) from $(w)"
                 if r.error !== nothing
                     # this allows rethrowing the exception from the worker to the caller
                     close(fut.value, r.error)
@@ -268,7 +268,7 @@ function process_responses(w::Worker, ev::Threads.Event)
             end
         end
     catch e
-        # @error "Error processing responses from worker $(w.pid)" exception=(e, catch_backtrace())
+        # @error "Error processing responses from $(w)" exception=(e, catch_backtrace())
         terminate!(w, :process_responses)
         e isa EOFError || e isa Base.IOError || rethrow()
     end
