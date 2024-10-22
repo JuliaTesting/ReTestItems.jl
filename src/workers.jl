@@ -128,7 +128,7 @@ end
 # gracefully terminate a worker by sending a shutdown message
 # and waiting for the other tasks to perform worker shutdown
 function Base.close(w::Worker)
-    @debug "closing $worker"
+    @debug "closing $(w)"
     if !w.terminated && isopen(w.socket)
         req = Request(Symbol(), :(), rand(UInt64), true)
         @lock w.lock begin
@@ -136,7 +136,7 @@ function Base.close(w::Worker)
             flush(w.socket)
         end
     end
-    @debug "waiting for $worker to terminate"
+    @debug "waiting for $(w) to terminate"
     wait(w)
     return
 end
