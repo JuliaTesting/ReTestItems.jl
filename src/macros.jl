@@ -112,7 +112,7 @@ those test in their own module.
 Should only be created via the `@testitem` macro.
 """
 struct TestItem
-    number::Base.RefValue{Int64} # populated by runtests coordinator once all test items are known
+    number::Base.RefValue{Int} # populated by runtests coordinator once all test items are known
     name::String
     id::String # in case file/name isn't a sufficiently stable identifier for reporting purposes
     tags::Vector{Symbol}
