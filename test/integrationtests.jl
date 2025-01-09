@@ -461,9 +461,9 @@ end
                 @test !contains(c.output, "tests done")
             end
             if debug
-                @test contains(c.output, "Debug:")
+                @test contains(c.output, "DEBUG @")
             else
-                @test !contains(c.output, "Debug:")
+                @test !contains(c.output, "DEBUG @")
             end
             # Test we have the expected summary table
             testset = c.value
