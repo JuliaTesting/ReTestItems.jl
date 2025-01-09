@@ -6,8 +6,7 @@ using Test: Test, DefaultTestSet, TestSetException
 using .Threads: @spawn, nthreads
 using Pkg: Pkg
 using TestEnv
-using Logging
-using LoggingExtras: LoggingExtras, @debugv
+using Logging: current_logger, with_logger
 
 export runtests, runtestitem
 export @testsetup, @testitem
@@ -66,6 +65,7 @@ function softscope_all!(@nospecialize ex)
     end
 end
 
+include("debug.jl")
 include("workers.jl")
 using .Workers
 include("macros.jl")
@@ -304,7 +304,7 @@ function runtests(
     cfg = _Config(; nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, testitem_failfast, failfast, retries, logs, report, verbose_results, timeout_profile_wait, memory_threshold, gc_between_testitems)
     debuglvl = Int(debug)
     if debuglvl > 0
-        LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
+        withdebug(debuglvl) do
             _runtests(ti_filter, paths′, cfg)
         end
     else
@@ -647,7 +647,7 @@ function manage_worker(
                 close(timer)
             end
         catch e
-            @debugv 2 "Error" exception=e
+            @debugv 2 "Error: $e"
             # Handle the exception
             if e isa TimeoutException
                 if cfg.timeout_profile_wait > 0
