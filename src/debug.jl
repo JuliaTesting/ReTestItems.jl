@@ -27,8 +27,8 @@ macro debugv(level::Int, messsage)
     mod = pkgdir(@__MODULE__)
     quote
         if DEBUG_LEVEL >= $level
-            _file = $String($(QuoteNode(__source__.file)))
-            _file = $relpath(_file, $mod)
+            _full_file = $String($(QuoteNode(__source__.file)))
+            _file = $relpath(_full_file, $mod)
             _line = $(QuoteNode(__source__.line))
             msg = $(esc(messsage))
             $print("DEBUG @ $(_file):$(_line) | $msg\n")
