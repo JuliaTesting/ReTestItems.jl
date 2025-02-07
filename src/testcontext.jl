@@ -114,7 +114,7 @@ function record_results!(ti::TestItems)
 end
 
 function record_results!(dir::DirNode, child_dir::DirNode)
-    @debugv 1 "Recording dir $(repr(child_dir.path)) to dir $(repr(dir.path))"
+    @debug "Recording dir $(repr(child_dir.path)) to dir $(repr(dir.path))"
     foreach(child_dir.children) do child
         record_results!(child_dir, child)
     end
@@ -123,7 +123,7 @@ function record_results!(dir::DirNode, child_dir::DirNode)
 end
 
 function record_results!(dir::DirNode, file::FileNode)
-    @debugv 1 "Recording file $(repr(file.path)) to dir $(repr(dir.path))"
+    @debug "Recording file $(repr(file.path)) to dir $(repr(dir.path))"
     foreach(file.testitems) do ti
         record_results!(file, ti)
     end
@@ -132,7 +132,7 @@ function record_results!(dir::DirNode, file::FileNode)
 end
 
 function record_results!(file::FileNode, ti::TestItem)
-    @debugv 1 "Recording TestItem $(repr(ti.name)) to file $(repr(file.path))"
+    @debug "Recording TestItem $(repr(ti.name)) to file $(repr(file.path))"
     # If `failfast`, this testitem might never have been run, so nothing to record.
     if ti.eval_number[] != 0
         # Always record last try as the final status, so a pass-on-retry is a pass.
@@ -153,7 +153,7 @@ function get_starting_testitems(ti::TestItems, n)
     len = length(ti.testitems)
     step = max(1, len / n)
     testitems = [ti.testitems[round(Int, i)] for i in 1:step:len]
-    @debugv 2 "get_starting_testitems" len n allunique(testitems)
+    @debug "get_starting_testitems" len n allunique(testitems)
     @assert length(testitems) == min(n, len) && allunique(testitems)
     for (i, t) in enumerate(testitems)
         @atomic t.scheduled_for_evaluation.value = true

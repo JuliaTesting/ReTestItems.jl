@@ -7,7 +7,6 @@ using .Threads: @spawn, nthreads
 using Pkg: Pkg
 using TestEnv
 using Logging
-using LoggingExtras
 
 export runtests, runtestitem
 export @testsetup, @testitem
@@ -304,7 +303,7 @@ function runtests(
     cfg = _Config(; nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, testitem_failfast, failfast, retries, logs, report, verbose_results, timeout_profile_wait, memory_threshold, gc_between_testitems)
     debuglvl = Int(debug)
     if debuglvl > 0
-        LoggingExtras.withlevel(LoggingExtras.Debug; verbosity=debuglvl) do
+        Logging.with_logger(ConsoleLogger(stderr, Logging.Debug)) do
             _runtests(ti_filter, paths′, cfg)
         end
     else
@@ -335,16 +334,16 @@ function _runtests(ti_filter, paths, cfg::_Config)
     # Otherwise, then we need the `Project.toml` to activate the env.
     proj_file = identify_project(dir)
     proj_file == "" && error("Could not find project directory for `$(dir)`")
-    @debugv 1 "Running tests in `$paths` for project at `$proj_file`"
+    @debug "Running tests in `$paths` for project at `$proj_file`"
     # Wrapping with the logger that was set before eval'ing any user code to
     # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
     with_logger(current_logger()) do
         if is_running_test_runtests_jl(proj_file)
             # Assume this is `Pkg.test`, so test env already active.
-            @debugv 2 "Running in current environment `$(Base.active_project())`"
+            @debug "Running in current environment `$(Base.active_project())`"
             return _runtests_in_current_env(ti_filter, paths, proj_file, cfg)
         else
-            @debugv 1 "Activating test environment for `$proj_file`"
+            @debug "Activating test environment for `$proj_file`"
             orig_proj = Base.active_project()
             try
                 if haskey(TEST_ENVS, proj_file) && isfile(TEST_ENVS[proj_file])
@@ -370,12 +369,12 @@ function _runtests_in_current_env(
     proj_name = something(Pkg.Types.read_project(projectfile).name, "")
     @info "Scanning for test items in project `$proj_name` at paths: $(join(paths, ", "))"
     inc_time = time()
-    @debugv 1 "Including tests in $paths"
+    @debug "Including tests in $paths"
     testitems, _ = include_testfiles!(proj_name, projectfile, paths, ti_filter, cfg.verbose_results, cfg.report)
     nworkers = cfg.nworkers
     nworker_threads = cfg.nworker_threads
     ntestitems = length(testitems.testitems)
-    @debugv 1 "Done including tests in $paths"
+    @debug "Done including tests in $paths"
     @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds." *
         " Scheduling $ntestitems tests on pid $(Libc.getpid())" *
         (nworkers == 0 ? "" : " with $nworkers worker processes and $nworker_threads threads per worker.")
@@ -400,7 +399,7 @@ function _runtests_in_current_env(
                     print_errors_and_captured_logs(testitem, run_number; cfg.logs)
                     report_empty_testsets(testitem, ts)
                     if cfg.gc_between_testitems
-                        @debugv 2 "Running GC"
+                        @debug "Running GC"
                         GC.gc(true)
                     end
                     is_non_pass = any_non_pass(ts)
@@ -609,16 +608,16 @@ function manage_worker(
             try
                 # if we get a WorkerTerminatedException or TimeoutException
                 # then wait will throw here and we fall through to the outer try-catch
-                @debugv 2 "Waiting on result for test item $(repr(testitem.name))"
+                @debug "Waiting on result for test item $(repr(testitem.name))"
                 testitem_result = take!(ch)
-                @debugv 2 "Received result for test item $(repr(testitem.name))"
+                @debug "Received result for test item $(repr(testitem.name))"
                 ts = testitem_result.testset
                 push!(testitem.testsets, ts)
                 push!(testitem.stats, testitem_result.stats)
                 print_errors_and_captured_logs(testitem, run_number; cfg.logs)
                 report_empty_testsets(testitem, ts)
                 if cfg.gc_between_testitems
-                    @debugv 2 "Running GC on $worker"
+                    @debug "Running GC on $worker"
                     remote_fetch(worker, :(GC.gc(true)))
                 end
                 is_non_pass = any_non_pass(ts)
@@ -637,7 +636,7 @@ function manage_worker(
                 close(timer)
             end
         catch e
-            @debugv 2 "Error" exception=e
+            @debug "Error" exception=e
             # Handle the exception
             if e isa TimeoutException
                 if cfg.timeout_profile_wait > 0
@@ -765,7 +764,7 @@ function include_testfiles!(project_name, projectfile, paths, ti_filter::TestIte
     hidden_re = r"\.\w"
     @sync for (root, d, files) in Base.walkdir(project_root)
         if subproject_root !== nothing && startswith(root, subproject_root)
-            @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
+            @debug "Skipping files in `$root` in subproject `$subproject_root`"
             continue
         elseif _is_subproject(root, projectfile)
             subproject_root = root
@@ -793,7 +792,7 @@ function include_testfiles!(project_name, projectfile, paths, ti_filter::TestIte
             file_node = FileNode(fpath, ti_filter; report, verbose=verbose_results)
             testitem_names = Set{String}() # to enforce that names in the same file are unique
             push!(dir_node, file_node)
-            @debugv 1 "Including test items from file `$filepath`"
+            @debug "Including test items from file `$filepath`"
             @spawn begin
                 task_local_storage(:__RE_TEST_RUNNING__, true) do
                     task_local_storage(:__RE_TEST_ITEMS__, ($file_node, $testitem_names)) do
@@ -807,7 +806,7 @@ function include_testfiles!(project_name, projectfile, paths, ti_filter::TestIte
             end
         end
     end
-    @debugv 2 "Finished including files"
+    @debug "Finished including files"
     # finished including all test files, so finalize our graph
     # prune empty directories/files
     close(setup_channel)
@@ -1046,10 +1045,10 @@ function runtestitem(
             # Or group them by file by default?
 
             # ensure setup has been evaled before
-            @debugv 1 "Ensuring setup for test item $(repr(name)) $(setup)$(_on_worker())."
+            @debug "Ensuring setup for test item $(repr(name)) $(setup)$(_on_worker())."
             ts_mod = ensure_setup!(ctx, setup, ti.testsetups, logs)
             # eval using in our @testitem module
-            @debugv 1 "Importing setup for test item $(repr(name)) $(setup)$(_on_worker())."
+            @debug "Importing setup for test item $(repr(name)) $(setup)$(_on_worker())."
             # We look up the testsetups from Main (since tests are eval'd in their own
             # temporary anonymous module environment.)
             push!(body.args, Expr(:using, Expr(:., :Main, ts_mod)))
@@ -1057,7 +1056,7 @@ function runtestitem(
             # so we set a const alias inside our @testitem module to make things work
             push!(body.args, :(const $setup = $ts_mod))
         end
-        @debugv 1 "Setup for test item $(repr(name)) done$(_on_worker())."
+        @debug "Setup for test item $(repr(name)) done$(_on_worker())."
 
         # add our `@testitem` quoted code to module body expr
         append!(body.args, ti.code.args)
@@ -1077,18 +1076,18 @@ function runtestitem(
         # disabled for now since there were issues when tests tried serialize/deserialize
         # with things defined in an anonymous module
         # environment = Module()
-        @debugv 1 "Running test item $(repr(name))$(_on_worker())."
+        @debug "Running test item $(repr(name))$(_on_worker())."
         _, stats = @timed_with_compilation _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : logpath(ti)) do
             # Always run the test_end_mod_expr, even if the test item fails / throws
             try
                 with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
             finally
-                has_test_end_expr && @debugv 1 "Running test_end_expr for test item $(repr(name))$(_on_worker())."
+                has_test_end_expr && @debug "Running test_end_expr for test item $(repr(name))$(_on_worker())."
                 with_source_path(() -> Core.eval(Main, test_end_mod_expr), ti.file)
             end
             nothing # return nothing as the first return value of @timed_with_compilation
         end
-        @debugv 1 "Done running test item $(repr(name))$(_on_worker())."
+        @debug "Done running test item $(repr(name))$(_on_worker())."
     catch err
         err isa InterruptException && rethrow()
         # Handle exceptions thrown outside a `@test` in the body of the @testitem:
@@ -1129,10 +1128,10 @@ function runtestitem(
             end
         end
     end
-    @debugv 1 "Test item $(repr(name)) done$(_on_worker())."
+    @debug "Test item $(repr(name)) done$(_on_worker())."
     push!(ti.testsets, ts)
     push!(ti.stats, stats)
-    @debugv 2 "Converting results for test item $(repr(name))$(_on_worker())."
+    @debug "Converting results for test item $(repr(name))$(_on_worker())."
     res = convert_results_to_be_transferrable(ts)
     log_testitem_done(ti, ctx.ntestitems; failedfast)
     return TestItemResult(res, stats)

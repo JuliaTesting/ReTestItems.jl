@@ -344,7 +344,7 @@ function store_test_item(ti::TestItem)
     tls = task_local_storage()
     if ti isa TestItem && haskey(tls, :__RE_TEST_ITEMS__)
         name = ti.name
-        @debugv 2 "expanding test item: `$name`"
+        @debug "expanding test item: `$name`"
         tis, names = tls[:__RE_TEST_ITEMS__]
         if name in names
             project_root = get(task_local_storage(), :__RE_TEST_PROJECT__, ".")
@@ -358,7 +358,7 @@ function store_test_item(ti::TestItem)
 end
 
 function store_test_setup(ts::TestSetup)
-    @debugv 2 "expanding test setup: `$(ts.name)`"
+    @debug "expanding test setup: `$(ts.name)`"
     tls = task_local_storage()
     if haskey(tls, :__RE_TEST_SETUPS__)
         put!(tls[:__RE_TEST_SETUPS__], ts.name => ts)
