@@ -465,7 +465,7 @@ function _runtests_in_current_env(
                 # See https://github.com/JuliaTesting/ReTestItems.jl/issues/124
                 rm(logfile; force=true)  # `force` to ignore error if file already cleaned up
             catch err
-                @warn "Error while attempting to remove $(logfile)" err
+                @debug "Error while attempting to remove $(logfile)" err
             end
         end
     end
