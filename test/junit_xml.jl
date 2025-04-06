@@ -42,14 +42,16 @@ function remove_variables(str)
     )
 end
 
+normalize_newlines(str) = replace(str, "\r\n" => "\n", "\r" => "\n")
+
 function test_reference(reference, comparison)
     if !isfile(reference)
         @warn "Reference files does not exist" reference
         @test false
         return nothing
     end
-    a = remove_variables(read(reference, String))
-    b = remove_variables(read(comparison, String))
+    a = normalize_newlines(remove_variables(read(reference, String)))
+    b = normalize_newlines(remove_variables(read(comparison, String)))
     if a == b
         @test true
         return nothing
