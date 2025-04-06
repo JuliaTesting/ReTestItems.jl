@@ -108,9 +108,12 @@ is_cancelled(t::TestItems) = @atomic t.cancelled
 ###
 
 function record_results!(ti::TestItems)
+    @debugv 1 "Recording testitem results"
     foreach(ti.graph.children) do child
         record_results!(ti.graph, child)
     end
+    @debugv 1 "Done recording testitem results"
+    return ti
 end
 
 function record_results!(dir::DirNode, child_dir::DirNode)
@@ -153,7 +156,7 @@ function get_starting_testitems(ti::TestItems, n)
     len = length(ti.testitems)
     step = max(1, len / n)
     testitems = [ti.testitems[round(Int, i)] for i in 1:step:len]
-    @debugv 2 "get_starting_testitems" len n allunique(testitems)
+    @debugv 2 "get_starting_testitems len=$len n=$n allunique=$(allunique(testitems))"
     @assert length(testitems) == min(n, len) && allunique(testitems)
     for (i, t) in enumerate(testitems)
         @atomic t.scheduled_for_evaluation.value = true

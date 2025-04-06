@@ -45,18 +45,24 @@ end
 
 # test we can call runtests manually w/ directory
 @testset "manual `runtests(dir)`" begin
-    results = encased_testset() do
-        runtests(joinpath(TEST_PKG_DIR, "NoDeps.jl"))
+    using IOCapture
+    c = IOCapture.capture() do
+        encased_testset(() -> runtests(joinpath(TEST_PKG_DIR, "NoDeps.jl")))
     end
+    results = c.value
     @test n_passed(results) == 2  # NoDeps has two test files with a test each
+    @test contains(c.output, "[ Tests Completed: 2/2 test items were run.")
 end
 
 @testset "manual `runtests(file)`" begin
     # test we can point to a file at the base of the package (not just in `src` or `test`)
-    results = encased_testset() do
-        runtests(joinpath(TEST_PKG_DIR, "NoDeps.jl", "toplevel_tests.jl"))
+    using IOCapture
+    c = IOCapture.capture() do
+        encased_testset(() -> runtests(joinpath(TEST_PKG_DIR, "NoDeps.jl", "toplevel_tests.jl")))
     end
+    results = c.value
     @test n_passed(results) == 1
+    @test contains(c.output, "[ Tests Completed: 1/1 test items were run.")
 end
 
 @testset "`runtests(path)` auto finds testsetups" begin
@@ -273,20 +279,28 @@ end
 nworkers = 2
 @testset "runtests with nworkers = $nworkers" verbose=true begin
     @testset "Pkg.test() $pkg" for pkg in TEST_PKGS
-        results = with_test_package(pkg) do
-            withenv("RETESTITEMS_NWORKERS" => nworkers) do
-                Pkg.test()
+        c = IOCapture.capture() do
+            with_test_package(pkg) do
+                withenv("RETESTITEMS_NWORKERS" => nworkers) do
+                    Pkg.test()
+                end
             end
         end
+        results = c.value
         @test all_passed(results)
+        @test contains(c.output, "[ Tests Completed")
     end
     @testset "Pkg.test() DontPass.jl" begin
-        results = with_test_package("DontPass.jl") do
-            withenv("RETESTITEMS_NWORKERS" => 2) do
-                Pkg.test()
+        c = IOCapture.capture() do
+            with_test_package("DontPass.jl") do
+                withenv("RETESTITEMS_NWORKERS" => 2) do
+                    Pkg.test()
+                end
             end
         end
+        results = c.value
         @test length(non_passes(results)) > 0
+        @test contains(c.output, "[ Tests Completed")
     end
 end
 
@@ -447,9 +461,9 @@ end
                 @test !contains(c.output, "tests done")
             end
             if debug
-                @test contains(c.output, "Debug:")
+                @test contains(c.output, "DEBUG @")
             else
-                @test !contains(c.output, "Debug:")
+                @test !contains(c.output, "DEBUG @")
             end
             # Test we have the expected summary table
             testset = c.value
@@ -1198,7 +1212,7 @@ end
         # monkey-patch the internal `memory_percent` function to return a fixed value, so we
         # can control if we hit the `memory_threshold`.
         @eval ReTestItems.memory_percent() = 83.1
-        expected_warning = "Warning: Memory usage (83.1%) is higher than threshold (7.0%). Restarting worker process to try to free memory."
+        expected_warning = "Warning: Memory usage (83.1%) is higher than threshold (7.0%). Restarting process for worker 1 to try to free memory."
 
         # Pass `memory_threshold` keyword, and hit the memory threshold.
         c1 = IOCapture.capture() do
