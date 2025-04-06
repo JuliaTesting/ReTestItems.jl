@@ -461,7 +461,12 @@ function _runtests_in_current_env(
         Test.TESTSET_PRINT_ENABLE[] = true
         # Cleanup test setup logs
         foreach(Iterators.filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER[], join=true))) do logfile
-            rm(logfile; force=true)  # `force` to ignore error if file already cleaned up
+            try
+                # See https://github.com/JuliaTesting/ReTestItems.jl/issues/124
+                rm(logfile; force=true)  # `force` to ignore error if file already cleaned up
+            catch err
+                @debug "Error while attempting to remove $(logfile)" err
+            end
         end
     end
     return nothing
