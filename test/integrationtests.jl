@@ -621,9 +621,10 @@ end
 end
 
 @testset "Warn on empty test set -- integration test" begin
-    path = joinpath(TEST_FILES_DIR, "_empty_testsets_tests.jl")
+    fullpath = joinpath(TEST_FILES_DIR, "_empty_testsets_tests.jl")
+    relfpath = relpath(fullpath, pkgdir(ReTestItems))
     @test_logs (:warn, """
-    Test item "Warn on empty test set -- integration test" at $path:1 contains test sets without tests:
+    Test item "Warn on empty test set -- integration test" at $relfpath:1 contains test sets without tests:
     "Empty testset"
     "Inner empty testset"
     """) match_mode=:any begin
@@ -1335,7 +1336,8 @@ end
         :crash   => "_failfast_crash_tests.jl",
     )
         testitem_timeout = 5
-        file = joinpath(TEST_FILES_DIR, filename)
+        fullpath = joinpath(TEST_FILES_DIR, filename)
+        relfpath = relpath(fullpath, pkgdir(ReTestItems))
         # For 0 or 1 workers, we expect to fail on the second testitem out of 3.
         # If running with 3 workers, then all 3 testitems will be running in parallel,
         # so we expect to see all 3 testitems run, even though one fails.
@@ -1360,7 +1362,7 @@ end
             # @show c.output
             @test contains(c.output, "Retrying")  # check retries are happening
             @test count(r"\[ Fail Fast:", c.output) == 2
-            msg = "[ Fail Fast: Test item \"bad\" at $file:4 failed. Cancelling tests."
+            msg = "[ Fail Fast: Test item \"bad\" at $relfpath:4 failed. Cancelling tests."
             @test contains(c.output, msg)
             if nworkers == 3
                 @test contains(c.output, "[ Fail Fast: 3/3 test items were run.")
