@@ -90,7 +90,7 @@ end
 
     # warn if the path does not exist
     dne = joinpath(pkg, "does_not_exist")
-    dne_msg = "No such path \"$(repr(dne))\""
+    dne_msg = "No such path $(repr(dne))"
     @test_logs (:warn, dne_msg) match_mode=:any begin
         runtests(dne)
     end
@@ -104,7 +104,7 @@ end
     # warn if the file is not a test file
     file = joinpath(pkg, "src", "foo.jl")
     @assert isfile(file)
-    file_msg = "\"$(repr(file))\" is not a test file"
+    file_msg = "$(repr(file)) is not a test file"
     @test_logs (:warn, file_msg) match_mode=:any begin
         runtests(file)
     end
@@ -122,7 +122,7 @@ end
     # Warn for each invalid path and still run valid ones
     test_file = joinpath(pkg, "src", "foo_test.jl")
     @assert isfile(test_file)
-    results = @test_logs (:warn, "No such path \"$(repr(dne))\"") (:warn, "\"$(repr(file))\" is not a test file") match_mode=:any begin
+    results = @test_logs (:warn, "No such path $(repr(dne))") (:warn, "$(repr(file)) is not a test file") match_mode=:any begin
         encased_testset() do
             runtests(test_file, dne, file)
         end
@@ -642,7 +642,7 @@ end
         end
     end
     @test occursin("""
-    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1m$(repr(path)):1\e[22m
+    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1m$(path):1\e[22m
     SetupThatErrors msg
     """,
     replace(c.output, r" on worker \d+" => ""))
@@ -657,14 +657,14 @@ end
     # that we don't accumulate logs from all previous failed attempts (which would get
     # really spammy if the test setup is used by 100 test items).
     @test !occursin("""
-        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1m$(repr(path)):1\e[22m
+        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1m$(path):1\e[22m
         SetupThatErrors msg
         SetupThatErrors msg
         """,
         replace(c.output, r" on worker \d+" => "")
     )
     @test !occursin("""
-        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1m$(repr(path)):1\e[22m
+        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1m$(path):1\e[22m
         SetupThatErrors msg
         SetupThatErrors msg
         """,

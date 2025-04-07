@@ -278,8 +278,8 @@ end
     @assert !ReTestItems.is_test_file(nontest_file)
     @assert !ReTestItems.is_testsetup_file(nontest_file)
     @test _validated_paths((nontest_file,), false) == ()
-    @test_logs (:warn, "\"$(repr(nontest_file))\" is not a test file") _validated_paths((nontest_file,), false)
-    @test_throws ArgumentError("\"$(repr(nontest_file))\" is not a test file") _validated_paths((nontest_file,), true)
+    @test_logs (:warn, "$(repr(nontest_file)) is not a test file") _validated_paths((nontest_file,), false)
+    @test_throws ArgumentError("$(repr(nontest_file)) is not a test file") _validated_paths((nontest_file,), true)
 end
 
 @testset "skiptestitem" begin
