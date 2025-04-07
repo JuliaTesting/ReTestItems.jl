@@ -969,8 +969,13 @@ end
         return logs
     end
 
+if Base.Sys.iswindows()
+    @testset "Windows not supported"
+        @test occursin("CPU profiles on timeout is not supported on Windows, ignoring `timeout_profile_wait`", logs)
+    end
+else
     @testset "timeout_profile_wait=0 means no CPU profile" begin
-    capture_timeout_profile(0) do logs
+        capture_timeout_profile(0) do logs
         @test !occursin("Information request received", logs)
         end
     end
@@ -1014,6 +1019,7 @@ end
         @test occursin("Profile collected.", logs)
         end
     end
+end # iswindows
 end
 
 @testset "worker always crashes immediately" begin
