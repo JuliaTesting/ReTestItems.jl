@@ -93,7 +93,7 @@ using Test
         close(w)
     end
 
-    if !Base.System.iswindows()
+    if !Base.Sys.iswindows()
         @testset "CPU profile" begin
             logs = mktemp() do path, io
                 w = Worker(threads=VERSION >= v"1.9" ? "3,2" : "3", worker_redirect_io=io)
