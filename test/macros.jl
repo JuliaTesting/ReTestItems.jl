@@ -230,7 +230,7 @@ end
 @testset "testitem `_id` keyword" begin
     # Should default to `repr(hash(name, hash(file)))` where `file` is relative to the root
     # of the project being tested.
-    file = "test/macros.jl" # this file
+    file = joinpath("test, macros.jl") # this file
     # set the source to be this file, so that the test is valid even when run in the REPL.
     ti1 = @testitem "one" _run=false _source=LineNumberNode(@__LINE__, file) begin; end;
     @test ti1.id == repr(hash("one", hash(file)))
@@ -247,7 +247,7 @@ end
     expected = VERSION < v"1.8" ? LoadError : "must be passed a string"
     @test_throws expected (@eval @testitem("four", _id=1, _run=false, begin end))
     # Cannot detect type of `id` at macro-expansion time, so throws run-time error
-    expected = VERSION < v"1.8" ? MethodError : "MethodError: Cannot `convert` an object of type UInt64 to an object of type String"
+    expected = VERSION < v"1.8" ? MethodError : "MethodError: Cannot `convert` an object of type $(UInt) to an object of type String"
     @test_throws expected (@eval @testitem("five", _id=hash("five"), _run=false, begin end))
 end
 

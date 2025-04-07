@@ -90,7 +90,7 @@ end
 
     # warn if the path does not exist
     dne = joinpath(pkg, "does_not_exist")
-    dne_msg = "No such path \"$dne\""
+    dne_msg = "No such path $(repr(dne))"
     @test_logs (:warn, dne_msg) match_mode=:any begin
         runtests(dne)
     end
@@ -104,7 +104,7 @@ end
     # warn if the file is not a test file
     file = joinpath(pkg, "src", "foo.jl")
     @assert isfile(file)
-    file_msg = "\"$file\" is not a test file"
+    file_msg = "$(repr(file)) is not a test file"
     @test_logs (:warn, file_msg) match_mode=:any begin
         runtests(file)
     end
@@ -122,7 +122,7 @@ end
     # Warn for each invalid path and still run valid ones
     test_file = joinpath(pkg, "src", "foo_test.jl")
     @assert isfile(test_file)
-    results = @test_logs (:warn, "No such path \"$dne\"") (:warn, "\"$file\" is not a test file") match_mode=:any begin
+    results = @test_logs (:warn, "No such path $(repr(dne))") (:warn, "$(repr(file)) is not a test file") match_mode=:any begin
         encased_testset() do
             runtests(test_file, dne, file)
         end
@@ -400,6 +400,7 @@ end
         Test.print_test_results(testset)
     end
     # Test with `contains` rather than `match` so failure print an informative message.
+    if !Base.Sys.iswindows() # so we can hardcode filepaths to keep the test readable
     @test contains(
         c.output,
         r"""
@@ -427,6 +428,7 @@ end
               foo                         \|    2      2  \s*\d*.\ds
         """
     )
+    end
     # verbose_results=false
     testset = with_test_package("TestsInSrc.jl") do
         runtests(verbose_results=false)
@@ -621,29 +623,38 @@ end
 end
 
 @testset "Warn on empty test set -- integration test" begin
+    fullpath = joinpath(TEST_FILES_DIR, "_empty_testsets_tests.jl")
+    relfpath = relpath(fullpath, pkgdir(ReTestItems))
     @test_logs (:warn, """
-    Test item "Warn on empty test set -- integration test" at test/testfiles/_empty_testsets_tests.jl:1 contains test sets without tests:
+    Test item "Warn on empty test set -- integration test" at $relfpath:1 contains test sets without tests:
     "Empty testset"
     "Inner empty testset"
     """) match_mode=:any begin
-        ReTestItems.runtests(joinpath(TEST_FILES_DIR, "_empty_testsets_tests.jl"))
+        ReTestItems.runtests(fullpath)
     end
 end
 
 @testset "log capture for an errored TestSetup" begin
+    path = joinpath("test", "error_in_setup_test.jl")
     c = IOCapture.capture() do
         results = with_test_package("DontPass.jl") do
-            runtests("test/error_in_setup_test.jl"; nworkers=1)
+            runtests(path; nworkers=1)
         end
     end
+if Base.Sys.iswindows()
+    @test occursin(
+        "\e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at",
+        replace(c.output, r" on worker \d+" => "")
+    )
+else
     @test occursin("""
-    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1m$(path):1\e[22m
     SetupThatErrors msg
     """,
     replace(c.output, r" on worker \d+" => ""))
 
     @test occursin("""
-    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1m$(path):1\e[22m
     SetupThatErrors msg
     """,
     replace(c.output, r" on worker \d+" => ""))
@@ -652,19 +663,20 @@ end
     # that we don't accumulate logs from all previous failed attempts (which would get
     # really spammy if the test setup is used by 100 test items).
     @test !occursin("""
-        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1m$(path):1\e[22m
         SetupThatErrors msg
         SetupThatErrors msg
         """,
         replace(c.output, r" on worker \d+" => "")
     )
     @test !occursin("""
-        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1m$(path):1\e[22m
         SetupThatErrors msg
         SetupThatErrors msg
         """,
         replace(c.output, r" on worker \d+" => "")
     )
+end # iswindows
 end
 
 @testset "test crashing testitem" begin
@@ -685,7 +697,8 @@ end
     # Test the error is as expected
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
-    @test err.value == string(ErrorException("Worker process aborted (signal=6) running test item \"Abort\" (run=1)"))
+    sig = Base.Sys.iswindows() ? 0 : 6
+    @test err.value == string(ErrorException("Worker process aborted (signal=$(sig)) running test item \"Abort\" (run=1)"))
 end
 
 @testset "test retrying failing testitem" begin
@@ -908,7 +921,12 @@ end
 
 @testset "Duplicate names in same file throws" begin
     file = joinpath(TEST_FILES_DIR, "_duplicate_names_test.jl")
-    expected_msg = Regex("Duplicate test item name `dup` in file `test/testfiles/_duplicate_names_test.jl` at line 4")
+    relfpath = relpath(file, pkgdir(ReTestItems))
+    expected_msg = if Base.Sys.iswindows()
+        Regex("Duplicate test item name `dup` in file")
+    else
+        Regex("Duplicate test item name `dup` in file `$(relfpath)` at line 4")
+    end
     @test_throws expected_msg runtests(file; nworkers=0)
     @test_throws expected_msg runtests(file; nworkers=1)
 end
@@ -967,51 +985,58 @@ end
         return logs
     end
 
-    @testset "timeout_profile_wait=0 means no CPU profile" begin
-    capture_timeout_profile(0) do logs
-        @test !occursin("Information request received", logs)
-        end
-    end
-
-
-    default_peektime = Profile.get_peek_duration()
-    @testset "non-zero timeout_profile_wait means we collect a CPU profile" begin
-    capture_timeout_profile(5) do logs
-        @test occursin("Information request received. A stacktrace will print followed by a $(default_peektime) second profile", logs)
-            @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
-        @test occursin("Profile collected.", logs)
-        end
-    end
-
-
-    @testset "`set_peek_duration` is respected in `worker_init_expr`" begin
-    capture_timeout_profile(5, worker_init_expr=:(using Profile; Profile.set_peek_duration($default_peektime + 1.0))) do logs
-        @test occursin("Information request received. A stacktrace will print followed by a $(default_peektime + 1.0) second profile", logs)
-            @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
-        @test occursin("Profile collected.", logs)
-        end
-    end
-
-
-    # The RETESTITEMS_TIMEOUT_PROFILE_WAIT environment variable can be used to set the timeout_profile_wait.
-    @testset "RETESTITEMS_TIMEOUT_PROFILE_WAIT environment variable" begin
-    withenv("RETESTITEMS_TIMEOUT_PROFILE_WAIT" => "5") do
-        capture_timeout_profile(nothing) do logs
-            @test occursin("Information request received", logs)
-                @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
-            @test occursin("Profile collected.", logs)
+    if Base.Sys.iswindows()
+        @testset "Windows not supported" begin
+            capture_timeout_profile(1) do logs
+                @test occursin("CPU profiles on timeout is not supported on Windows, ignoring `timeout_profile_wait`", logs)
             end
         end
-    end
-
-    # The profile is collected for each worker thread.
-    @testset "CPU profile with $(repr(log_capture))" for log_capture in (:eager, :batched)
-        capture_timeout_profile(5, nworker_threads=VERSION >= v"1.9" ? "3,2" : "3", logs=log_capture) do logs
-        @test occursin("Information request received", logs)
-            @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
-        @test occursin("Profile collected.", logs)
+    else
+        @testset "timeout_profile_wait=0 means no CPU profile" begin
+            capture_timeout_profile(0) do logs
+                @test !occursin("Information request received", logs)
+            end
         end
-    end
+
+        default_peektime = Profile.get_peek_duration()
+        @testset "non-zero timeout_profile_wait means we collect a CPU profile" begin
+            capture_timeout_profile(5) do logs
+                @test occursin("Information request received. A stacktrace will print followed by a $(default_peektime) second profile", logs)
+                @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
+                @test occursin("Profile collected.", logs)
+            end
+        end
+
+
+        @testset "`set_peek_duration` is respected in `worker_init_expr`" begin
+            capture_timeout_profile(5, worker_init_expr=:(using Profile; Profile.set_peek_duration($default_peektime + 1.0))) do logs
+                @test occursin("Information request received. A stacktrace will print followed by a $(default_peektime + 1.0) second profile", logs)
+                @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
+                @test occursin("Profile collected.", logs)
+            end
+        end
+
+
+        # The RETESTITEMS_TIMEOUT_PROFILE_WAIT environment variable can be used to set the timeout_profile_wait.
+        @testset "RETESTITEMS_TIMEOUT_PROFILE_WAIT environment variable" begin
+            withenv("RETESTITEMS_TIMEOUT_PROFILE_WAIT" => "5") do
+                capture_timeout_profile(nothing) do logs
+                    @test occursin("Information request received", logs)
+                    @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
+                    @test occursin("Profile collected.", logs)
+                end
+            end
+        end
+
+        # The profile is collected for each worker thread.
+        @testset "CPU profile with $(repr(log_capture))" for log_capture in (:eager, :batched)
+            capture_timeout_profile(5, nworker_threads=VERSION >= v"1.9" ? "3,2" : "3", logs=log_capture) do logs
+                @test occursin("Information request received", logs)
+                @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
+                @test occursin("Profile collected.", logs)
+            end
+        end
+    end # iswindows
 end
 
 @testset "worker always crashes immediately" begin
@@ -1334,7 +1359,8 @@ end
         :crash   => "_failfast_crash_tests.jl",
     )
         testitem_timeout = 5
-        file = joinpath(TEST_FILES_DIR, filename)
+        fullpath = joinpath(TEST_FILES_DIR, filename)
+        relfpath = relpath(fullpath, pkgdir(ReTestItems))
         # For 0 or 1 workers, we expect to fail on the second testitem out of 3.
         # If running with 3 workers, then all 3 testitems will be running in parallel,
         # so we expect to see all 3 testitems run, even though one fails.
@@ -1346,7 +1372,7 @@ end
                 continue
             end
             c = IOCapture.capture() do
-                encased_testset(() -> runtests(file; nworkers, testitem_timeout, retries=1, failfast=true))
+                encased_testset(() -> runtests(fullpath; nworkers, testitem_timeout, retries=1, failfast=true))
             end
             results = c.value
             if nworkers == 3
@@ -1359,7 +1385,7 @@ end
             # @show c.output
             @test contains(c.output, "Retrying")  # check retries are happening
             @test count(r"\[ Fail Fast:", c.output) == 2
-            msg = "[ Fail Fast: Test item \"bad\" at test/testfiles/$filename:4 failed. Cancelling tests."
+            msg = "[ Fail Fast: Test item \"bad\" at $relfpath:4 failed. Cancelling tests."
             @test contains(c.output, msg)
             if nworkers == 3
                 @test contains(c.output, "[ Fail Fast: 3/3 test items were run.")

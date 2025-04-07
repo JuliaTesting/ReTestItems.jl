@@ -169,7 +169,8 @@ end # `include_testfiles!` testset
 @testset "report_empty_testsets" begin
     using ReTestItems: TestItem, report_empty_testsets, PerfStats, ScheduledForEvaluation
     using Test: DefaultTestSet, Fail, Error
-    ti = TestItem(Ref(42), "Dummy TestItem", "DummyID", [], false, [], 0, nothing, false, nothing, "source/path", 42, ".", nothing)
+    path = joinpath("source", "path")
+    ti = TestItem(Ref(42), "Dummy TestItem", "DummyID", [], false, [], 0, nothing, false, nothing, path, 42, ".", nothing)
 
     ts = DefaultTestSet("Empty testset")
     report_empty_testsets(ti, ts)
@@ -179,7 +180,7 @@ end # `include_testfiles!` testset
     push!(ts.results, DefaultTestSet("Empty testset"))
     # Only the inner testset is considered empty
     @test_logs (:warn, """
-        Test item "Dummy TestItem" at source/path:42 contains test sets without tests:
+        Test item "Dummy TestItem" at $(path):42 contains test sets without tests:
         "Empty testset"
         """) begin
         report_empty_testsets(ti, ts)
@@ -190,7 +191,7 @@ end # `include_testfiles!` testset
     push!(ts.results, DefaultTestSet("Empty testset 2"))
     # Only the inner testsets are considered empty
     @test_logs (:warn, """
-        Test item "Dummy TestItem" at source/path:42 contains test sets without tests:
+        Test item "Dummy TestItem" at $(path):42 contains test sets without tests:
         "Empty testset 1"
         "Empty testset 2"
         """) begin
@@ -277,8 +278,8 @@ end
     @assert !ReTestItems.is_test_file(nontest_file)
     @assert !ReTestItems.is_testsetup_file(nontest_file)
     @test _validated_paths((nontest_file,), false) == ()
-    @test_logs (:warn, "\"$nontest_file\" is not a test file") _validated_paths((nontest_file,), false)
-    @test_throws ArgumentError("\"$nontest_file\" is not a test file") _validated_paths((nontest_file,), true)
+    @test_logs (:warn, "$(repr(nontest_file)) is not a test file") _validated_paths((nontest_file,), false)
+    @test_throws ArgumentError("$(repr(nontest_file)) is not a test file") _validated_paths((nontest_file,), true)
 end
 
 @testset "skiptestitem" begin
@@ -383,25 +384,27 @@ end
 
 @testset "nestedrelpath" begin
     using ReTestItems: nestedrelpath
-    @assert Base.Filesystem.path_separator == "/"
-    path = "test/dir/foo_test.jl"
-    @test nestedrelpath(path, "test")  == relpath(path, "test")  == "dir/foo_test.jl"
-    @test nestedrelpath(path, "test/") == relpath(path, "test/") == "dir/foo_test.jl"
-    @test nestedrelpath(path, "test/dir")  == relpath(path, "test/dir")  == "foo_test.jl"
-    @test nestedrelpath(path, "test/dir/") == relpath(path, "test/dir/") == "foo_test.jl"
-    @test nestedrelpath(path, "test/dir/foo_test.jl") == relpath(path, "test/dir/foo_test.jl") == "."
+    if !Base.Sys.iswindows()
+        @assert Base.Filesystem.path_separator == "/"
+        path = "test/dir/foo_test.jl"
+        @test nestedrelpath(path, "test")  == relpath(path, "test")  == "dir/foo_test.jl"
+        @test nestedrelpath(path, "test/") == relpath(path, "test/") == "dir/foo_test.jl"
+        @test nestedrelpath(path, "test/dir")  == relpath(path, "test/dir")  == "foo_test.jl"
+        @test nestedrelpath(path, "test/dir/") == relpath(path, "test/dir/") == "foo_test.jl"
+        @test nestedrelpath(path, "test/dir/foo_test.jl") == relpath(path, "test/dir/foo_test.jl") == "."
 
-    # unlike `relpath`: if `startdir` is not a prefix of `path`, the assumption is violated,
-    # and `path` is just returned as-is
-    @test nestedrelpath(path, "test/dir/foo_") == "test/dir/foo_test.jl"
-    @test nestedrelpath(path, "test/dir/other") == "test/dir/foo_test.jl"
-    @test nestedrelpath(path, "test/dir/other/bar_test.jl") == "test/dir/foo_test.jl"
+        # unlike `relpath`: if `startdir` is not a prefix of `path`, the assumption is violated,
+        # and `path` is just returned as-is
+        @test nestedrelpath(path, "test/dir/foo_") == "test/dir/foo_test.jl"
+        @test nestedrelpath(path, "test/dir/other") == "test/dir/foo_test.jl"
+        @test nestedrelpath(path, "test/dir/other/bar_test.jl") == "test/dir/foo_test.jl"
 
-    # leading '/' doesn't get ignored or stripped
-    @test nestedrelpath("/a/b/c", "/a/b") == "c"
-    @test nestedrelpath("/a/b/c", "a/b") == "/a/b/c"
-    @test nestedrelpath("/a/b", "/a/b/c") == "/a/b"
-    @test nestedrelpath("/a/b", "c") == "/a/b"
+        # leading '/' doesn't get ignored or stripped
+        @test nestedrelpath("/a/b/c", "/a/b") == "c"
+        @test nestedrelpath("/a/b/c", "a/b") == "/a/b/c"
+        @test nestedrelpath("/a/b", "/a/b/c") == "/a/b"
+        @test nestedrelpath("/a/b", "c") == "/a/b"
+    end
 end
 
 end # internals.jl testset
