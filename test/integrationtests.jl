@@ -90,7 +90,7 @@ end
 
     # warn if the path does not exist
     dne = joinpath(pkg, "does_not_exist")
-    dne_msg = "No such path \"$dne\""
+    dne_msg = "No such path \"$(repr(dne))\""
     @test_logs (:warn, dne_msg) match_mode=:any begin
         runtests(dne)
     end
@@ -104,7 +104,7 @@ end
     # warn if the file is not a test file
     file = joinpath(pkg, "src", "foo.jl")
     @assert isfile(file)
-    file_msg = "\"$file\" is not a test file"
+    file_msg = "\"$(repr(file))\" is not a test file"
     @test_logs (:warn, file_msg) match_mode=:any begin
         runtests(file)
     end
@@ -122,7 +122,7 @@ end
     # Warn for each invalid path and still run valid ones
     test_file = joinpath(pkg, "src", "foo_test.jl")
     @assert isfile(test_file)
-    results = @test_logs (:warn, "No such path \"$dne\"") (:warn, "\"$file\" is not a test file") match_mode=:any begin
+    results = @test_logs (:warn, "No such path \"$(repr(dne))\"") (:warn, "\"$(repr(file))\" is not a test file") match_mode=:any begin
         encased_testset() do
             runtests(test_file, dne, file)
         end
@@ -400,33 +400,35 @@ end
         Test.print_test_results(testset)
     end
     # Test with `contains` rather than `match` so failure print an informative message.
-    @test contains(
-        c.output,
-        r"""
-        Test Summary:                     \| Pass  Total  Time
-        TestsInSrc                        \|   13     13  \s*\d*.\ds
-          src                             \|   13     13  \s*
-            src/a_dir                     \|    6      6  \s*
-              src/a_dir/a1_test.jl        \|    1      1  \s*
-                a1                        \|    1      1  \s*\d*.\ds
-              src/a_dir/a2_test.jl        \|    2      2  \s*
-                a2                        \|    2      2  \s*\d*.\ds
-                  a2_testset              \|    1      1  \s*\d*.\ds
-              src/a_dir/x_dir             \|    3      3  \s*
-                src/a_dir/x_dir/x_test.jl \|    3      3  \s*
-                  z                       \|    1      1  \s*\d*.\ds
-                  y                       \|    1      1  \s*\d*.\ds
-                  x                       \|    1      1  \s*\d*.\ds
-            src/b_dir                     \|    1      1  \s*
-              src/b_dir/b_test.jl         \|    1      1  \s*
-                b                         \|    1      1  \s*\d*.\ds
-            src/bar_tests.jl              \|    4      4  \s*
-              bar                         \|    4      4  \s*\d*.\ds
-                bar values                \|    2      2  \s*\d*.\ds
-            src/foo_test.jl               \|    2      2  \s*
-              foo                         \|    2      2  \s*\d*.\ds
-        """
-    )
+    if !Base.Sys.iswindows() # so we can hardcode filepaths to keep the test readable
+        @test contains(
+            c.output,
+            r"""
+            Test Summary:                     \| Pass  Total  Time
+            TestsInSrc                        \|   13     13  \s*\d*.\ds
+            src                             \|   13     13  \s*
+                src/a_dir                     \|    6      6  \s*
+                src/a_dir/a1_test.jl        \|    1      1  \s*
+                    a1                        \|    1      1  \s*\d*.\ds
+                src/a_dir/a2_test.jl        \|    2      2  \s*
+                    a2                        \|    2      2  \s*\d*.\ds
+                    a2_testset              \|    1      1  \s*\d*.\ds
+                src/a_dir/x_dir             \|    3      3  \s*
+                    src/a_dir/x_dir/x_test.jl \|    3      3  \s*
+                    z                       \|    1      1  \s*\d*.\ds
+                    y                       \|    1      1  \s*\d*.\ds
+                    x                       \|    1      1  \s*\d*.\ds
+                src/b_dir                     \|    1      1  \s*
+                src/b_dir/b_test.jl         \|    1      1  \s*
+                    b                         \|    1      1  \s*\d*.\ds
+                src/bar_tests.jl              \|    4      4  \s*
+                bar                         \|    4      4  \s*\d*.\ds
+                    bar values                \|    2      2  \s*\d*.\ds
+                src/foo_test.jl               \|    2      2  \s*
+                foo                         \|    2      2  \s*\d*.\ds
+            """
+        )
+    end
     # verbose_results=false
     testset = with_test_package("TestsInSrc.jl") do
         runtests(verbose_results=false)
@@ -633,19 +635,20 @@ end
 end
 
 @testset "log capture for an errored TestSetup" begin
+    path = joinpath("test", "_error_in_setup_test.jl")
     c = IOCapture.capture() do
         results = with_test_package("DontPass.jl") do
-            runtests("test/error_in_setup_test.jl"; nworkers=1)
+            runtests(path; nworkers=1)
         end
     end
     @test occursin("""
-    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1m$(repr(path)):1\e[22m
     SetupThatErrors msg
     """,
     replace(c.output, r" on worker \d+" => ""))
 
     @test occursin("""
-    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1m$(repr(path)):1\e[22m
     SetupThatErrors msg
     """,
     replace(c.output, r" on worker \d+" => ""))
@@ -654,14 +657,14 @@ end
     # that we don't accumulate logs from all previous failed attempts (which would get
     # really spammy if the test setup is used by 100 test items).
     @test !occursin("""
-        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1m$(repr(path)):1\e[22m
         SetupThatErrors msg
         SetupThatErrors msg
         """,
         replace(c.output, r" on worker \d+" => "")
     )
     @test !occursin("""
-        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1mtest/error_in_setup_test.jl:1\e[22m
+        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1m$(repr(path)):1\e[22m
         SetupThatErrors msg
         SetupThatErrors msg
         """,
@@ -687,7 +690,8 @@ end
     # Test the error is as expected
     err = only(non_passes(results))
     @test err.test_type == :nontest_error
-    @test err.value == string(ErrorException("Worker process aborted (signal=6) running test item \"Abort\" (run=1)"))
+    sig = Base.Sys.iswindows() ? 0 : 6
+    @test err.value == string(ErrorException("Worker process aborted (signal=$(sig)) running test item \"Abort\" (run=1)"))
 end
 
 @testset "test retrying failing testitem" begin
@@ -910,7 +914,8 @@ end
 
 @testset "Duplicate names in same file throws" begin
     file = joinpath(TEST_FILES_DIR, "_duplicate_names_test.jl")
-    expected_msg = Regex("Duplicate test item name `dup` in file `test/testfiles/_duplicate_names_test.jl` at line 4")
+    relfpath = relpath(file, pkgdir(ReTestItems))
+    expected_msg = Regex("Duplicate test item name `dup` in file `$(relfpath)` at line 4")
     @test_throws expected_msg runtests(file; nworkers=0)
     @test_throws expected_msg runtests(file; nworkers=1)
 end
@@ -971,7 +976,9 @@ end
 
     if Base.Sys.iswindows()
         @testset "Windows not supported" begin
-            @test occursin("CPU profiles on timeout is not supported on Windows, ignoring `timeout_profile_wait`", logs)
+            capture_timeout_profile(1) do logs
+                @test occursin("CPU profiles on timeout is not supported on Windows, ignoring `timeout_profile_wait`", logs)
+            end
         end
     else
         @testset "timeout_profile_wait=0 means no CPU profile" begin
