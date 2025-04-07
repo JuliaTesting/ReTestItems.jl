@@ -20,16 +20,18 @@ end
         include("macros.jl")
         include("integrationtests.jl")
         include("log_capture.jl")
-        # junit_xml reference tests are very sensitive to changes in text output which is not
-        # stable across minor Julia versions, i.e. we expect these to fail on upcoming Julia
-        # releases so we may as well skip them (so PkgEval doesn't always fail for us).
-        if !isempty(VERSION.prerelease)
-            @warn "Skipping JUnit XML reference tests on unrelease Julia version" VERSION
-        elseif Base.Sys.iswindows()
+        @static if Base.Sys.iswindows()
             # https://github.com/JuliaTesting/ReTestItems.jl/issues/209
             @warn "Skipping JUnit XML reference tests on windows"
         else
-            include("junit_xml.jl")
+            # junit_xml reference tests are very sensitive to changes in text output which is not
+            # stable across minor Julia versions, i.e. we expect these to fail on upcoming Julia
+            # releases so we may as well skip them (so PkgEval doesn't always fail for us).
+            if !isempty(VERSION.prerelease)
+                @warn "Skipping JUnit XML reference tests on unrelease Julia version" VERSION
+            else
+                include("junit_xml.jl")
+            end
         end
     end
 
