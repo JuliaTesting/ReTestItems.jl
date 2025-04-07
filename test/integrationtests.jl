@@ -628,7 +628,7 @@ end
     "Empty testset"
     "Inner empty testset"
     """) match_mode=:any begin
-        ReTestItems.runtests(path)
+        ReTestItems.runtests(fullpath)
     end
 end
 
