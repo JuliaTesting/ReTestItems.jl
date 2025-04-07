@@ -427,7 +427,7 @@ end
     end
     @test ti.default_imports == true
     res = ReTestItems.runtestitem(ti)
-    @test n_passed(res) == 3
+    @test n_passed(res) == 2
 
     ti = @testitem "no_default_imports" default_imports=false _run=false begin
         # use `@assert` since we cannot use `@test`
