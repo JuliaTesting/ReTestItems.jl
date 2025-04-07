@@ -641,6 +641,12 @@ end
             runtests(path; nworkers=1)
         end
     end
+if Base.Sys.iswindows()
+    @test occursin(
+        "\e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at",
+        replace(c.output, r" on worker \d+" => "")
+    )
+else
     @test occursin("""
     \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1m$(path):1\e[22m
     SetupThatErrors msg
@@ -648,7 +654,7 @@ end
     replace(c.output, r" on worker \d+" => ""))
 
     @test occursin("""
-    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1m$(repr(path)):1\e[22m
+    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1m$(path):1\e[22m
     SetupThatErrors msg
     """,
     replace(c.output, r" on worker \d+" => ""))
@@ -670,6 +676,7 @@ end
         """,
         replace(c.output, r" on worker \d+" => "")
     )
+end # iswindows
 end
 
 @testset "test crashing testitem" begin
@@ -915,7 +922,11 @@ end
 @testset "Duplicate names in same file throws" begin
     file = joinpath(TEST_FILES_DIR, "_duplicate_names_test.jl")
     relfpath = relpath(file, pkgdir(ReTestItems))
-    expected_msg = Regex("Duplicate test item name `dup` in file `$(relfpath)` at line 4")
+    expected_msg = if Base.Sys.iswindows()
+        Regex("Duplicate test item name `dup` in file")
+    else
+        Regex("Duplicate test item name `dup` in file `$(relfpath)` at line 4")
+    end
     @test_throws expected_msg runtests(file; nworkers=0)
     @test_throws expected_msg runtests(file; nworkers=1)
 end
