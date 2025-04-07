@@ -1349,7 +1349,7 @@ end
                 continue
             end
             c = IOCapture.capture() do
-                encased_testset(() -> runtests(file; nworkers, testitem_timeout, retries=1, failfast=true))
+                encased_testset(() -> runtests(fullpath; nworkers, testitem_timeout, retries=1, failfast=true))
             end
             results = c.value
             if nworkers == 3
