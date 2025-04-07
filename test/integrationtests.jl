@@ -621,12 +621,13 @@ end
 end
 
 @testset "Warn on empty test set -- integration test" begin
+    path = joinpath(TEST_FILES_DIR, "_empty_testsets_tests.jl")
     @test_logs (:warn, """
-    Test item "Warn on empty test set -- integration test" at test/testfiles/_empty_testsets_tests.jl:1 contains test sets without tests:
+    Test item "Warn on empty test set -- integration test" at $path:1 contains test sets without tests:
     "Empty testset"
     "Inner empty testset"
     """) match_mode=:any begin
-        ReTestItems.runtests(joinpath(TEST_FILES_DIR, "_empty_testsets_tests.jl"))
+        ReTestItems.runtests(path)
     end
 end
 
@@ -1359,7 +1360,7 @@ end
             # @show c.output
             @test contains(c.output, "Retrying")  # check retries are happening
             @test count(r"\[ Fail Fast:", c.output) == 2
-            msg = "[ Fail Fast: Test item \"bad\" at test/testfiles/$filename:4 failed. Cancelling tests."
+            msg = "[ Fail Fast: Test item \"bad\" at $file:4 failed. Cancelling tests."
             @test contains(c.output, msg)
             if nworkers == 3
                 @test contains(c.output, "[ Fail Fast: 3/3 test items were run.")
