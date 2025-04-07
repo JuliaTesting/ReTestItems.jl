@@ -401,33 +401,33 @@ end
     end
     # Test with `contains` rather than `match` so failure print an informative message.
     if !Base.Sys.iswindows() # so we can hardcode filepaths to keep the test readable
-        @test contains(
-            c.output,
-            r"""
-            Test Summary:                     \| Pass  Total  Time
-            TestsInSrc                        \|   13     13  \s*\d*.\ds
-            src                             \|   13     13  \s*
-                src/a_dir                     \|    6      6  \s*
-                src/a_dir/a1_test.jl        \|    1      1  \s*
-                    a1                        \|    1      1  \s*\d*.\ds
-                src/a_dir/a2_test.jl        \|    2      2  \s*
-                    a2                        \|    2      2  \s*\d*.\ds
-                    a2_testset              \|    1      1  \s*\d*.\ds
-                src/a_dir/x_dir             \|    3      3  \s*
-                    src/a_dir/x_dir/x_test.jl \|    3      3  \s*
-                    z                       \|    1      1  \s*\d*.\ds
-                    y                       \|    1      1  \s*\d*.\ds
-                    x                       \|    1      1  \s*\d*.\ds
-                src/b_dir                     \|    1      1  \s*
-                src/b_dir/b_test.jl         \|    1      1  \s*
-                    b                         \|    1      1  \s*\d*.\ds
-                src/bar_tests.jl              \|    4      4  \s*
-                bar                         \|    4      4  \s*\d*.\ds
-                    bar values                \|    2      2  \s*\d*.\ds
-                src/foo_test.jl               \|    2      2  \s*
-                foo                         \|    2      2  \s*\d*.\ds
-            """
-        )
+    @test contains(
+        c.output,
+        r"""
+        Test Summary:                     \| Pass  Total  Time
+        TestsInSrc                        \|   13     13  \s*\d*.\ds
+          src                             \|   13     13  \s*
+            src/a_dir                     \|    6      6  \s*
+              src/a_dir/a1_test.jl        \|    1      1  \s*
+                a1                        \|    1      1  \s*\d*.\ds
+              src/a_dir/a2_test.jl        \|    2      2  \s*
+                a2                        \|    2      2  \s*\d*.\ds
+                  a2_testset              \|    1      1  \s*\d*.\ds
+              src/a_dir/x_dir             \|    3      3  \s*
+                src/a_dir/x_dir/x_test.jl \|    3      3  \s*
+                  z                       \|    1      1  \s*\d*.\ds
+                  y                       \|    1      1  \s*\d*.\ds
+                  x                       \|    1      1  \s*\d*.\ds
+            src/b_dir                     \|    1      1  \s*
+              src/b_dir/b_test.jl         \|    1      1  \s*
+                b                         \|    1      1  \s*\d*.\ds
+            src/bar_tests.jl              \|    4      4  \s*
+              bar                         \|    4      4  \s*\d*.\ds
+                bar values                \|    2      2  \s*\d*.\ds
+            src/foo_test.jl               \|    2      2  \s*
+              foo                         \|    2      2  \s*\d*.\ds
+        """
+    )
     end
     # verbose_results=false
     testset = with_test_package("TestsInSrc.jl") do
@@ -635,7 +635,7 @@ end
 end
 
 @testset "log capture for an errored TestSetup" begin
-    path = joinpath("test", "_error_in_setup_test.jl")
+    path = joinpath("test", "error_in_setup_test.jl")
     c = IOCapture.capture() do
         results = with_test_package("DontPass.jl") do
             runtests(path; nworkers=1)
