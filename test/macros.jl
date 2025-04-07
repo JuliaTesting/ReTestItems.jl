@@ -420,6 +420,46 @@ end
     )
 end
 
+@testset "testitem with `default_imports`" begin
+    ti = @testitem "default_imports" default_imports=true _run=false begin
+        @test @isdefined Test
+        @test @isdefined ReTestItems
+    end
+    @test ti.default_imports == true
+    res = ReTestItems.runtestitem(ti)
+    @test n_passed(res) == 2
+
+    ti = @testitem "no_default_imports" default_imports=false _run=false begin
+        # use `@assert` since we cannot use `@test`
+        @assert !(@isdefined Test)
+        @assert !(@isdefined ReTestItems)
+    end
+    @test ti.default_imports == false
+    ReTestItems.runtestitem(ti) # check `@assert` not triggered
+
+    @test_throws "`default_imports` keyword must be passed a `Bool`" (
+        @eval @testitem "Bad" default_imports=1 begin
+            @test true
+        end
+    )
+end
+
+@testset "testitem with unrecognised keyword" begin
+    @test_throws "unknown `@testitem` keyword arg `quux`" (
+        @eval @testitem "Bad" quux=1 begin
+            @test true
+        end
+    )
+end
+
+@testset "testitem without a body" begin
+    @test_throws "expected `@testitem` to have a body" (@eval @testitem "wrong")
+    @test_throws "expected `@testitem` to have a body" (@eval @testitem "wrong" @test 1==1)
+    @test_throws "expected `@testitem` to have a body" (@eval @testitem "wrong" let @test 1==1 end)
+    @test_throws "expected `@testitem` to have a body" (@eval @testitem "wrong" quote @test 1==1 end)
+end
+
+
 #=
 NOTE:
     These tests are disabled as we stopped using anonymous modules;
