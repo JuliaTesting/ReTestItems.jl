@@ -103,6 +103,47 @@ cancel!(t::TestItems) = @atomicswap t.cancelled = true
 # `cancel` and check the return value to know if they had already been cancelled.
 is_cancelled(t::TestItems) = @atomic t.cancelled
 
+function _print_testitems(tis::TestItems)
+    ntestitems = length(tis.testitems)
+    if ntestitems == 0
+        printstyled("No test items found\n"; bold=true)
+        return nothing
+    end
+    plural = ntestitems == 1 ? "" : "s"
+    printstyled("$ntestitems test item$plural found:\n"; bold=true)
+    _print_testitems(tis.graph)
+    @info "Found $ntestitems test item$plural."
+end
+function _print_testitems(dir::DirNode, indent::Int=0)
+    println("  "^indent, dir.path)
+    for child in dir.children
+        _print_testitems(child, indent + 1)
+    end
+end
+function _print_testitems(file::FileNode, indent::Int=0)
+    println("  "^indent, file.path)
+    for ti in file.testitems
+        printstyled("  "^(indent+1), ti.name; bold=true)
+        if !isempty(ti.tags)
+            printstyled(sprint(_print_tags, ti.tags); color=:light_black)
+        end
+        print('\n')
+    end
+end
+function _print_tags(io::IO, tags::AbstractVector{Symbol})
+    print(io, " [")
+    isfirst = true
+    for tag in tags
+        if !isfirst
+            print(io, ", ")
+        end
+        show(io, tag)
+        isfirst = false
+    end
+    print(io, "]")
+end
+
+
 ###
 ### record results
 ###
