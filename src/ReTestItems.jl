@@ -9,6 +9,7 @@ using TestEnv
 using Logging: current_logger, with_logger
 
 export runtests, runtestitem
+export print_tests
 export @testsetup, @testitem
 export TestSetup, TestItem, TestItemResult
 
@@ -231,15 +232,18 @@ will be run.
 """
 function runtests end
 
-runtests(; kw...) = runtests(Returns(true), dirname(Base.active_project()); kw...)
-runtests(shouldrun; kw...) = runtests(shouldrun, dirname(Base.active_project()); kw...)
-runtests(paths::AbstractString...; kw...) = runtests(Returns(true), paths...; kw...)
-
-runtests(pkg::Module; kw...) = runtests(Returns(true), pkg; kw...)
-function runtests(shouldrun, pkg::Module; kw...)
-    dir = pkgdir(pkg)
-    isnothing(dir) && error("Could not find directory for `$pkg`")
-    return runtests(shouldrun, dir; kw...)
+for func in (:runtests, :print_tests)
+    @eval begin
+        $func(; kw...) = $func(Returns(true), dirname(Base.active_project()); kw...)
+        $func(shouldrun; kw...) = $func(shouldrun, dirname(Base.active_project()); kw...)
+        $func(paths::AbstractString...; kw...) = $func(Returns(true), paths...; kw...)
+        $func(pkg::Module; kw...) = $func(Returns(true), pkg; kw...)
+        function $func(shouldrun, pkg::Module; kw...)
+            dir = pkgdir(pkg)
+            isnothing(dir) && error("Could not find directory for `$pkg`")
+            return $func(shouldrun, dir; kw...)
+        end
+    end
 end
 
 @kwdef struct _Config
@@ -257,8 +261,10 @@ end
     timeout_profile_wait::Int
     memory_threshold::Float64
     gc_between_testitems::Bool
+    dryrun::Bool
 end
 
+default_validate_paths() = parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false"))
 
 function runtests(
     shouldrun,
@@ -276,11 +282,12 @@ function runtests(
     logs::Symbol=Symbol(get(ENV, "RETESTITEMS_LOGS", default_log_display_mode(report, nworkers))),
     verbose_results::Bool=(logs !== :issues && isinteractive()),
     test_end_expr::Expr=Expr(:block),
-    validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
+    validate_paths::Bool=default_validate_paths(),
     timeout_profile_wait::Real=parse(Int, get(ENV, "RETESTITEMS_TIMEOUT_PROFILE_WAIT", "0")),
     gc_between_testitems::Bool=parse(Bool, get(ENV, "RETESTITEMS_GC_BETWEEN_TESTITEMS", string(nworkers > 1))),
     failfast::Bool=parse(Bool, get(ENV, "RETESTITEMS_FAILFAST", "false")),
     testitem_failfast::Bool=parse(Bool, get(ENV, "RETESTITEMS_TESTITEM_FAILFAST", string(failfast))),
+    dryrun::Bool=parse(Bool, get(ENV, "RETESTITEMS_DRYRUN", "false")),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = _validated_paths(paths, validate_paths)
@@ -301,7 +308,7 @@ function runtests(
     (timeout_profile_wait > 0 && Sys.iswindows()) && @warn "CPU profiles on timeout is not supported on Windows, ignoring `timeout_profile_wait`"
     mkpath(RETESTITEMS_TEMP_FOLDER[]) # ensure our folder wasn't removed
     save_current_stdio()
-    cfg = _Config(; nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, testitem_failfast, failfast, retries, logs, report, verbose_results, timeout_profile_wait, memory_threshold, gc_between_testitems)
+    cfg = _Config(; nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, testitem_failfast, failfast, retries, logs, report, verbose_results, timeout_profile_wait, memory_threshold, gc_between_testitems, dryrun)
     debuglvl = Int(debug)
     if debuglvl > 0
         withdebug(debuglvl) do
@@ -310,6 +317,21 @@ function runtests(
     else
         return _runtests(ti_filter, paths′, cfg)
     end
+end
+
+"""
+    ReTestItems.print_tests()
+    ReTestItems.print_tests(mod::Module)
+    ReTestItems.print_tests(paths::AbstractString...)
+
+Print the tests that would be run by `runtests`.
+Also available via `runtests(args...; dryrun=true, kw...)`.
+"""
+function print_tests(
+    shouldrun, paths::AbstractString...;
+    name=nothing, tags=nothing, validate_paths=default_validate_paths(),
+)
+    runtests(shouldrun, paths...; dryrun=true, name, tags, validate_paths)
 end
 
 # keep track of temporary test environments we create in case we can reuse them
@@ -339,8 +361,9 @@ function _runtests(ti_filter, paths, cfg::_Config)
     # Wrapping with the logger that was set before eval'ing any user code to
     # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
     with_logger(current_logger()) do
-        if is_running_test_runtests_jl(proj_file)
+        if is_running_test_runtests_jl(proj_file) || cfg.dryrun
             # Assume this is `Pkg.test`, so test env already active.
+            # Or if `dryrun`, we don't need the env as we won't run the tests.
             @debugv 2 "Running in current environment `$(Base.active_project())`"
             return _runtests_in_current_env(ti_filter, paths, proj_file, cfg)
         else
@@ -377,10 +400,8 @@ function _runtests_in_current_env(
     ntestitems = length(testitems.testitems)
     @debugv 1 "Done including tests in $paths"
     @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds."
-    # TODO: make this a keyword to `runtests` that gets passed to `_runtests_in_current_env`
-    dryrun = parse(Bool, get(ENV, "RETESTITEMS_DRYRUN", "false"))::Bool
-    if dryrun
-        print_testitems(testitems)
+    if cfg.dryrun
+        _print_testitems(testitems)
         return nothing
     end
     @info "Scheduling $ntestitems tests on pid $(Libc.getpid())" *
