@@ -23,6 +23,14 @@ else
     const errmon = identity
 end
 
+# Set of testitems identified by (file, name) tuples storing whether the testitem
+# failed when it was last run. Used by `fails_first`.
+const GLOBAL_TEST_FAILURE_SET = Set{Tuple{String, String}}()
+reset_test_failures!() = (empty!(GLOBAL_TEST_FAILURE_SET); nothing)
+_failed_when_last_seen(ti) = (ti.file, ti.name) in GLOBAL_TEST_FAILURE_SET
+_store_failure!(ti) = push!(GLOBAL_TEST_FAILURE_SET, (ti.file, ti.name))
+_store_pass!(ti) = delete!(GLOBAL_TEST_FAILURE_SET, (ti.file, ti.name))
+
 # We use the Test.jl stdlib `failfast` mechanism to implement `testitem_failfast`, but that
 # feature was only added in Julia v1.9, so we define these shims so our code can be
 # compatible with earlier Julia versions, with `testitem_failfast` just having no effect.
@@ -274,6 +282,7 @@ end
     timeout_profile_wait::Int
     memory_threshold::Float64
     gc_between_testitems::Bool
+    fails_first::Bool
 end
 
 
@@ -298,6 +307,7 @@ function runtests(
     gc_between_testitems::Bool=parse(Bool, get(ENV, "RETESTITEMS_GC_BETWEEN_TESTITEMS", string(nworkers > 1))),
     failfast::Bool=parse(Bool, get(ENV, "RETESTITEMS_FAILFAST", "false")),
     testitem_failfast::Bool=parse(Bool, get(ENV, "RETESTITEMS_TESTITEM_FAILFAST", string(failfast))),
+    fails_first::Bool=parse(Bool, get(ENV, "RETESTITEMS_FAILS_FIRST", "false")),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = _validated_paths(paths, validate_paths)
@@ -308,6 +318,7 @@ function runtests(
     testitem_timeout > 0 || throw(ArgumentError("`testitem_timeout` must be a positive number, got $(repr(testitem_timeout))"))
     timeout_profile_wait >= 0 || throw(ArgumentError("`timeout_profile_wait` must be a non-negative number, got $(repr(timeout_profile_wait))"))
     test_end_expr.head === :block || throw(ArgumentError("`test_end_expr` must be a `:block` expression, got a `$(repr(test_end_expr.head))` expression"))
+    !fails_first || nworkers == 0 || throw(ArgumentError("`fails_first` is only supported with `nworkers=0`"))
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
     ti_filter = TestItemFilter(shouldrun, tags, name)
@@ -318,7 +329,7 @@ function runtests(
     (timeout_profile_wait > 0 && Sys.iswindows()) && @warn "CPU profiles on timeout is not supported on Windows, ignoring `timeout_profile_wait`"
     mkpath(RETESTITEMS_TEMP_FOLDER[]) # ensure our folder wasn't removed
     save_current_stdio()
-    cfg = _Config(; nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, testitem_failfast, failfast, retries, logs, report, verbose_results, timeout_profile_wait, memory_threshold, gc_between_testitems)
+    cfg = _Config(; nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, testitem_failfast, failfast, retries, logs, report, verbose_results, timeout_profile_wait, memory_threshold, gc_between_testitems, fails_first)
     debuglvl = Int(debug)
     if debuglvl > 0
         withdebug(debuglvl) do
@@ -407,6 +418,9 @@ function _runtests_in_current_env(
             ctx = TestContext(proj_name, ntestitems)
             # we use a single TestSetupModules
             ctx.setups_evaled = TestSetupModules()
+            if cfg.fails_first && !isempty(GLOBAL_TEST_FAILURE_SET)
+                sort!(testitems.testitems; rev=true, by=_failed_when_last_seen)
+            end
             for (i, testitem) in enumerate(testitems.testitems)
                 testitem.workerid[] = Libc.getpid()
                 testitem.eval_number[] = i
@@ -430,6 +444,11 @@ function _runtests_in_current_env(
                     else
                         break
                     end
+                end
+                if is_non_pass
+                    _store_failure!(testitem)
+                else
+                    _store_pass!(testitem)
                 end
                 if cfg.failfast && is_non_pass
                     cancel!(testitems)
