@@ -24,12 +24,13 @@ else
 end
 
 # Set of testitems identified by (file, name) tuples storing whether the testitem
-# failed when it was last run. Used by `fails_first`.
-const GLOBAL_TEST_FAILURE_SET = Set{Tuple{String, String}}()
-reset_test_failures!() = (empty!(GLOBAL_TEST_FAILURE_SET); nothing)
-_failed_when_last_seen(ti) = (ti.file, ti.name) in GLOBAL_TEST_FAILURE_SET
-_store_failure!(ti) = push!(GLOBAL_TEST_FAILURE_SET, (ti.file, ti.name))
-_store_pass!(ti) = delete!(GLOBAL_TEST_FAILURE_SET, (ti.file, ti.name))
+# has failed (-1) or passed (1) or hasn't yet been seen (0).
+# Used by fails_first to sort failures before unseen before passes.
+const GLOBAL_TEST_STATUS = Dict{Tuple{String, String},Int}()
+reset_test_status!() = (empty!(GLOBAL_TEST_STATUS); nothing)
+_status_when_last_seen(ti) = get(GLOBAL_TEST_STATUS, (ti.file, ti.name), 0)
+_store_failure!(ti) = GLOBAL_TEST_STATUS[(ti.file, ti.name)] = -1
+_store_pass!(ti) =    GLOBAL_TEST_STATUS[(ti.file, ti.name)] =  1
 
 # We use the Test.jl stdlib `failfast` mechanism to implement `testitem_failfast`, but that
 # feature was only added in Julia v1.9, so we define these shims so our code can be
@@ -418,8 +419,8 @@ function _runtests_in_current_env(
             ctx = TestContext(proj_name, ntestitems)
             # we use a single TestSetupModules
             ctx.setups_evaled = TestSetupModules()
-            if cfg.fails_first && !isempty(GLOBAL_TEST_FAILURE_SET)
-                sort!(testitems.testitems; rev=true, by=_failed_when_last_seen)
+            if cfg.fails_first && !isempty(GLOBAL_TEST_STATUS)
+                sort!(testitems.testitems; by=_status_when_last_seen)
             end
             for (i, testitem) in enumerate(testitems.testitems)
                 testitem.workerid[] = Libc.getpid()
