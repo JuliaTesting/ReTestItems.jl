@@ -26,11 +26,14 @@ end
 # Set of testitems identified by (file, name) tuples storing whether the testitem
 # has failed (-1) or passed (1) or hasn't yet been seen (0).
 # Used by fails_first to sort failures before unseen before passes.
-const GLOBAL_TEST_STATUS = Dict{Tuple{String, String},Int}()
+const GLOBAL_TEST_STATUS = Dict{String,UInt8}()
+_STATUS_FAILED = UInt8(0)
+_STATUS_UNSEEN = UInt8(1)
+_STATUS_PASSED = UInt8(2)
 reset_test_status!() = (empty!(GLOBAL_TEST_STATUS); nothing)
-_status_when_last_seen(ti) = get(GLOBAL_TEST_STATUS, (ti.file, ti.name), 0)
-_store_failure!(ti) = GLOBAL_TEST_STATUS[(ti.file, ti.name)] = -1
-_store_pass!(ti) =    GLOBAL_TEST_STATUS[(ti.file, ti.name)] =  1
+_status_when_last_seen(ti) = get(GLOBAL_TEST_STATUS, ti.id, _STATUS_UNSEEN)
+_store_failure!(ti) = GLOBAL_TEST_STATUS[ti.id] = _STATUS_FAILED
+_store_pass!(ti) =    GLOBAL_TEST_STATUS[ti.id] = _STATUS_PASSED
 
 # We use the Test.jl stdlib `failfast` mechanism to implement `testitem_failfast`, but that
 # feature was only added in Julia v1.9, so we define these shims so our code can be
