@@ -161,7 +161,7 @@ end
     for report in (true, false)
         mktempdir() do dir
             withenv("RETESTITEMS_REPORT" => report, "RETESTITEMS_REPORT_LOCATION" => dir) do
-                runtests("testfiles/_happy_tests.jl"; name="happy 1")
+                runtests("testfiles/_empty_file_test.jl")
             end
             n_reports = length(filter(endswith("xml"), readdir(dir, join=true)))
             if report
