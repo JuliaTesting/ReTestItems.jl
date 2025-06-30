@@ -379,11 +379,11 @@ function _runtests_in_current_env(
     inc_time = time()
     @debugv 1 "Including tests in $paths"
     testitems, _ = include_testfiles!(proj_name, projectfile, paths, ti_filter, cfg.verbose_results, cfg.report)
+    @debugv 1 "Done including tests in $paths"
     nworkers = cfg.nworkers
     nworker_threads = cfg.nworker_threads
     ntestitems = length(testitems.testitems)
     @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds."
-    @debugv 1 "Done including tests in $paths"
     if ntestitems == 0
         @warn "No test items found."
         return nothing
