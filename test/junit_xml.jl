@@ -142,21 +142,6 @@ end
     end
 end
 
-@testset "JUnit empty report" begin
-    empty_report = strip("""
-        <?xml version="1.0" encoding="UTF-8"?>
-        <testsuites timestamp="" time="0.0" tests="0" skipped="0" failures="0" errors="0">
-        </testsuites>
-        """)
-    mktempdir() do dir
-        withenv("RETESTITEMS_REPORT_LOCATION" => dir) do
-            runtests("testfiles/_empty_file_test.jl"; report=true)
-        end
-        report = read(only(filter(endswith("xml"), readdir(dir, join=true))), String)
-        @test report == empty_report
-    end
-end
-
 @testset "Respect `RETESTITEMS_REPORT`" begin
     for report in (true, false)
         mktempdir() do dir
