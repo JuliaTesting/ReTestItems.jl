@@ -35,6 +35,14 @@ else # @testset does not yet support `failfast`
     CompatDefaultTestSet(a...; failfast::Bool=false, kw...) = DefaultTestSet(a...; kw...)
 end
 
+struct NoTestException <: Exception
+    msg::String
+end
+# Three argument `showerror` with the `backtrace` keyword to swallow the backtrace,
+# like for `Test.TestSetException`.
+function Base.showerror(io::IO, exc::NoTestException, bt; backtrace=true)
+    printstyled(io, exc.msg; color=Base.error_color())
+end
 
 # copyied from REPL.jl
 function softscope(@nospecialize ex)
@@ -118,11 +126,11 @@ function _validated_paths(paths, should_throw::Bool)
     return filter(paths) do p
         if !ispath(p)
             msg = "No such path $(repr(p))"
-            should_throw ? throw(ArgumentError(msg)) : @warn msg
+            should_throw ? throw(NoTestException(msg)) : @warn msg
             return false
         elseif !(is_test_file(p) || is_testsetup_file(p)) && isfile(p)
             msg = "$(repr(p)) is not a test file"
-            should_throw ? throw(ArgumentError(msg)) : @warn msg
+            should_throw ? throw(NoTestException(msg)) : @warn msg
             return false
         else
             return true
@@ -378,8 +386,7 @@ function _runtests_in_current_env(
     ntestitems = length(testitems.testitems)
     @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds."
     if ntestitems == 0
-        @warn "No test items found."
-        return nothing
+        throw(NoTestException("No test items found."))
     end
     @info "Scheduling $ntestitems tests on pid $(Libc.getpid())" *
         (nworkers == 0 ? "" : " with $nworkers worker processes and $nworker_threads threads per worker.")
