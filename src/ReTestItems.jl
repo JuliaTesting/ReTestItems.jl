@@ -375,9 +375,13 @@ function _runtests_in_current_env(
     nworkers = cfg.nworkers
     nworker_threads = cfg.nworker_threads
     ntestitems = length(testitems.testitems)
+    @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds."
     @debugv 1 "Done including tests in $paths"
-    @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds." *
-        " Scheduling $ntestitems tests on pid $(Libc.getpid())" *
+    if ntestitems == 0
+        @warn "No test items found."
+        return nothing
+    end
+    @info "Scheduling $ntestitems tests on pid $(Libc.getpid())" *
         (nworkers == 0 ? "" : " with $nworkers worker processes and $nworker_threads threads per worker.")
     try
         if nworkers == 0
