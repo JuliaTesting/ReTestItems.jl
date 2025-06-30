@@ -386,10 +386,10 @@ function _runtests_in_current_env(
     @info "Finished scanning for test items in $(round(time() - inc_time, digits=2)) seconds."
     if ntestitems == 0
         @warn "No test items found."
-        return nothing
+    else
+        @info "Scheduling $ntestitems tests on pid $(Libc.getpid())" *
+            (nworkers == 0 ? "" : " with $nworkers worker processes and $nworker_threads threads per worker.")
     end
-    @info "Scheduling $ntestitems tests on pid $(Libc.getpid())" *
-        (nworkers == 0 ? "" : " with $nworkers worker processes and $nworker_threads threads per worker.")
     try
         if nworkers == 0
             length(cfg.worker_init_expr.args) > 0 && error("worker_init_expr is set, but will not run because number of workers is 0.")
