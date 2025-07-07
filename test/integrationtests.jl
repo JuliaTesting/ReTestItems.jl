@@ -1547,4 +1547,20 @@ end
     @test_throws "`test_end_expr` must be a `:block` expression" runtests(; test_end_expr=:(@assert false))
 end
 
+@testset "warn if no test items" begin
+    msg = "No test items found."
+    @test_logs (:warn, msg) match_mode=:any begin
+        runtests(joinpath(TEST_FILES_DIR, "_empty_file_test.jl"))
+    end
+    @test_logs (:warn, msg) match_mode=:any begin
+        runtests(joinpath(TEST_FILES_DIR, "_empty_file_test.jl"); nworkers=1)
+    end
+    @test_logs (:warn, msg) match_mode=:any begin
+        runtests(joinpath(TEST_FILES_DIR, "_happy_tests.jl"); name="blahahahaha_nope")
+    end
+    @test_logs (:warn, msg) match_mode=:any begin
+        runtests(joinpath(TEST_FILES_DIR, "_happy_tests.jl"); tags=[:blahahahaha_nope])
+    end
+end
+
 end # integrationtests.jl testset
