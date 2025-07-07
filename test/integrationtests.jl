@@ -86,6 +86,7 @@ end
 end
 
 @testset "Warn or error when not test file" begin
+    using ReTestItems: NoTestException
     pkg = joinpath(TEST_PKG_DIR, "TestsInSrc.jl")
 
     # warn if the path does not exist
@@ -95,10 +96,10 @@ end
         runtests(dne)
     end
     # throw if `validate_paths`
-    @test_throws ArgumentError(dne_msg) runtests(dne; validate_paths=true)
+    @test_throws NoTestException(dne_msg) runtests(dne; validate_paths=true)
     # test setting `validate_paths` via environment variable
     withenv("RETESTITEMS_VALIDATE_PATHS" => 1) do
-        @test_throws ArgumentError(dne_msg) runtests(dne)
+        @test_throws NoTestException(dne_msg) runtests(dne)
     end
 
     # warn if the file is not a test file
@@ -109,15 +110,15 @@ end
         runtests(file)
     end
     # throw if `validate_paths`
-    @test_throws ArgumentError(file_msg) runtests(file; validate_paths=true)
+    @test_throws NoTestException(file_msg) runtests(file; validate_paths=true)
 
     # Warn for each invalid path
     @test_logs (:warn, dne_msg) (:warn, file_msg) match_mode=:any begin
         runtests(dne, file)
     end
     # Throw on first invalid path if `validate_paths`
-    @test_throws ArgumentError(dne_msg) runtests(dne, file; validate_paths=true)
-    @test_throws ArgumentError(file_msg) runtests(file, dne; validate_paths=true)
+    @test_throws NoTestException(dne_msg) runtests(dne, file; validate_paths=true)
+    @test_throws NoTestException(file_msg) runtests(file, dne; validate_paths=true)
 
     # Warn for each invalid path and still run valid ones
     test_file = joinpath(pkg, "src", "foo_test.jl")
@@ -129,7 +130,7 @@ end
     end
     @test n_tests(results) == 2 # foo_test.jl has 2 tests
     # Throw on first invalid path, even if some are valid, if `validate_paths`
-    @test_throws ArgumentError(dne_msg) runtests(test_file, dne, file; validate_paths=true)
+    @test_throws NoTestException(dne_msg) runtests(test_file, dne, file; validate_paths=true)
 end
 
 @testset "filter `runtests(func, x)`" begin
@@ -1548,19 +1549,12 @@ end
 end
 
 @testset "warn if no test items" begin
-    msg = "No test items found."
-    @test_logs (:warn, msg) match_mode=:any begin
-        runtests(joinpath(TEST_FILES_DIR, "_empty_file_test.jl"))
-    end
-    @test_logs (:warn, msg) match_mode=:any begin
-        runtests(joinpath(TEST_FILES_DIR, "_empty_file_test.jl"); nworkers=1)
-    end
-    @test_logs (:warn, msg) match_mode=:any begin
-        runtests(joinpath(TEST_FILES_DIR, "_happy_tests.jl"); name="blahahahaha_nope")
-    end
-    @test_logs (:warn, msg) match_mode=:any begin
-        runtests(joinpath(TEST_FILES_DIR, "_happy_tests.jl"); tags=[:blahahahaha_nope])
-    end
+    using ReTestItems: NoTestException
+    exc = NoTestException("No test items found.")
+    @test_throws exc runtests(joinpath(TEST_FILES_DIR, "_empty_file_test.jl"))
+    @test_throws exc runtests(joinpath(TEST_FILES_DIR, "_empty_file_test.jl"); nworkers=1)
+    @test_throws exc runtests(joinpath(TEST_FILES_DIR, "_happy_tests.jl"); name="blahahahaha_nope")
+    @test_throws exc runtests(joinpath(TEST_FILES_DIR, "_happy_tests.jl"); tags=[:blahahahaha_nope])
 end
 
 end # integrationtests.jl testset
