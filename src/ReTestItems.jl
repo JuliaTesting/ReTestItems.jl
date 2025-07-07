@@ -27,10 +27,17 @@ end
 # feature was only added in Julia v1.9, so we define these shims so our code can be
 # compatible with earlier Julia versions, with `testitem_failfast` just having no effect.
 if isdefined(Test, :FailFastError)
-    TestFailFastError = Test.FailFastError
+    if isdefined(Test, :is_failfast_error)
+        # https://github.com/JuliaLang/julia/pull/58695
+        is_failfast_error = Test.is_failfast_error
+    else
+        is_failfast_error(err::Test.FailFastError) = true
+        is_failfast_error(err::LoadError) = is_failfast_error(err.error)
+        is_failfast_error(err) = false
+    end
     CompatDefaultTestSet(a...; kw...) = DefaultTestSet(a...; kw...)
 else # @testset does not yet support `failfast`
-    TestFailFastError = Base.Bottom
+    is_failfast_error(err) = false
     # ignore `failfast` argument to DefaultTestSet
     CompatDefaultTestSet(a...; failfast::Bool=false, kw...) = DefaultTestSet(a...; kw...)
 end
@@ -1117,10 +1124,10 @@ function runtestitem(
         # Handle exceptions thrown outside a `@test` in the body of the @testitem:
         # Copied from Test.@testset's catch block:
         # If an inner testset had `failfast=true` and there was a failure/error, then the root
-        # testset will throw a `TestFailFastError` to force the root testset to stop running.
-        # We don't need to record that `TestFailFastError`, since its not itself a test
+        # testset will throw a `Test.FailFastError` to force the root testset to stop running.
+        # We don't need to record that `Test.FailFastError`, since its not itself a test
         # error, it is just the mechanism used to interrupt tests.
-        if isa(err, TestFailFastError)
+        if is_failfast_error(err)
             failedfast = true
         else
             try
@@ -1129,8 +1136,8 @@ function runtestitem(
                     LineNumberNode(ti.line, ti.file)))
             catch err2
                 # If the root testset had `failfast=true` and itself threw an error outside
-                # of a test, then `record` will throw a `TestFailFastError`.
-                err2 isa TestFailFastError || rethrow()
+                # of a test, then `record` will throw a `Test.FailFastError`.
+                is_failfast_error(err2) || rethrow()
                 failedfast = true
             end
         end
