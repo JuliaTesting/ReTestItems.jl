@@ -1540,7 +1540,7 @@ end
     @test_throws "`test_end_expr` must be a `:block` expression" runtests(; test_end_expr=:(@assert false))
 end
 
-@testset "warn if no test items" begin
+@testset "throw if no test items" begin
     using ReTestItems: NoTestException
     exc = NoTestException("No test items found.")
     @test_throws exc runtests(joinpath(TEST_FILES_DIR, "_empty_file_test.jl"))
