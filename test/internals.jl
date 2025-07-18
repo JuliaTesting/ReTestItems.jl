@@ -264,14 +264,14 @@ end
     @assert !ispath("foo")
     @test _validated_paths(("foo",), false) == ()
     @test_logs (:warn, "No such path \"foo\"") _validated_paths(("foo",), false)
-    @test_throws ArgumentError("No such path \"foo\"") _validated_paths(("foo",), true)
+    @test_throws ReTestItems.NoTestException("No such path \"foo\"") _validated_paths(("foo",), true)
 
     @assert isfile(test_file)
     @assert !ispath("foo")
     paths = (test_file, "foo",)
     @test _validated_paths(paths, false) == (test_file,)
     @test_logs (:warn, "No such path \"foo\"") _validated_paths(paths, false)
-    @test_throws ArgumentError("No such path \"foo\"") _validated_paths(paths, true)
+    @test_throws ReTestItems.NoTestException("No such path \"foo\"") _validated_paths(paths, true)
 
     nontest_file = joinpath(testfiles_dir, "_empty_file.jl")
     @assert isfile(nontest_file)
@@ -279,7 +279,7 @@ end
     @assert !ReTestItems.is_testsetup_file(nontest_file)
     @test _validated_paths((nontest_file,), false) == ()
     @test_logs (:warn, "$(repr(nontest_file)) is not a test file") _validated_paths((nontest_file,), false)
-    @test_throws ArgumentError("$(repr(nontest_file)) is not a test file") _validated_paths((nontest_file,), true)
+    @test_throws ReTestItems.NoTestException("$(repr(nontest_file)) is not a test file") _validated_paths((nontest_file,), true)
 end
 
 @testset "skiptestitem" begin

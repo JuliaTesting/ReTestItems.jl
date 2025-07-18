@@ -143,10 +143,7 @@ end
     @assert n_total > 0
 
     # can exclude everything
-    results = encased_testset() do
-        runtests(x->false, pkg)
-    end
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(x->false, pkg)
 
     # there is a `@testitem "bar"` -- filter to just that testitem.
     results = encased_testset() do
@@ -171,40 +168,9 @@ end
     @test n_passed(results) == 1
     @test n_tests(results) == 1
 
-    results = encased_testset() do
-        runtests(ti -> :b_tag in ti.tags, pkg; name="b", tags=:nope)
-    end
-    @test n_passed(results) == 0
-    @test n_tests(results) == 0
+    @test_throw ReTestItems.NoTestException runtests(ti -> :b_tag in ti.tags, pkg; name="nope")
 
-    results = encased_testset() do
-        runtests(ti -> :b_tag in ti.tags, pkg; name="nope")
-    end
-    @test n_passed(results) == 0
-    @test n_tests(results) == 0
-
-    ## TODO: Are we okay to remove these tests?
-    ## passing a `shouldrun` function as the first arg has never been documented, and
-    ## when it has come up as a workaround for people, we have only ever said you can filter
-    ## on `ti.name` and `ti.tags`, so i think it is okay to remove these tests that use
-    ## `ti.file` (and not support filtering on `ti.file)
-    ##
-    # # there is a `bar_test.jl` -- filter to just that file.
-    # results = encased_testset() do
-    #     runtests(ti -> contains(ti.file, "bar_"), pkg)
-    # end
-    # @test n_passed(results) > 0
-    # @test n_tests(results) < n_total
-
-    # # test we can filter by directory (all tests are in `src/`)
-    # results_test_dir = encased_testset() do
-    #     runtests(ti -> startswith(ti.file, "$pkg/test"), pkg)
-    # end
-    # results_src_dir = encased_testset() do
-    #     runtests(ti -> startswith(ti.file, "$pkg/src"), pkg)
-    # end
-    # @test n_tests(results_src_dir) == n_total
-    # @test n_tests(results_test_dir) == 0
+    @test_throws ReTestItems.NoTestException runtests(ti -> :b_tag in ti.tags, pkg; name="b", tags=[:nope])
 
     # can only filter on `ti.name` and `ti.tags` (at least for now)
     @test_throws "no field file" runtests(ti -> contains(ti.file, "bar_"), pkg)
@@ -529,8 +495,7 @@ end
     results = encased_testset(()->runtests(file))
     @assert n_tests(results) == 3
 
-    results = encased_testset(()->runtests(file, name=""))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, name="")
 
     results = encased_testset(()->runtests(file, name="Test item no tags"))
     @test n_tests(results) == 1
@@ -538,8 +503,7 @@ end
     results = encased_testset(()->runtests(file, name=@view "Test item no tags"[begin:end]))
     @test n_tests(results) == 1
 
-    results = encased_testset(()->runtests(file, name=r"No such name in that file"))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, name=r"No such name in that file")
 
     results = encased_testset(()->runtests(file, name=r"Test item"))
     @test n_tests(results) == 3
@@ -561,14 +525,11 @@ end
     @assert n_tests(results) == 3
 
 
-    results = encased_testset(()->runtests(file, name="", tags=Symbol[]))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, name="", tags=Symbol[])
 
-    results = encased_testset(()->runtests(file, name=r".", tags=:tag3))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, name=r".", tags=:tag3)
 
-    results = encased_testset(()->runtests(file, name="", tags=:tag3))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, name="", tags=:tag3)
 
     results = encased_testset(()->runtests(file, name=r".", tags=Symbol[]))
     @test n_tests(results) == 3
@@ -592,26 +553,12 @@ end
     results = encased_testset(()->runtests(file))
     @assert n_tests(results) == 3
 
-    results = encased_testset(()->runtests(ti-> false, file, name="", tags=:tag3))
-    @test n_tests(results) == 0
-
-    results = encased_testset(()->runtests(ti-> false, file, name="", tags=Symbol[]))
-    @test n_tests(results) == 0
-
-    results = encased_testset(()->runtests(ti-> false, file, name=r".", tags=:tag3))
-    @test n_tests(results) == 0
-
-    results = encased_testset(()->runtests(ti-> true, file, name="", tags=:tag3))
-    @test n_tests(results) == 0
-
-    results = encased_testset(()->runtests(ti-> true, file, name="", tags=Symbol[]))
-    @test n_tests(results) == 0
-
-    results = encased_testset(()->runtests(ti-> true, file, name=r".", tags=:tag3))
-    @test n_tests(results) == 0
-
-    results = encased_testset(()->runtests(ti-> false, file, name=r".", tags=Symbol[]))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(ti-> false, file, name="",   tags=:tag3)
+    @test_throws ReTestItems.NoTestException runtests(ti-> false, file, name=r".", tags=:tag3)
+    @test_throws ReTestItems.NoTestException runtests(ti-> true,  file, name="",   tags=:tag3)
+    @test_throws ReTestItems.NoTestException runtests(ti-> true,  file, name="",   tags=Symbol[])
+    @test_throws ReTestItems.NoTestException runtests(ti-> true,  file, name=r".", tags=:tag3)
+    @test_throws ReTestItems.NoTestException runtests(ti-> false, file, name=r".", tags=Symbol[])
 
     results = encased_testset(()->runtests(ti-> true, file, name=r".", tags=Symbol[]))
     @test n_tests(results) == 3
