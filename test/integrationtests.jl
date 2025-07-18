@@ -86,6 +86,7 @@ end
 end
 
 @testset "Warn or error when not test file" begin
+    using ReTestItems: NoTestException
     pkg = joinpath(TEST_PKG_DIR, "TestsInSrc.jl")
 
     # warn if the path does not exist
@@ -95,10 +96,10 @@ end
         runtests(dne)
     end
     # throw if `validate_paths`
-    @test_throws ArgumentError(dne_msg) runtests(dne; validate_paths=true)
+    @test_throws NoTestException(dne_msg) runtests(dne; validate_paths=true)
     # test setting `validate_paths` via environment variable
     withenv("RETESTITEMS_VALIDATE_PATHS" => 1) do
-        @test_throws ArgumentError(dne_msg) runtests(dne)
+        @test_throws NoTestException(dne_msg) runtests(dne)
     end
 
     # warn if the file is not a test file
@@ -109,15 +110,15 @@ end
         runtests(file)
     end
     # throw if `validate_paths`
-    @test_throws ArgumentError(file_msg) runtests(file; validate_paths=true)
+    @test_throws NoTestException(file_msg) runtests(file; validate_paths=true)
 
     # Warn for each invalid path
     @test_logs (:warn, dne_msg) (:warn, file_msg) match_mode=:any begin
         runtests(dne, file)
     end
     # Throw on first invalid path if `validate_paths`
-    @test_throws ArgumentError(dne_msg) runtests(dne, file; validate_paths=true)
-    @test_throws ArgumentError(file_msg) runtests(file, dne; validate_paths=true)
+    @test_throws NoTestException(dne_msg) runtests(dne, file; validate_paths=true)
+    @test_throws NoTestException(file_msg) runtests(file, dne; validate_paths=true)
 
     # Warn for each invalid path and still run valid ones
     test_file = joinpath(pkg, "src", "foo_test.jl")
@@ -129,7 +130,7 @@ end
     end
     @test n_tests(results) == 2 # foo_test.jl has 2 tests
     # Throw on first invalid path, even if some are valid, if `validate_paths`
-    @test_throws ArgumentError(dne_msg) runtests(test_file, dne, file; validate_paths=true)
+    @test_throws NoTestException(dne_msg) runtests(test_file, dne, file; validate_paths=true)
 end
 
 @testset "filter `runtests(func, x)`" begin
@@ -142,10 +143,7 @@ end
     @assert n_total > 0
 
     # can exclude everything
-    results = encased_testset() do
-        runtests(x->false, pkg)
-    end
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(x->false, pkg)
 
     # there is a `@testitem "bar"` -- filter to just that testitem.
     results = encased_testset() do
@@ -154,10 +152,7 @@ end
     @test n_passed(results) > 0
     @test n_tests(results) < n_total
 
-    results = encased_testset() do
-        runtests(ti -> contains(ti.name, "bar_"), pkg)
-    end
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(ti -> contains(ti.name, "bar_"), pkg)
 
     # there is a `@testitem "b"` tagged `:b_tag` -- filter to just that testitem.
     results = encased_testset() do
@@ -173,40 +168,9 @@ end
     @test n_passed(results) == 1
     @test n_tests(results) == 1
 
-    results = encased_testset() do
-        runtests(ti -> :b_tag in ti.tags, pkg; name="b", tags=:nope)
-    end
-    @test n_passed(results) == 0
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(ti -> :b_tag in ti.tags, pkg; name="nope")
 
-    results = encased_testset() do
-        runtests(ti -> :b_tag in ti.tags, pkg; name="nope")
-    end
-    @test n_passed(results) == 0
-    @test n_tests(results) == 0
-
-    ## TODO: Are we okay to remove these tests?
-    ## passing a `shouldrun` function as the first arg has never been documented, and
-    ## when it has come up as a workaround for people, we have only ever said you can filter
-    ## on `ti.name` and `ti.tags`, so i think it is okay to remove these tests that use
-    ## `ti.file` (and not support filtering on `ti.file)
-    ##
-    # # there is a `bar_test.jl` -- filter to just that file.
-    # results = encased_testset() do
-    #     runtests(ti -> contains(ti.file, "bar_"), pkg)
-    # end
-    # @test n_passed(results) > 0
-    # @test n_tests(results) < n_total
-
-    # # test we can filter by directory (all tests are in `src/`)
-    # results_test_dir = encased_testset() do
-    #     runtests(ti -> startswith(ti.file, "$pkg/test"), pkg)
-    # end
-    # results_src_dir = encased_testset() do
-    #     runtests(ti -> startswith(ti.file, "$pkg/src"), pkg)
-    # end
-    # @test n_tests(results_src_dir) == n_total
-    # @test n_tests(results_test_dir) == 0
+    @test_throws ReTestItems.NoTestException runtests(ti -> :b_tag in ti.tags, pkg; name="b", tags=[:nope])
 
     # can only filter on `ti.name` and `ti.tags` (at least for now)
     @test_throws "no field file" runtests(ti -> contains(ti.file, "bar_"), pkg)
@@ -515,14 +479,11 @@ end
     @test n_tests(results) == 1
 
     # There is no test with tag3
-    results = encased_testset(()->runtests(file, tags=[:tag1, :tag3]))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, tags=[:tag1, :tag3])
 
-    results = encased_testset(()->runtests(file, tags=[:tag3]))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, tags=[:tag3])
 
-    results = encased_testset(()->runtests(file, tags=:tag3))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, tags=:tag3)
 end
 
 @testset "filter `runtests(x; name)`" begin
@@ -534,8 +495,7 @@ end
     results = encased_testset(()->runtests(file))
     @assert n_tests(results) == 3
 
-    results = encased_testset(()->runtests(file, name=""))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, name="")
 
     results = encased_testset(()->runtests(file, name="Test item no tags"))
     @test n_tests(results) == 1
@@ -543,8 +503,7 @@ end
     results = encased_testset(()->runtests(file, name=@view "Test item no tags"[begin:end]))
     @test n_tests(results) == 1
 
-    results = encased_testset(()->runtests(file, name=r"No such name in that file"))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, name=r"No such name in that file")
 
     results = encased_testset(()->runtests(file, name=r"Test item"))
     @test n_tests(results) == 3
@@ -566,14 +525,11 @@ end
     @assert n_tests(results) == 3
 
 
-    results = encased_testset(()->runtests(file, name="", tags=Symbol[]))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, name="", tags=Symbol[])
 
-    results = encased_testset(()->runtests(file, name=r".", tags=:tag3))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, name=r".", tags=:tag3)
 
-    results = encased_testset(()->runtests(file, name="", tags=:tag3))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, name="", tags=:tag3)
 
     results = encased_testset(()->runtests(file, name=r".", tags=Symbol[]))
     @test n_tests(results) == 3
@@ -597,26 +553,12 @@ end
     results = encased_testset(()->runtests(file))
     @assert n_tests(results) == 3
 
-    results = encased_testset(()->runtests(ti-> false, file, name="", tags=:tag3))
-    @test n_tests(results) == 0
-
-    results = encased_testset(()->runtests(ti-> false, file, name="", tags=Symbol[]))
-    @test n_tests(results) == 0
-
-    results = encased_testset(()->runtests(ti-> false, file, name=r".", tags=:tag3))
-    @test n_tests(results) == 0
-
-    results = encased_testset(()->runtests(ti-> true, file, name="", tags=:tag3))
-    @test n_tests(results) == 0
-
-    results = encased_testset(()->runtests(ti-> true, file, name="", tags=Symbol[]))
-    @test n_tests(results) == 0
-
-    results = encased_testset(()->runtests(ti-> true, file, name=r".", tags=:tag3))
-    @test n_tests(results) == 0
-
-    results = encased_testset(()->runtests(ti-> false, file, name=r".", tags=Symbol[]))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(ti-> false, file, name="",   tags=:tag3)
+    @test_throws ReTestItems.NoTestException runtests(ti-> false, file, name=r".", tags=:tag3)
+    @test_throws ReTestItems.NoTestException runtests(ti-> true,  file, name="",   tags=:tag3)
+    @test_throws ReTestItems.NoTestException runtests(ti-> true,  file, name="",   tags=Symbol[])
+    @test_throws ReTestItems.NoTestException runtests(ti-> true,  file, name=r".", tags=:tag3)
+    @test_throws ReTestItems.NoTestException runtests(ti-> false, file, name=r".", tags=Symbol[])
 
     results = encased_testset(()->runtests(ti-> true, file, name=r".", tags=Symbol[]))
     @test n_tests(results) == 3
@@ -829,8 +771,7 @@ end
 @testset "`runtests` finds no testitems" begin
     file = joinpath(TEST_FILES_DIR, "_empty_file_test.jl")
     for nworkers in (0, 1)
-        results = encased_testset(()->runtests(file; nworkers))
-        @test n_tests(results) == 0
+        @test_throws ReTestItems.NoTestException runtests(file; nworkers)
     end
 end
 
@@ -914,8 +855,7 @@ end
         @test n_tests(results) == 2
         results = encased_testset(() -> runtests(file; tags=[:xyz]))
         @test n_tests(results) == 1
-        results = encased_testset(() -> runtests(filter_func, file))
-        @test n_tests(results) == 0
+        @test_throws ReTestItems.NoTestException runtests(filter_func, file)
     end
 end
 
@@ -1547,20 +1487,13 @@ end
     @test_throws "`test_end_expr` must be a `:block` expression" runtests(; test_end_expr=:(@assert false))
 end
 
-@testset "warn if no test items" begin
-    msg = "No test items found."
-    @test_logs (:warn, msg) match_mode=:any begin
-        runtests(joinpath(TEST_FILES_DIR, "_empty_file_test.jl"))
-    end
-    @test_logs (:warn, msg) match_mode=:any begin
-        runtests(joinpath(TEST_FILES_DIR, "_empty_file_test.jl"); nworkers=1)
-    end
-    @test_logs (:warn, msg) match_mode=:any begin
-        runtests(joinpath(TEST_FILES_DIR, "_happy_tests.jl"); name="blahahahaha_nope")
-    end
-    @test_logs (:warn, msg) match_mode=:any begin
-        runtests(joinpath(TEST_FILES_DIR, "_happy_tests.jl"); tags=[:blahahahaha_nope])
-    end
+@testset "throw if no test items" begin
+    using ReTestItems: NoTestException
+    exc = NoTestException("No test items found.")
+    @test_throws exc runtests(joinpath(TEST_FILES_DIR, "_empty_file_test.jl"))
+    @test_throws exc runtests(joinpath(TEST_FILES_DIR, "_empty_file_test.jl"); nworkers=1)
+    @test_throws exc runtests(joinpath(TEST_FILES_DIR, "_happy_tests.jl"); name="blahahahaha_nope")
+    @test_throws exc runtests(joinpath(TEST_FILES_DIR, "_happy_tests.jl"); tags=[:blahahahaha_nope])
 end
 
 end # integrationtests.jl testset
