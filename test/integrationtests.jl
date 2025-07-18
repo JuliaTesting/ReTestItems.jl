@@ -168,7 +168,7 @@ end
     @test n_passed(results) == 1
     @test n_tests(results) == 1
 
-    @test_throw ReTestItems.NoTestException runtests(ti -> :b_tag in ti.tags, pkg; name="nope")
+    @test_throws ReTestItems.NoTestException runtests(ti -> :b_tag in ti.tags, pkg; name="nope")
 
     @test_throws ReTestItems.NoTestException runtests(ti -> :b_tag in ti.tags, pkg; name="b", tags=[:nope])
 
