@@ -155,10 +155,7 @@ end
     @test n_passed(results) > 0
     @test n_tests(results) < n_total
 
-    results = encased_testset() do
-        runtests(ti -> contains(ti.name, "bar_"), pkg)
-    end
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(ti -> contains(ti.name, "bar_"), pkg)
 
     # there is a `@testitem "b"` tagged `:b_tag` -- filter to just that testitem.
     results = encased_testset() do
@@ -516,14 +513,11 @@ end
     @test n_tests(results) == 1
 
     # There is no test with tag3
-    results = encased_testset(()->runtests(file, tags=[:tag1, :tag3]))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, tags=[:tag1, :tag3])
 
-    results = encased_testset(()->runtests(file, tags=[:tag3]))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, tags=[:tag3])
 
-    results = encased_testset(()->runtests(file, tags=:tag3))
-    @test n_tests(results) == 0
+    @test_throws ReTestItems.NoTestException runtests(file, tags=:tag3)
 end
 
 @testset "filter `runtests(x; name)`" begin
@@ -830,8 +824,7 @@ end
 @testset "`runtests` finds no testitems" begin
     file = joinpath(TEST_FILES_DIR, "_empty_file_test.jl")
     for nworkers in (0, 1)
-        results = encased_testset(()->runtests(file; nworkers))
-        @test n_tests(results) == 0
+        @test_throws ReTestItems.NoTestException runtests(file; nworkers)
     end
 end
 
@@ -915,8 +908,7 @@ end
         @test n_tests(results) == 2
         results = encased_testset(() -> runtests(file; tags=[:xyz]))
         @test n_tests(results) == 1
-        results = encased_testset(() -> runtests(filter_func, file))
-        @test n_tests(results) == 0
+        @test_throws ReTestItems.NoTestException runtests(filter_func, file)
     end
 end
 
