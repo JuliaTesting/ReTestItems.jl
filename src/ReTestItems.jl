@@ -90,17 +90,19 @@ include("log_capture.jl")
 include("filtering.jl")
 
 function __init__()
-    DEFAULT_STDOUT[] = stdout
-    DEFAULT_STDERR[] = stderr
-    DEFAULT_LOGSTATE[] = Base.CoreLogging._global_logstate
-    DEFAULT_LOGGER[] = Base.CoreLogging._global_logstate.logger
-    # Disable killing workers based on memory pressure on MacOS til calculations fixed.
-    # TODO: fix https://github.com/JuliaTesting/ReTestItems.jl/issues/113
-    @static if Sys.isapple()
-        DEFAULT_MEMORY_THRESHOLD[] = 1.0
+    if ccall(:jl_generating_output, Cint, ()) == 0 # not precompiling
+        DEFAULT_STDOUT[] = stdout
+        DEFAULT_STDERR[] = stderr
+        DEFAULT_LOGSTATE[] = Base.CoreLogging._global_logstate
+        DEFAULT_LOGGER[] = Base.CoreLogging._global_logstate.logger
+        # Disable killing workers based on memory pressure on MacOS til calculations fixed.
+        # TODO: fix https://github.com/JuliaTesting/ReTestItems.jl/issues/113
+        @static if Sys.isapple()
+            DEFAULT_MEMORY_THRESHOLD[] = 1.0
+        end
+        # Defer setting up the temp folder for pkgimage relocability
+        RETESTITEMS_TEMP_FOLDER[] = mkpath(joinpath(tempdir(), "ReTestItemsTempLogsDirectory"))
     end
-    # Defer setting up the temp folder for pkgimage relocability
-    RETESTITEMS_TEMP_FOLDER[] = mkpath(joinpath(tempdir(), "ReTestItemsTempLogsDirectory"))
     return nothing
 end
 
