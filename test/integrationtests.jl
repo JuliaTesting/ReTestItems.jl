@@ -1496,4 +1496,17 @@ end
     @test_throws exc runtests(joinpath(TEST_FILES_DIR, "_happy_tests.jl"); tags=[:blahahahaha_nope])
 end
 
+@testset "bugfix: don't overcount when nworkers > ntestitems" begin
+    using IOCapture
+    nworkers = 4
+    c = IOCapture.capture() do
+        encased_testset(() -> runtests(joinpath(TEST_FILES_DIR, "_happy_tests.jl"); nworkers))
+    end
+    results = c.value
+    @assert nworkers > n_tests(results)
+    @assert n_tests(results) == 3
+    # the bug was printing `4/3`
+    @test contains(c.output, "3/3 test items were run.")
+end
+
 end # integrationtests.jl testset

@@ -163,7 +163,7 @@ function get_starting_testitems(ti::TestItems, n)
         # mark eval_number
         t.eval_number[] = i
     end
-    @atomic ti.count += n
+    @atomic ti.count += length(testitems)
     return [testitems; fill(nothing, n - length(testitems))]
 end
 
