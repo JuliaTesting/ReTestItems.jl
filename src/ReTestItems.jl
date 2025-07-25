@@ -993,7 +993,6 @@ function should_skip(ti::TestItem)
     skip_body = deepcopy(ti.skip::Expr)
     softscope_all!(skip_body)
     # Run in a new module to not pollute `Main`.
-    # Need to store the result of the `skip` expression so we can check it.
     mod = Module(Symbol(:skip_, ti.name))
     skip = Core.eval(mod, skip_body)
     !isa(skip, Bool) && _throw_not_bool(ti, skip)
