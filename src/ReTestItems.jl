@@ -994,12 +994,8 @@ function should_skip(ti::TestItem)
     softscope_all!(skip_body)
     # Run in a new module to not pollute `Main`.
     # Need to store the result of the `skip` expression so we can check it.
-    mod_name = gensym(Symbol(:skip_, ti.name))
-    skip_var = gensym(:skip)
-    skip_mod_expr = :(module $mod_name; $skip_var = $skip_body; end)
-    skip_mod = Core.eval(Main, skip_mod_expr)
-    # Check what the expression evaluated to.
-    skip = getfield(skip_mod, skip_var)
+    mod = Module(Symbol(:skip_, ti.name))
+    skip = Core.eval(mod, skip_body)
     !isa(skip, Bool) && _throw_not_bool(ti, skip)
     return skip::Bool
 end
