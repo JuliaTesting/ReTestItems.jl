@@ -795,43 +795,45 @@ function include_testfiles!(project_name, projectfile, paths, ti_filter::TestIte
         return setups
     end
     hidden_re = r"\.\w"
-    @sync for (root, d, files) in Base.walkdir(project_root)
-        if subproject_root !== nothing && startswith(root, subproject_root)
-            @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
-            continue
-        elseif _is_subproject(root, projectfile)
-            subproject_root = root
-            continue
-        end
-        rpath = nestedrelpath(root, project_root)
-        startswith(rpath, hidden_re) && continue # skip hidden directories
-        dir_node = DirNode(rpath; report, verbose=verbose_results)
-        dir_nodes[rpath] = dir_node
-        push!(get(dir_nodes, dirname(rpath), root_node), dir_node)
-        for file in files
-            startswith(file, hidden_re) && continue # skip hidden files
-            filepath = joinpath(root, file)
-            # We filter here, rather than the testitem level, to make sure we don't
-            # `include` a file that isn't supposed to be a test-file at all, e.g. its
-            # not on a path the user requested but it happens to have a test-file suffix.
-            # We always include testsetup-files so users don't need to request them,
-            # even if they're not in a requested path, e.g. they are a level up in the
-            # directory tree. The testsetup-file suffix is hopefully specific enough
-            # to ReTestItems that this doesn't lead to `include`ing unexpected files.
-            if !(is_testsetup_file(filepath) || (is_test_file(filepath) && is_requested(filepath, paths)))
+    if isdir(project_root) # https://github.com/JuliaLang/julia/issues/59092
+        @sync for (root, d, files) in Base.walkdir(project_root)
+            if subproject_root !== nothing && startswith(root, subproject_root)
+                @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
+                continue
+            elseif _is_subproject(root, projectfile)
+                subproject_root = root
                 continue
             end
-            fpath = nestedrelpath(filepath, project_root)
-            file_node = FileNode(fpath, ti_filter; report, verbose=verbose_results)
-            testitem_names = Set{String}() # to enforce that names in the same file are unique
-            push!(dir_node, file_node)
-            @debugv 1 "Including test items from file `$filepath`"
-            @spawn begin
-                task_local_storage(:__RE_TEST_RUNNING__, true) do
-                    task_local_storage(:__RE_TEST_ITEMS__, ($file_node, $testitem_names)) do
-                        task_local_storage(:__RE_TEST_PROJECT__, $(project_root)) do
-                            task_local_storage(:__RE_TEST_SETUPS__, $setup_channel) do
-                                Base.include($ti_filter, Main, $filepath)
+            rpath = nestedrelpath(root, project_root)
+            startswith(rpath, hidden_re) && continue # skip hidden directories
+            dir_node = DirNode(rpath; report, verbose=verbose_results)
+            dir_nodes[rpath] = dir_node
+            push!(get(dir_nodes, dirname(rpath), root_node), dir_node)
+            for file in files
+                startswith(file, hidden_re) && continue # skip hidden files
+                filepath = joinpath(root, file)
+                # We filter here, rather than the testitem level, to make sure we don't
+                # `include` a file that isn't supposed to be a test-file at all, e.g. its
+                # not on a path the user requested but it happens to have a test-file suffix.
+                # We always include testsetup-files so users don't need to request them,
+                # even if they're not in a requested path, e.g. they are a level up in the
+                # directory tree. The testsetup-file suffix is hopefully specific enough
+                # to ReTestItems that this doesn't lead to `include`ing unexpected files.
+                if !(is_testsetup_file(filepath) || (is_test_file(filepath) && is_requested(filepath, paths)))
+                    continue
+                end
+                fpath = nestedrelpath(filepath, project_root)
+                file_node = FileNode(fpath, ti_filter; report, verbose=verbose_results)
+                testitem_names = Set{String}() # to enforce that names in the same file are unique
+                push!(dir_node, file_node)
+                @debugv 1 "Including test items from file `$filepath`"
+                @spawn begin
+                    task_local_storage(:__RE_TEST_RUNNING__, true) do
+                        task_local_storage(:__RE_TEST_ITEMS__, ($file_node, $testitem_names)) do
+                            task_local_storage(:__RE_TEST_PROJECT__, $(project_root)) do
+                                task_local_storage(:__RE_TEST_SETUPS__, $setup_channel) do
+                                    Base.include($ti_filter, Main, $filepath)
+                                end
                             end
                         end
                     end
@@ -991,13 +993,8 @@ function should_skip(ti::TestItem)
     skip_body = deepcopy(ti.skip::Expr)
     softscope_all!(skip_body)
     # Run in a new module to not pollute `Main`.
-    # Need to store the result of the `skip` expression so we can check it.
-    mod_name = gensym(Symbol(:skip_, ti.name))
-    skip_var = gensym(:skip)
-    skip_mod_expr = :(module $mod_name; $skip_var = $skip_body; end)
-    skip_mod = Core.eval(Main, skip_mod_expr)
-    # Check what the expression evaluated to.
-    skip = getfield(skip_mod, skip_var)
+    mod = Module(Symbol(:skip_, ti.name))
+    skip = Core.eval(mod, skip_body)
     !isa(skip, Bool) && _throw_not_bool(ti, skip)
     return skip::Bool
 end

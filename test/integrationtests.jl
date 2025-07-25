@@ -173,7 +173,12 @@ end
     @test_throws ReTestItems.NoTestException runtests(ti -> :b_tag in ti.tags, pkg; name="b", tags=[:nope])
 
     # can only filter on `ti.name` and `ti.tags` (at least for now)
-    @test_throws "no field file" runtests(ti -> contains(ti.file, "bar_"), pkg)
+    expected = if VERSION < v"1.12.0-DEV"
+        "no field file"
+    else
+        "no field `file`"
+    end
+    @test_throws expected runtests(ti -> contains(ti.file, "bar_"), pkg)
 end
 
 @testset "`@testitem` scoping rules" begin

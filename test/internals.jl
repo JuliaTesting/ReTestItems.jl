@@ -300,7 +300,7 @@ end
 end
 
 @testset "should_skip" begin
-    should_skip = ReTestItems.should_skip
+    using ReTestItems: should_skip
 
     ti = @testitem("x", skip=true, _run=false, begin end)
     @test should_skip(ti)
