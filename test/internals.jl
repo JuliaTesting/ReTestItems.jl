@@ -92,17 +92,18 @@ end
     shouldrun = TestItemFilter(Returns(true), nothing, nothing)
     verbose_results = false
     report = false
+    project = touch(joinpath(mktempdir(), "Project.toml"))
 
     # Requesting only non-existent files/dirs should result in no files being included
-    ti, setups = include_testfiles!("proj", "/this/file/", ("/this/file/is/not/a/t-e-s-tfile.jl",), shouldrun, verbose_results, report)
+    ti, setups = include_testfiles!("proj", project, ("/this/file/is/not/a/t-e-s-tfile.jl",), shouldrun, verbose_results, report)
     @test isempty(ti.testitems)
     @test isempty(setups)
 
-    ti, setups = include_testfiles!("proj", "/this/file/", ("/this/file/does/not/exist/imaginary_tests.jl",), shouldrun, verbose_results, report)
+    ti, setups = include_testfiles!("proj", project, ("/this/file/does/not/exist/imaginary_tests.jl",), shouldrun, verbose_results, report)
     @test isempty(ti.testitems)
     @test isempty(setups)
 
-    ti, setups = include_testfiles!("proj", "/this/dir/", ("/this/dir/does/not/exist/", "/this/dir/also/not/exist/"), shouldrun, verbose_results, report)
+    ti, setups = include_testfiles!("proj", project, ("/this/dir/does/not/exist/", "/this/dir/also/not/exist/"), shouldrun, verbose_results, report)
     @test isempty(ti.testitems)
     @test isempty(setups)
 
@@ -300,7 +301,7 @@ end
 end
 
 @testset "should_skip" begin
-    should_skip = ReTestItems.should_skip
+    using ReTestItems: should_skip
 
     ti = @testitem("x", skip=true, _run=false, begin end)
     @test should_skip(ti)

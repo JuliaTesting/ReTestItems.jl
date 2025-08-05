@@ -107,15 +107,20 @@ using Test
                 return read(path, String)
             end
 
-            @test occursin(r"Thread 1 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
-            @test occursin(r"Thread 2 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
-            @test occursin(r"Thread 3 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+            # In Julia v1.12+ looks it prints the threadpool, like:
+            # Thread 1 (interactive) Task 0x00007f03563fc010 Total snapshots: 597. Utilization: 0%
+            # Thread 5 (default) Task 0x00007f03563fe2c0 Total snapshots: 597. Utilization: 20%
+            re_thread(i::Int) = Regex("Thread $i( \\((default|interactive)\\))? Task 0x")
+            @test occursin(re_thread(1), logs)
+            @test occursin(re_thread(2), logs)
+            @test occursin(re_thread(3), logs)
+
             if VERSION >= v"1.9"
-                @test occursin(r"Thread 4 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
-                @test occursin(r"Thread 5 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
-                @test !occursin(r"Thread 6 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+                @test occursin(re_thread(4), logs)
+                @test occursin(re_thread(5), logs)
+                @test !occursin(re_thread(6), logs)
             else
-                @test !occursin(r"Thread 4 Task 0x\w+ Total snapshots: \d+. Utilization: \d+%", logs)
+                @test !occursin(re_thread(4), logs)
             end
         end
     end
