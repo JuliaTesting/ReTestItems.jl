@@ -947,7 +947,7 @@ end
         @testset "non-zero timeout_profile_wait means we collect a CPU profile" begin
             capture_timeout_profile(5) do logs
                 @test occursin("Information request received. A stacktrace will print followed by a $(default_peektime) second profile", logs)
-                @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
+                @test count(r"pthread_cond_wait|__psynch_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
                 @test occursin("Profile collected.", logs)
             end
         end
@@ -956,7 +956,7 @@ end
         @testset "`set_peek_duration` is respected in `worker_init_expr`" begin
             capture_timeout_profile(5, worker_init_expr=:(using Profile; Profile.set_peek_duration($default_peektime + 1.0))) do logs
                 @test occursin("Information request received. A stacktrace will print followed by a $(default_peektime + 1.0) second profile", logs)
-                @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
+                @test count(r"pthread_cond_wait|__psynch_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
                 @test occursin("Profile collected.", logs)
             end
         end
@@ -967,7 +967,7 @@ end
             withenv("RETESTITEMS_TIMEOUT_PROFILE_WAIT" => "5") do
                 capture_timeout_profile(nothing) do logs
                     @test occursin("Information request received", logs)
-                    @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
+                    @test count(r"pthread_cond_wait|__psynch_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
                     @test occursin("Profile collected.", logs)
                 end
             end
@@ -977,7 +977,7 @@ end
         @testset "CPU profile with $(repr(log_capture))" for log_capture in (:eager, :batched)
             capture_timeout_profile(5, nworker_threads=VERSION >= v"1.9" ? "3,2" : "3", logs=log_capture) do logs
                 @test occursin("Information request received", logs)
-                @test count(r"pthread_cond_wait|__psych_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
+                @test count(r"pthread_cond_wait|__psynch_cvwait", logs) > 0 # the stacktrace was printed (will fail on Windows)
                 @test occursin("Profile collected.", logs)
             end
         end
