@@ -600,6 +600,22 @@ function record_test_error!(testitem, msg, elapsed_seconds::Real=0.0)
     return testitem
 end
 
+function _restart_for_sandbox(before_or_after::String, testitem::TestItem, ctx::TestContext, cfg::_Config, worker_num::Int)
+    @info "Restarting process for worker $worker_num $before_or_after sandboxed test item $(repr(testitem.name))"
+    terminate!(worker, :sandbox)
+    wait(worker)
+    worker = robust_start_worker(ctx, cfg.nworker_threads, cfg.worker_init_expr; worker_num)
+    return worker
+end
+
+function _restart_for_memory(memory_threshold_percent::Number, ctx::TestContext, cfg::_Config, worker_num::Int)
+    @warn "Memory usage ($(Base.Ryu.writefixed(memory_percent(), 1))%) is higher than threshold ($(Base.Ryu.writefixed(memory_threshold_percent, 1))%). Restarting process for worker $worker_num to try to free memory."
+    terminate!(worker, :memory_threshold)
+    wait(worker)
+    worker = robust_start_worker(ctx, cfg.nworker_threads, cfg.worker_init_expr; worker_num)
+    return worker
+end
+
 # The provided `worker_num` is only for logging purposes, and not persisted as part of the worker.
 function manage_worker(
     worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, cfg::_Config;
@@ -610,11 +626,10 @@ function manage_worker(
     memory_threshold_percent = 100 * cfg.memory_threshold
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
-        if memory_percent() > memory_threshold_percent
-            @warn "Memory usage ($(Base.Ryu.writefixed(memory_percent(), 1))%) is higher than threshold ($(Base.Ryu.writefixed(memory_threshold_percent, 1))%). Restarting process for worker $worker_num to try to free memory."
-            terminate!(worker)
-            wait(worker)
-            worker = robust_start_worker(proj_name, cfg.nworker_threads, cfg.worker_init_expr, ntestitems)
+        if testitem.sandbox
+            _restart_for_sandbox("before", testitem, ctx, cfg, worker_num)
+        elseif memory_percent() > memory_threshold_percent
+            _restart_for_memory(memory_threshold_percent, ctx, cfg, worker_num)
         end
         testitem.workerid[] = worker.pid
         timeout = something(testitem.timeout, cfg.testitem_timeout)
@@ -660,6 +675,7 @@ function manage_worker(
                         already_cancelled = cancel!(testitems)
                         already_cancelled || print_failfast_cancellation(testitem)
                     end
+                    testitem.sandbox && _restart_for_sandbox("after", testitem, ctx, cfg, worker_num)
                     testitem = next_testitem(testitems, testitem.number[])
                     run_number = 1
                 end
@@ -675,7 +691,7 @@ function manage_worker(
                         A CPU profile will be triggered on the worker and then it will be terminated."
                     trigger_profile(worker, cfg.timeout_profile_wait, :timeout)
                 end
-                terminate!(worker, :timeout)
+                terminate!(worker, :timeout) # we restart below
                 wait(worker)
                 # TODO: We print the captured logs after the worker is terminated,
                 # which means that we include an annoying stackrace from the worker termination,
@@ -704,6 +720,9 @@ function manage_worker(
                 if cfg.failfast
                     already_cancelled = cancel!(testitems)
                     already_cancelled || print_failfast_cancellation(testitem)
+                elseif testitem.sandbox
+                    terminate!(worker, :sandbox) # we restart below
+                    wait(worker)
                 end
                 testitem = next_testitem(testitems, testitem.number[])
                 run_number = 1
