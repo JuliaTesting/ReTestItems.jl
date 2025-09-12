@@ -23,13 +23,11 @@ else
     const errmon = identity
 end
 
-# Set of testitems identified by (file, name) tuples storing whether the testitem
-# has failed (-1) or passed (1) or hasn't yet been seen (0).
-# Used by fails_first to sort failures before unseen before passes.
+# Used by failures_first to sort failures before unseen before passes.
 const GLOBAL_TEST_STATUS = Dict{String,UInt8}()
-_STATUS_FAILED = UInt8(0)
-_STATUS_UNSEEN = UInt8(1)
-_STATUS_PASSED = UInt8(2)
+const _STATUS_FAILED = UInt8(0)
+const _STATUS_UNSEEN = UInt8(1)
+const _STATUS_PASSED = UInt8(2)
 reset_test_status!() = (empty!(GLOBAL_TEST_STATUS); nothing)
 _status_when_last_seen(ti) = get(GLOBAL_TEST_STATUS, ti.id, _STATUS_UNSEEN)
 _store_failure!(ti) = GLOBAL_TEST_STATUS[ti.id] = _STATUS_FAILED
@@ -257,6 +255,10 @@ will be run.
   Defaults to the value passed to the `failfast` keyword.
   If a `@testitem` sets its own `failfast` keyword, then that takes precedence.
   Note that the `testitem_failfast` keyword only takes effect in Julia v1.9+ and is ignored in earlier Julia versions.
+- `failures_first::Bool=true`: if `true`, first runs test items that failed the last time
+  they ran, followed by new test items, followed by test items that passed the
+  last time they ran. This is currently only supported when `nworkers=0`.
+  Can also be set using the `RETESTITEMS_FAILURES_FIRST` environment variable.
 """
 function runtests end
 
@@ -286,7 +288,7 @@ end
     timeout_profile_wait::Int
     memory_threshold::Float64
     gc_between_testitems::Bool
-    fails_first::Bool
+    failures_first::Bool
 end
 
 
@@ -311,7 +313,7 @@ function runtests(
     gc_between_testitems::Bool=parse(Bool, get(ENV, "RETESTITEMS_GC_BETWEEN_TESTITEMS", string(nworkers > 1))),
     failfast::Bool=parse(Bool, get(ENV, "RETESTITEMS_FAILFAST", "false")),
     testitem_failfast::Bool=parse(Bool, get(ENV, "RETESTITEMS_TESTITEM_FAILFAST", string(failfast))),
-    fails_first::Bool=parse(Bool, get(ENV, "RETESTITEMS_FAILS_FIRST", "false")),
+    failures_first::Bool=parse(Bool, get(ENV, "RETESTITEMS_FAILURES_FIRST", "true")),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = _validated_paths(paths, validate_paths)
@@ -322,7 +324,7 @@ function runtests(
     testitem_timeout > 0 || throw(ArgumentError("`testitem_timeout` must be a positive number, got $(repr(testitem_timeout))"))
     timeout_profile_wait >= 0 || throw(ArgumentError("`timeout_profile_wait` must be a non-negative number, got $(repr(timeout_profile_wait))"))
     test_end_expr.head === :block || throw(ArgumentError("`test_end_expr` must be a `:block` expression, got a `$(repr(test_end_expr.head))` expression"))
-    !fails_first || nworkers == 0 || throw(ArgumentError("`fails_first` is only supported with `nworkers=0`"))
+    !failures_first || nworkers == 0 || throw(ArgumentError("`failures_first` is only supported with `nworkers=0`"))
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
     ti_filter = TestItemFilter(shouldrun, tags, name)
@@ -333,7 +335,7 @@ function runtests(
     (timeout_profile_wait > 0 && Sys.iswindows()) && @warn "CPU profiles on timeout is not supported on Windows, ignoring `timeout_profile_wait`"
     mkpath(RETESTITEMS_TEMP_FOLDER[]) # ensure our folder wasn't removed
     save_current_stdio()
-    cfg = _Config(; nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, testitem_failfast, failfast, retries, logs, report, verbose_results, timeout_profile_wait, memory_threshold, gc_between_testitems, fails_first)
+    cfg = _Config(; nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, testitem_failfast, failfast, retries, logs, report, verbose_results, timeout_profile_wait, memory_threshold, gc_between_testitems, failures_first)
     debuglvl = Int(debug)
     if debuglvl > 0
         withdebug(debuglvl) do
@@ -422,7 +424,7 @@ function _runtests_in_current_env(
             ctx = TestContext(proj_name, ntestitems)
             # we use a single TestSetupModules
             ctx.setups_evaled = TestSetupModules()
-            if cfg.fails_first && !isempty(GLOBAL_TEST_STATUS)
+            if cfg.failures_first && !isempty(GLOBAL_TEST_STATUS)
                 sort!(testitems.testitems; by=_status_when_last_seen)
             end
             for (i, testitem) in enumerate(testitems.testitems)
