@@ -1514,4 +1514,54 @@ end
     @test contains(c.output, "3/3 test items were run.")
 end
 
+@testset "failures_first" begin
+    using IOCapture
+    ReTestItems.reset_test_status!()
+    # we use logs to tell us the order in which tests were run.
+    function testitems_runorder(logstr::String)
+        re = r"START \((?<num>\d)/\d\) test item \"(?<name>.*)\""
+        names = [String(m[:name]) for m in eachmatch(re, logstr)]
+        order = [parse(Int, m[:num]) for m in eachmatch(re, logstr)]
+        return names[order]
+    end
+    file = joinpath(TEST_FILES_DIR, "_failures_first_tests.jl")
+    @test_throws ArgumentError("`failures_first` is only supported with `nworkers=0`") begin
+        runtests(file; failures_first=true, nworkers=99)
+    end
+    for run in (1, 2)
+        c = IOCapture.capture() do
+            encased_testset(()->runtests(file; failures_first=true, nworkers=0))
+        end
+        results = c.value
+        @test n_tests(results) == 4
+        @test n_passed(results) == 2
+        tis = testitems_runorder(c.output)
+        if run == 1
+            @test tis == ["a. pass", "b. fail", "c. pass", "d. fail"]
+        else
+            @test tis == ["b. fail", "d. fail", "a. pass", "c. pass"]
+        end
+    end
+    # run a subset of tests
+    name = r"^a|^d"
+    c = IOCapture.capture() do
+        encased_testset(()->runtests(file; failures_first=true, name))
+    end
+    results = c.value
+    @test n_tests(results) == 2
+    @test n_passed(results) == 1
+    tis = testitems_runorder(c.output)
+    @test tis == ["d. fail", "a. pass"]
+    # run including new tests
+    file2 = joinpath(TEST_FILES_DIR, "_happy_tests.jl")
+    c = IOCapture.capture() do
+        encased_testset(()->runtests(file, file2; failures_first=true))
+    end
+    results = c.value
+    @test n_tests(results) == 4 + 3
+    @test n_passed(results) == 2 + 3
+    tis = testitems_runorder(c.output)
+    @test tis == ["b. fail", "d. fail", "happy 1", "happy 2", "happy 3", "a. pass", "c. pass"]
+end
+
 end # integrationtests.jl testset
