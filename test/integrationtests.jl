@@ -1525,8 +1525,10 @@ end
         return names[order]
     end
     file = joinpath(TEST_FILES_DIR, "_failures_first_tests.jl")
-    @test_throws ArgumentError("`failures_first` is only supported with `nworkers=0`") begin
-        runtests(file; failures_first=true, nworkers=99)
+    expected_err = ArgumentError("`failures_first` is only supported with `nworkers=0`")
+    @test_throws expected_err runtests(file; failures_first=true, nworkers=99)
+    withenv("RETESTITEMS_FAILURES_FIRST" => 1) do
+        @test_throws expected_err runtests(file; nworkers=42)
     end
     for run in (1, 2)
         c = IOCapture.capture() do
@@ -1561,7 +1563,8 @@ end
     @test n_tests(results) == 4 + 3
     @test n_passed(results) == 2 + 3
     tis = testitems_runorder(c.output)
-    @test tis == ["b. fail", "d. fail", "happy 1", "happy 2", "happy 3", "a. pass", "c. pass"]
+    new_tests = ["happy 1", "happy 2", "happy 3"]
+    @test tis == ["b. fail", "d. fail", new_tests..., "a. pass", "c. pass"]
 end
 
 end # integrationtests.jl testset
