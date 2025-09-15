@@ -130,6 +130,15 @@ You can set `runtests` to stop on the first test-item failure by passing `failfa
 
 If you want individual test-items to stop on their first test failure, but not stop the whole `runtests` early, you can instead pass just `testitem_failfast=true` to `runtests`.
 
+#### Running previous failures first
+
+You can set `runtests` to run first any test-items that failed the last time they were run by passing `failures_first=true`.
+When `failures_first=true` is set, test-items are order so that previously failing test-items run first, followed by previously unseen test-items, followed by previously passing test-items.
+
+> [!NOTE]
+> Note `failures_first=true` is currently only compatible with `nworkers=0`
+
+This option can be combined with `failfast=true` to efficiently find the next failing test-item during development.
 
 ## Writing tests
 
