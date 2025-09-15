@@ -141,6 +141,7 @@ function record_results!(file::FileNode, ti::TestItem)
         # Always record last try as the final status, so a pass-on-retry is a pass.
         Test.record(file.testset, last(ti.testsets))
         junit_record!(file.junit, ti)
+        _cache_status!(ti)
     end
 end
 
@@ -151,11 +152,16 @@ junit_record!(_, ::Nothing) = nothing
 
 Test.finish(ti::TestItems) = Test.finish(ti.graph.testset)
 
-function get_starting_testitems(ti::TestItems, n)
-    # we want to select n evenly spaced test items from ti.testitems
+function get_starting_testitems(ti::TestItems, n::Int; is_sorted::Bool=false)
     len = length(ti.testitems)
-    step = max(1, len / n)
-    testitems = [ti.testitems[round(Int, i)] for i in 1:step:len]
+    if is_sorted
+        # select the first n test items
+        testitems = ti.testitems[1:min(n, len)]
+    else
+        # select n evenly spaced test items starting with the first one
+        step = max(1, len / n)
+        testitems = [ti.testitems[round(Int, i)] for i in 1:step:len]
+    end
     @debugv 2 "get_starting_testitems len=$len n=$n allunique=$(allunique(testitems))"
     @assert length(testitems) == min(n, len) && allunique(testitems)
     for (i, t) in enumerate(testitems)

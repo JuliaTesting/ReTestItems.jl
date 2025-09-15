@@ -11,14 +11,21 @@ using ReTestItems
     # let's test this exhaustively for 1-10 testitems across 1-10 workers.
     for nworkers in 1:10
         for nitems in 1:10
-            testitems = [@testitem("ti-$i", _run=false, begin end) for i in 1:nitems]
-            starts = get_starting_testitems(TestItems(graph, testitems), nworkers)
-            startitems = [x for x in starts if !isnothing(x)]
-            @test length(starts) == nworkers
-            @test length(startitems) == min(nworkers, nitems)
-            @test allunique(ti.name for ti in startitems)
+            for is_sorted in (true, false)
+                testitems = [@testitem("ti-$i", _run=false, begin end) for i in 1:nitems]
+                starts = get_starting_testitems(TestItems(graph, testitems), nworkers; is_sorted)
+                startitems = [x for x in starts if !isnothing(x)]
+                @test length(starts) == nworkers
+                @test length(startitems) == min(nworkers, nitems)
+                @test allunique(ti.name for ti in startitems)
+            end
         end
     end
+    # the `is_sorted` case just returns the first `n` items
+    n = 3
+    testitems = [@testitem("ti-$i", _run=false, begin end) for i in 1:(2n)]
+    starts = get_starting_testitems(TestItems(graph, testitems), n; is_sorted=true)
+    @test starts == testitems[1:n]
 end
 
 @testset "is_test_file" begin

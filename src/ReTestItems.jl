@@ -24,14 +24,18 @@ else
 end
 
 # Used by failures_first to sort failures before unseen before passes.
-const GLOBAL_TEST_STATUS = Dict{String,UInt8}()
-const _STATUS_FAILED = UInt8(0)
-const _STATUS_UNSEEN = UInt8(1)
-const _STATUS_PASSED = UInt8(2)
+@enum _TEST_STATUS::UInt8 begin
+    _FAILED = 0
+    _UNSEEN = 1
+    _PASSED = 2
+end
+const GLOBAL_TEST_STATUS = Dict{String,_TEST_STATUS}()
 reset_test_status!() = (empty!(GLOBAL_TEST_STATUS); nothing)
-_status_when_last_seen(ti) = get(GLOBAL_TEST_STATUS, ti.id, _STATUS_UNSEEN)
-_store_failure!(ti) = GLOBAL_TEST_STATUS[ti.id] = _STATUS_FAILED
-_store_pass!(ti) =    GLOBAL_TEST_STATUS[ti.id] = _STATUS_PASSED
+_status_when_last_seen(ti) = get(GLOBAL_TEST_STATUS, ti.id, _UNSEEN)
+function _cache_status!(ti)
+    status = ti.is_non_pass[] ? _FAILED : _PASSED
+    GLOBAL_TEST_STATUS[ti.id] = status
+end
 
 # We use the Test.jl stdlib `failfast` mechanism to implement `testitem_failfast`, but that
 # feature was only added in Julia v1.9, so we define these shims so our code can be
@@ -256,8 +260,7 @@ will be run.
   If a `@testitem` sets its own `failfast` keyword, then that takes precedence.
   Note that the `testitem_failfast` keyword only takes effect in Julia v1.9+ and is ignored in earlier Julia versions.
 - `failures_first::Bool=false`: if `true`, first runs test items that failed the last time
-  they ran, followed by new test items, followed by test items that passed the
-  last time they ran. This is currently only supported when `nworkers=0`.
+  they ran, followed by new test items, followed by test items that passed the last time they ran.
   Can also be set using the `RETESTITEMS_FAILURES_FIRST` environment variable.
 """
 function runtests end
@@ -324,7 +327,6 @@ function runtests(
     testitem_timeout > 0 || throw(ArgumentError("`testitem_timeout` must be a positive number, got $(repr(testitem_timeout))"))
     timeout_profile_wait >= 0 || throw(ArgumentError("`timeout_profile_wait` must be a non-negative number, got $(repr(timeout_profile_wait))"))
     test_end_expr.head === :block || throw(ArgumentError("`test_end_expr` must be a `:block` expression, got a `$(repr(test_end_expr.head))` expression"))
-    !failures_first || nworkers == 0 || throw(ArgumentError("`failures_first` is only supported with `nworkers=0`"))
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
     ti_filter = TestItemFilter(shouldrun, tags, name)
@@ -417,6 +419,15 @@ function _runtests_in_current_env(
     @info "Scheduling $ntestitems tests on pid $(Libc.getpid())" *
         (nworkers == 0 ? "" : " with $nworkers worker processes and $nworker_threads threads per worker.")
     try
+        if cfg.failures_first && !isempty(GLOBAL_TEST_STATUS)
+            sort!(testitems.testitems; by=_status_when_last_seen)
+            foreach(enumerate(testitems.testitems)) do (i, ti)
+                ti.number[] = i # reset number to match new order
+            end
+            is_sorted_queue = true
+        else
+            is_sorted_queue = false
+        end
         if nworkers == 0
             length(cfg.worker_init_expr.args) > 0 && error("worker_init_expr is set, but will not run because number of workers is 0.")
             # This is where we disable printing for the serial executor case.
@@ -424,9 +435,6 @@ function _runtests_in_current_env(
             ctx = TestContext(proj_name, ntestitems)
             # we use a single TestSetupModules
             ctx.setups_evaled = TestSetupModules()
-            if cfg.failures_first && !isempty(GLOBAL_TEST_STATUS)
-                sort!(testitems.testitems; by=_status_when_last_seen)
-            end
             for (i, testitem) in enumerate(testitems.testitems)
                 testitem.workerid[] = Libc.getpid()
                 testitem.eval_number[] = i
@@ -443,18 +451,13 @@ function _runtests_in_current_env(
                         @debugv 2 "Running GC"
                         GC.gc(true)
                     end
-                    is_non_pass = any_non_pass(ts)
+                    testitem.is_non_pass[] = is_non_pass = any_non_pass(ts)
                     if is_non_pass && run_number != max_runs
                         run_number += 1
                         @info "Retrying $(repr(testitem.name)). Run=$run_number."
                     else
                         break
                     end
-                end
-                if is_non_pass
-                    _store_failure!(testitem)
-                else
-                    _store_pass!(testitem)
                 end
                 if cfg.failfast && is_non_pass
                     cancel!(testitems)
@@ -483,7 +486,7 @@ function _runtests_in_current_env(
             end
             # Now all workers are started, we can begin processing test items.
             @info "Starting running test items"
-            starting = get_starting_testitems(testitems, nworkers)
+            starting = get_starting_testitems(testitems, nworkers; is_sorted=is_sorted_queue)
             @sync for (i, w) in enumerate(workers)
                 ti = starting[i]
                 @spawn begin
@@ -676,7 +679,7 @@ function manage_worker(
                     @debugv 2 "Running GC on $worker"
                     remote_fetch(worker, :(GC.gc(true)))
                 end
-                is_non_pass = any_non_pass(ts)
+                testitem.is_non_pass[] = is_non_pass = any_non_pass(ts)
                 if is_non_pass && run_number != max_runs
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."

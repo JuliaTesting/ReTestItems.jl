@@ -129,6 +129,7 @@ struct TestItem
     testsetups::Vector{TestSetup} # populated by runtests coordinator
     workerid::Base.RefValue{Int} # populated when the test item is scheduled
     testsets::Vector{DefaultTestSet} # populated when the test item is finished running
+    is_non_pass::Base.RefValue{Bool} # populated when the test item is finished running
     eval_number::Base.RefValue{Int} # to keep track of how many items have been run so far
     stats::Vector{PerfStats} # populated when the test item is finished running
     scheduled_for_evaluation::ScheduledForEvaluation # to keep track of whether the test item has been scheduled for evaluation
@@ -140,6 +141,7 @@ function TestItem(number, name, id, tags, default_imports, setups, retries, time
         TestSetup[],
         Ref{Int}(0),
         DefaultTestSet[],
+        Ref{Bool}(),
         Ref{Int}(0),
         PerfStats[],
         ScheduledForEvaluation(),
