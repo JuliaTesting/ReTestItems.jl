@@ -804,10 +804,12 @@ end
 
 const _hidden_re = r"\.\w"
 
-# Traverses the directory tree starting at `project_root` and populates `dir_nodes` with
+# Traverses the directory tree starting at `project_root` and grows `root_node` with
 # `DirNode`s and `FileNode`s for each directory and test file found. Filters out non-eligible
 # paths.
-function walkdir_task(walkdir_channel::Channel{Tuple{String,FileNode}}, project_root::String, root_node, dir_nodes, subproject_root::Union{String,Nothing}, ti_filter, paths, projectfile, report, verbose_results)
+function walkdir_task(walkdir_channel::Channel{Tuple{String,FileNode}}, project_root::String, root_node, ti_filter, paths, projectfile, report, verbose_results)
+    dir_nodes = Dict{String, DirNode}()
+    subproject_root = nothing # don't recurse into directories with their own Project.toml.
     try
         # Since test items don't store paths to their test setups, we need to traverse the
         # whole project, not just the requested paths.
@@ -877,6 +879,7 @@ function include_task(walkdir_channel, setup_channel, project_root, ti_filter)
         close(walkdir_channel, err)
         rethrow(err)
     end
+    return nothing
 end
 
 # Find test items using a pool of tasks to include files in parallel.
@@ -884,9 +887,7 @@ end
 # Assumes `isdir(project_root)`, which is guaranteed by `_runtests`.
 function include_testfiles!(project_name, projectfile, paths, ti_filter::TestItemFilter, verbose_results::Bool, report::Bool)
     project_root = dirname(projectfile)
-    subproject_root = nothing  # don't recurse into directories with their own Project.toml.
     root_node = DirNode(project_name; report, verbose=verbose_results)
-    dir_nodes = Dict{String, DirNode}()
     # setup_channel is populated in store_test_setup when we expand a @testsetup
     # we set it below in tls as __RE_TEST_SETUPS__ for each included file
     setup_channel = Channel{Pair{Symbol, TestSetup}}(Inf)
@@ -904,8 +905,7 @@ function include_testfiles!(project_name, projectfile, paths, ti_filter::TestIte
     walkdir_channel = Channel{Tuple{String, FileNode}}(1024)
     @sync begin
         @spawn walkdir_task(
-            $walkdir_channel, $project_root, $root_node, $dir_nodes, $subproject_root,
-            $ti_filter, $paths, $projectfile, $report, $verbose_results
+            $walkdir_channel, $project_root, $root_node, $ti_filter, $paths, $projectfile, $report, $verbose_results
         )
         for _ in 1:clamp(2*nthreads(), 1, 16)
             @spawn include_task($walkdir_channel, $setup_channel, $project_root, $ti_filter)
