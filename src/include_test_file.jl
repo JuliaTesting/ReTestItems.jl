@@ -1,7 +1,7 @@
 using JuliaSyntax: ParseStream, @K_str, build_tree, bump_trivia, kind, parse!, peek_full_token, peek_token
 using StringViews
 
-function include_test_file(ti_filter, path::String)
+function include_test_file(ti_filter::TestItemFilter, path::String)
     bytes = read(path)
     stream = ParseStream(bytes)
     tls = task_local_storage()
@@ -43,22 +43,22 @@ function _eval_from_stream(stream, path)
 end
 
 # test_rel -> apply ti_filter on the parsed ast
-function _eval_from_stream(stream, path, ti_filter)
+function _eval_from_stream(stream, path, ti_filter::TestItemFilter)
     parse!(stream; rule=:statement)
     ast = build_tree(Expr, stream; filename=path)
-    filtered = ti_filter(ast)
-    filtered === nothing || Core.eval(Main, filtered)
+    filtered = ti_filter(ast)::Union{Nothing, Expr}
+    filtered === nothing || Core.eval(Main, filtered::Expr)
     return nothing
 end
 
 # like above, but tries to avoid parsing the ast if it sees from the name identifier token
 # it won't pass the filter
-function _eval_from_stream(stream, path, ti_filter, bytes)
+function _eval_from_stream(stream, path, ti_filter::TestItemFilter, bytes)
     if ti_filter.name isa Nothing
         parse!(stream; rule=:statement)
         ast = build_tree(Expr, stream; filename=path)
-        filtered = ti_filter(ast)
-        filtered === nothing || Core.eval(Main, filtered)
+        filtered = ti_filter(ast)::Union{Nothing, Expr}
+        filtered === nothing || Core.eval(Main, filtered::Expr)
         return nothing
     end
 
@@ -67,8 +67,8 @@ function _eval_from_stream(stream, path, ti_filter, bytes)
     parse!(stream; rule=:statement)
     if _contains(name, ti_filter.name)
         ast = build_tree(Expr, stream; filename=path)
-        filtered = ti_filter(ast)
-        filtered === nothing || Core.eval(Main, filtered)
+        filtered = ti_filter(ast)::Union{Nothing, Expr}
+        filtered === nothing || Core.eval(Main, filtered::Expr)
     end
     return nothing
 end

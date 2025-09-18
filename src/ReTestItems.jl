@@ -866,7 +866,7 @@ end
 
 # Parses and evals files found by the `walkdir_task`. During macro expansion of `@testitem`
 # test items are push!d onto the FileNode stored in task local storage as `:__RE_TEST_ITEMS__`.
-function include_task(walkdir_channel, setup_channel, project_root, ti_filter)
+function include_task(walkdir_channel, setup_channel, project_root, ti_filter::TestItemFilter)
     try
         testitem_names = Set{String}() # to enforce that names in the same file are unique
         task_local_storage(:__RE_TEST_RUNNING__, true) do
