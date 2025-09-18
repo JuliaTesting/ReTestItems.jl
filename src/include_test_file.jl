@@ -24,7 +24,7 @@ function include_test_file(ti_filter::TestItemFilter, path::String)
             else
                 error("Test files must only include `@testitem` and `@testsetup` calls, got a $t at $(path)") # TODO
             end
-            empty!(stream)
+            empty!(stream) # TODO: SourceFile created on a reset stream always start line number at 1
         end
     finally
         delete!(tls, :SOURCE_PATH)
@@ -46,7 +46,8 @@ end
 function _eval_from_stream(stream, path, ti_filter::TestItemFilter)
     parse!(stream; rule=:statement)
     ast = build_tree(Expr, stream; filename=path)
-    filtered = ti_filter(ast)::Union{Nothing, Expr}
+    any_error(stream) && throw(ParseError(stream, filename=path))
+    filtered = __filter_rai(ti_filter, ast)::Union{Nothing, Expr}
     filtered === nothing || Core.eval(Main, filtered::Expr)
     return nothing
 end
@@ -57,7 +58,8 @@ function _eval_from_stream(stream, path, ti_filter::TestItemFilter, bytes)
     if ti_filter.name isa Nothing
         parse!(stream; rule=:statement)
         ast = build_tree(Expr, stream; filename=path)
-        filtered = ti_filter(ast)::Union{Nothing, Expr}
+        any_error(stream) && throw(ParseError(stream, filename=path))
+        filtered = __filter_ti(ti_filter, ast)::Union{Nothing, Expr}
         filtered === nothing || Core.eval(Main, filtered::Expr)
         return nothing
     end
@@ -67,7 +69,8 @@ function _eval_from_stream(stream, path, ti_filter::TestItemFilter, bytes)
     parse!(stream; rule=:statement)
     if _contains(name, ti_filter.name)
         ast = build_tree(Expr, stream; filename=path)
-        filtered = ti_filter(ast)::Union{Nothing, Expr}
+        any_error(stream) && throw(ParseError(stream, filename=path))
+        filtered = __filter_ti(ti_filter, ast)::Union{Nothing, Expr}
         filtered === nothing || Core.eval(Main, filtered::Expr)
     end
     return nothing

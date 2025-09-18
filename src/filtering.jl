@@ -52,14 +52,7 @@ function filter_testitem(f, expr)
     @assert expr.head == :macrocall
     macro_name = expr.args[1]
     if macro_name === Symbol("@testitem")
-        # `@testitem` have have at least: macro_name, line_number, name, body
-        length(expr.args) < 4 && return expr
-        name = try_get_name(expr)
-        name === nothing && return expr
-        tags = try_get_tags(expr)
-        tags === nothing && return expr
-        ti = TestItemMetadata(name, tags)
-        return f(ti) ? expr : nothing
+        return __filter_ti(f, expr)
     elseif macro_name === Symbol("@testsetup")
         return expr
     elseif macro_name === ___RAI_MACRO_NAME_DONT_USE # TODO: drop this branch when we can
@@ -96,6 +89,17 @@ function try_get_tags(expr::Expr)
         end
     end
     return tags
+end
+
+function __filter_ti(f, expr)
+    # `@testitem` have have at least: macro_name, line_number, name, body
+    length(expr.args) < 4 && return expr
+    name = try_get_name(expr)
+    name === nothing && return expr
+    tags = try_get_tags(expr)
+    tags === nothing && return expr
+    ti = TestItemMetadata(name, tags)
+    return f(ti) ? expr : nothing
 end
 
 # Macro used by RAI (corporate sponsor of this package)

@@ -816,7 +816,7 @@ end
 end
 
 @testset "error on code outside `@testitem`/`@testsetup`" begin
-    err_msg = "Test files must only include `@testitem` and `@testsetup` calls."
+    err_msg = "Test files must only include `@testitem` and `@testsetup` calls"
     filter_func(ti) = false
     @test_throws err_msg runtests(joinpath(TEST_FILES_DIR, "_misuse_file1_test.jl"))
     @test_throws err_msg runtests(joinpath(TEST_FILES_DIR, "_misuse_file2_test.jl"))
@@ -868,9 +868,9 @@ end
     file = joinpath(TEST_FILES_DIR, "_duplicate_names_test.jl")
     relfpath = relpath(file, pkgdir(ReTestItems))
     expected_msg = if Base.Sys.iswindows()
-        Regex("Duplicate test item name `dup` in file")
+        "Duplicate test item name `dup` in file"
     else
-        Regex("Duplicate test item name `dup` in file `$(relfpath)` at line 4")
+        "Duplicate test item name `dup` in file `$(relfpath)` at line 4"
     end
     @test_throws expected_msg runtests(file; nworkers=0)
     @test_throws expected_msg runtests(file; nworkers=1)
