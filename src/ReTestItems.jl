@@ -802,7 +802,8 @@ function _is_subproject(dir, current_projectfile)
     return true
 end
 
-const _hidden_re = r"\.\w"
+# called on results of `readdir(root)`
+_is_hidden(name::AbstractString) = ncodeunits(name) > 1 && name[1] == '.'
 
 # Traverses the directory tree starting at `project_root` and grows `root_node` with
 # `DirNode`s and `FileNode`s for each directory and test file found. Filters out non-eligible
@@ -821,7 +822,7 @@ function walkdir_task(walkdir_channel::Channel{Tuple{String,FileNode}}, project_
             dir_nodes[rel_root] = dir_node
             push!(get(dir_nodes, dirname(rel_root), root_node), dir_node)
             for file in readdir(root)
-                startswith(file, _hidden_re) && continue # skip hidden files/directories
+                _is_hidden(file) && continue # skip hidden files/directories
                 full_path = joinpath(root, file)
                 if isdir(full_path)
                     if subproject_root !== nothing && startswith(full_path, subproject_root)
@@ -907,7 +908,7 @@ function include_testfiles!(project_name, projectfile, paths, ti_filter::TestIte
         @spawn walkdir_task(
             $walkdir_channel, $project_root, $root_node, $ti_filter, $paths, $projectfile, $report, $verbose_results
         )
-        for _ in 1:clamp(2*nthreads(), 1, 16)
+        for _ in 1:clamp(2*(nthreads()-(nthreads() == 1)), 1, 16) # 1 to 16 tasks, 1 if single-threaded
             @spawn include_task($walkdir_channel, $setup_channel, $project_root, $ti_filter)
         end
     end
