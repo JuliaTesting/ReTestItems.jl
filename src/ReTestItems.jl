@@ -789,49 +789,53 @@ function nestedrelpath(path::T, startdir::AbstractString) where {T <: AbstractSt
 end
 
 # is `dir` the root of a subproject inside the current project?
-function _is_subproject(dir, current_projectfile)
-    projectfile = _project_file(dir)
-    isnothing(projectfile) && return false
+# all three paths are assumed to be absolute paths
+let test_project = joinpath("test", "Project.toml")
+    global function _is_subproject(dir, current_projectfile, current_project_dir)
+        projectfile = _project_file(dir)
+        isnothing(projectfile) && return false
 
-    projectfile = abspath(projectfile)
-    projectfile == current_projectfile && return false
-    # a `test/Project.toml` is special and doesn't indicate a subproject
-    current_project_dir = dirname(current_projectfile)
-    rel_projectfile = nestedrelpath(projectfile, current_project_dir)
-    rel_projectfile == joinpath("test", "Project.toml") && return false
-    return true
+        projectfile == current_projectfile && return false
+        # a `test/Project.toml` is special and doesn't indicate a subproject
+        rel_projectfile = nestedrelpath(projectfile, current_project_dir)
+        rel_projectfile == test_project && return false
+        return true
+    end
 end
 
 # called on results of `readdir(root)`
-_is_hidden(name::AbstractString) = ncodeunits(name) > 1 && name[1] == '.'
+_is_hidden(name::AbstractString) = ncodeunits(name) > 1 && codeunits(name)[1] == UInt8('.')
 
 # Traverses the directory tree starting at `project_root` and grows `root_node` with
 # `DirNode`s and `FileNode`s for each directory and test file found. Filters out non-eligible
 # paths.
 function walkdir_task(walkdir_channel::Channel{Tuple{String,FileNode}}, project_root::String, root_node, ti_filter, paths, projectfile, report, verbose_results)
+    @assert isabspath(project_root)
+    @assert isabspath(projectfile)
     dir_nodes = Dict{String, DirNode}()
     subproject_root = nothing # don't recurse into directories with their own Project.toml.
+    abspaths = map(abspath, paths)
     try
         # Since test items don't store paths to their test setups, we need to traverse the
         # whole project, not just the requested paths.
         stack = [project_root]
         while !isempty(stack)
             root = pop!(stack)
+            if subproject_root !== nothing && startswith(root, subproject_root)
+                @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
+                continue
+            elseif _is_subproject(root, projectfile, project_root)
+                subproject_root = root
+                continue
+            end
             rel_root = nestedrelpath(root, project_root)
             dir_node = DirNode(rel_root; report, verbose=verbose_results)
             dir_nodes[rel_root] = dir_node
             push!(get(dir_nodes, dirname(rel_root), root_node), dir_node)
-            for file in readdir(root)
+            for file in readdir(root) # TODO: Use https://github.com/JuliaLang/julia/pull/55358 once it lands
                 _is_hidden(file) && continue # skip hidden files/directories
                 full_path = joinpath(root, file)
                 if isdir(full_path)
-                    if subproject_root !== nothing && startswith(full_path, subproject_root)
-                        @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
-                        continue
-                    elseif _is_subproject(root, projectfile)
-                        subproject_root = root
-                        continue
-                    end
                     push!(stack, full_path)
                 else
                     # We filter here, rather than the testitem level, to make sure we don't
@@ -841,7 +845,7 @@ function walkdir_task(walkdir_channel::Channel{Tuple{String,FileNode}}, project_
                     # even if they're not in a requested path, e.g. they are a level up in the
                     # directory tree. The testsetup-file suffix is hopefully specific enough
                     # to ReTestItems that this doesn't lead to `include`ing unexpected files.
-                    if !(is_testsetup_file(full_path) || (is_test_file(full_path) && is_requested(full_path, paths)))
+                    if !(is_testsetup_file(full_path) || (is_test_file(full_path) && is_requested(full_path, abspaths)))
                         continue
                     end
                     rel_full_path = nestedrelpath(full_path, project_root)
@@ -962,9 +966,9 @@ end
 
 # Is filepath one of the paths the user requested?
 is_requested(filepath, paths::Tuple{}) = true  # no paths means no restrictions
-function is_requested(filepath, paths::Tuple)
-    return any(paths) do p
-        startswith(filepath, abspath(p))
+function is_requested(filepath, abspaths::Tuple)
+    return any(abspaths) do p
+        startswith(filepath, p)
     end
 end
 

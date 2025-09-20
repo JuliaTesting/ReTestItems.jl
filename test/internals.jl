@@ -75,11 +75,11 @@ end
     @assert isfile(monorepo_proj)
     for pkg in ("B", "C", "D")
         path = joinpath(monorepo, "monorepo_packages", pkg)
-        @test _is_subproject(path, monorepo_proj)
+        @test _is_subproject(path, monorepo_proj, monorepo)
     end
     for dir in ("src", "test")
         path = joinpath(monorepo, dir)
-        @test !_is_subproject(path, monorepo_proj)
+        @test !_is_subproject(path, monorepo_proj, monorepo)
     end
     # Test "test/Project.toml" does cause "test/" to be subproject
     tpf = joinpath(test_pkg_dir, "TestProjectFile.jl")
@@ -88,7 +88,7 @@ end
     @assert isfile(joinpath(tpf, "test", "Project.toml"))
     for dir in ("src", "test")
         path = joinpath(tpf, dir)
-        @test !_is_subproject(path, tpf_proj)
+        @test !_is_subproject(path, tpf_proj, tpf)
     end
 end
 
