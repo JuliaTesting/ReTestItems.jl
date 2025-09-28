@@ -789,16 +789,18 @@ function nestedrelpath(path::T, startdir::AbstractString) where {T <: AbstractSt
 end
 
 # is `dir` the root of a subproject inside the current project?
-# all three paths are assumed to be absolute paths
+# Both paths are assumed to be absolute paths
 let test_project = joinpath("test", "Project.toml")
-    global function _is_subproject(dir, current_projectfile, current_project_dir)
+    global function _is_subproject(dir, current_project_dir)
         projectfile = _project_file(dir)
         isnothing(projectfile) && return false
 
-        projectfile == current_projectfile && return false
+        dir == current_project_dir && return false
+
         # a `test/Project.toml` is special and doesn't indicate a subproject
         rel_projectfile = nestedrelpath(projectfile, current_project_dir)
         rel_projectfile == test_project && return false
+        @debugv 1 "Skipping files under subproject `$projectfile`"
         return true
     end
 end
@@ -812,8 +814,8 @@ _is_hidden(name::AbstractString) = ncodeunits(name) > 1 && codeunits(name)[1] ==
 function walkdir_task(walkdir_channel::Channel{Tuple{String,FileNode}}, project_root::String, root_node, ti_filter, paths, projectfile, report, verbose_results)
     @assert isabspath(project_root)
     @assert isabspath(projectfile)
+    # The keys are `nestedrelpath`s which return `SubString{String}`s, but we used dirname below so we have to allocate a String :(
     dir_nodes = Dict{String, DirNode}()
-    subproject_root = nothing # don't recurse into directories with their own Project.toml.
     abspaths = map(abspath, paths)
     try
         # Since test items don't store paths to their test setups, we need to traverse the
@@ -821,13 +823,8 @@ function walkdir_task(walkdir_channel::Channel{Tuple{String,FileNode}}, project_
         stack = [project_root]
         while !isempty(stack)
             root = pop!(stack)
-            if subproject_root !== nothing && startswith(root, subproject_root)
-                @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
-                continue
-            elseif _is_subproject(root, projectfile, project_root)
-                subproject_root = root
-                continue
-            end
+            # Don't recurse into directories with their own Project.toml.
+            _is_subproject(root, project_root) && continue
             rel_root = nestedrelpath(root, project_root)
             dir_node = DirNode(rel_root; report, verbose=verbose_results)
             dir_nodes[rel_root] = dir_node
