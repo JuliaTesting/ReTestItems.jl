@@ -855,7 +855,7 @@ function walkdir_task(walkdir_channel::Channel{Tuple{String,FileNode}}, project_
         close(walkdir_channel)
     catch err
         close(walkdir_channel, err)
-        rethrow(err)
+        rethrow()
     end
     return nothing
 end
@@ -904,12 +904,15 @@ function include_testfiles!(project_name, projectfile, paths, ti_filter::TestIte
         return setups
     end
 
-    walkdir_channel = Channel{Tuple{String, FileNode}}(1024)
+    walkdir_channel = Channel{Tuple{String, FileNode}}(1024) # bounded queue to avoid too much memory usage
     @sync begin
         @spawn walkdir_task(
             $walkdir_channel, $project_root, $root_node, $ti_filter, $paths, $projectfile, $report, $verbose_results
         )
-        for _ in 1:clamp(2*(nthreads()-(nthreads() == 1)), 1, 16) # 1 to 16 tasks, 1 if single-threaded
+        # 1 to 16 tasks, 1 if single-threaded. The idea is to over-subscribe a bit to for
+        # performance but not overdo it since the include tasks parse and eval, which allocates
+        # and we don't want to trigger the GC too often.
+        for _ in 1:clamp(2*(nthreads()-(nthreads() == 1)), 1, 16)
             @spawn include_task($walkdir_channel, $setup_channel, $project_root, $ti_filter)
         end
     end
