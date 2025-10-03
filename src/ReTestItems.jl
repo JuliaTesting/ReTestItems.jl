@@ -102,6 +102,7 @@ include("junit_xml.jl")
 include("testcontext.jl")
 include("log_capture.jl")
 include("filtering.jl")
+include("include_test_file.jl")
 
 function __init__()
     if ccall(:jl_generating_output, Cint, ()) == 0 # not precompiling
@@ -862,7 +863,7 @@ end
 
 # Parses and evals files found by the `walkdir_task`. During macro expansion of `@testitem`
 # test items are push!d onto the FileNode stored in task local storage as `:__RE_TEST_ITEMS__`.
-function include_task(walkdir_channel, setup_channel, project_root, ti_filter)
+function include_task(walkdir_channel, setup_channel, project_root, ti_filter::TestItemFilter)
     try
         testitem_names = Set{String}() # to enforce that names in the same file are unique
         task_local_storage(:__RE_TEST_RUNNING__, true) do
@@ -871,7 +872,7 @@ function include_task(walkdir_channel, setup_channel, project_root, ti_filter)
                     for (file_path, file_node) in walkdir_channel
                         @debugv 1 "Including test items from file `$(file_path)`"
                         task_local_storage(:__RE_TEST_ITEMS__, (file_node, empty!(testitem_names))) do
-                            Base.include(ti_filter, Main, file_path)
+                            include_test_file(ti_filter, file_path)
                         end
                     end
                 end
