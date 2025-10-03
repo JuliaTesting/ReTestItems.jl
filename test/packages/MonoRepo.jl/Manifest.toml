@@ -47,11 +47,6 @@ uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
 deps = ["Markdown"]
 uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 
-[[deps.JuliaSyntax]]
-git-tree-sha1 = "0d4b3dab95018bcf3925204475693d9f09dc45b8"
-uuid = "70703baa-626e-46a2-a12c-08ffd08c73b4"
-version = "1.0.2"
-
 [[deps.LibCURL]]
 deps = ["LibCURL_jll", "MozillaCACerts_jll"]
 uuid = "b27032c2-a3e7-50c8-80cd-2d36dbcbfd21"
@@ -117,7 +112,7 @@ deps = ["SHA"]
 uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
 [[deps.ReTestItems]]
-deps = ["Dates", "JuliaSyntax", "Logging", "Pkg", "Serialization", "Sockets", "StringViews", "Test", "TestEnv"]
+deps = ["Dates", "Logging", "Pkg", "Serialization", "Sockets", "StringViews", "Test", "TestEnv"]
 path = "../../.."
 uuid = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"
 version = "1.34.0"

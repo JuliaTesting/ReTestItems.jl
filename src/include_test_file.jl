@@ -1,5 +1,5 @@
-using JuliaSyntax: JuliaSyntax, ParseError, ParseStream, @K_str
-using JuliaSyntax: any_error, build_tree, first_byte, kind, parse!, peek_full_token, peek_token
+using Base.JuliaSyntax: JuliaSyntax, ParseError, ParseStream, @K_str
+using Base.JuliaSyntax: any_error, build_tree, first_byte, kind, parse!, peek_full_token, peek_token
 using StringViews
 
 function include_test_file(ti_filter::TestItemFilter, path::String)
