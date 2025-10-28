@@ -14,3 +14,4 @@ See `test/integrationtests.jl`.
 - *TestProjectFile.jl* - A package which has test-only dependencies declared in a `test/Project.toml`.
 - *MonoRepo.jl* - A package which depends on local, unregistered sub-packages. See `MonoRepo.jl/README.md`.
 - *TestEndExpr.jl* - A package which requires users to uphold an invariant which we would want to test is being upheld by all code run in the tests. This provides a use-case for the `test_end_expr` functionality.
+- *TestOnlyDeps.jl* - A package with tests that use test-only dependencies. This provides a test case for https://github.com/JuliaTesting/ReTestItems.jl/issues/228 when tests are run with at least 1 worker and with `JULIA_PROJECT` set.

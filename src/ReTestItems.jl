@@ -528,8 +528,10 @@ end
 function start_worker(proj_name, nworker_threads::String, worker_init_expr::Expr, ntestitems::Int; worker_num=nothing)
     w = Worker(; threads=nworker_threads)
     i = worker_num == nothing ? "" : " $worker_num"
+    proj = Base.active_project()
     # remote_fetch here because we want to make sure the worker is all setup before starting to eval testitems
     remote_fetch(w, quote
+        Base.set_active_project($proj)
         using ReTestItems, Test
         Test.TESTSET_PRINT_ENABLE[] = false
         const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)

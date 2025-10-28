@@ -1,0 +1,15 @@
+name = "TestOnlyDeps"
+uuid = "76c907bd-870e-4a64-93bf-d19a8ad0be88"
+version = "0.1.0"
+
+[deps]
+ReTestItems = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"
+
+[extras]
+Example = "7876af07-990d-54b4-ab0e-23690620f79a"
+ReTestItems = "817f1d60-ba6b-4fd5-9520-3cf149f6a823"
+TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Example", "ReTestItems", "TOML", "Test"]
