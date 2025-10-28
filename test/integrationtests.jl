@@ -21,7 +21,7 @@ const TEST_PKG_DIR = joinpath(_TEST_DIR, "packages")
 
 # Note "DontPass.jl" is handled specifically below, as it's the package which doesn't have
 # passing tests. Other packages should pass tests and be added here:
-const TEST_PKGS = ("NoDeps.jl", "TestsInSrc.jl", "TestProjectFile.jl", "TestEndExpr.jl")
+const TEST_PKGS = ("NoDeps.jl", "TestsInSrc.jl", "TestProjectFile.jl", "TestEndExpr.jl", "TestOnlyDeps.jl")
 
 include(joinpath(_TEST_DIR, "_integration_test_tools.jl"))
 
@@ -1584,6 +1584,18 @@ end
             end
         end
     end
+end
+
+# https://github.com/JuliaTesting/ReTestItems.jl/issues/228
+@testset "issues/228 workers always activate test env" begin
+    using ReTestItems
+    pkg = joinpath(TEST_PKG_DIR, "TestOnlyDeps.jl")
+    cmd = ```
+        $(Base.julia_cmd()) --project=$(pkg) -e '
+            using ReTestItems, TestOnlyDeps
+            runtests(TestOnlyDeps; nworkers=1)'
+        ```
+    run(addenv(cmd, "JULIA_PROJECT" => pkg))
 end
 
 end # integrationtests.jl testset
