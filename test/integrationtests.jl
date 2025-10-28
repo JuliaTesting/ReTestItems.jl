@@ -1589,7 +1589,7 @@ end
 # https://github.com/JuliaTesting/ReTestItems.jl/issues/228
 @testset "issues/228 workers always activate test env" begin
     using ReTestItems
-    pkg = joinpath(TEST_PKG_DIR, "TestOnlyDeps")
+    pkg = joinpath(TEST_PKG_DIR, "TestOnlyDeps.jl")
     cmd = ```
         $(Base.julia_cmd()) --project=$(pkg) -e '
             using ReTestItems, TestOnlyDeps
