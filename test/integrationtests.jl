@@ -1238,6 +1238,7 @@ end
 end
 
 @testset "logs are aligned" begin
+    ReTestItems.reset_test_status!()
     file = joinpath(TEST_FILES_DIR, "_skip_tests.jl")
     c1 = IOCapture.capture() do
         encased_testset(()->runtests(file))
@@ -1316,6 +1317,7 @@ end
                 @test_skip case
                 continue
             end
+            ReTestItems.reset_test_status!()
             c = IOCapture.capture() do
                 encased_testset(() -> runtests(fullpath; nworkers, testitem_timeout, retries=1, failfast=true))
             end
