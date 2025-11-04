@@ -30,7 +30,16 @@ macro debugv(level::Int, messsage)
             _file = $last($splitdir(_full_file))
             _line = $(QuoteNode(__source__.line))
             msg = $(esc(messsage))
-            $print("DEBUG @ $(_file):$(_line) | $msg\n")
+            io = IOBuffer(sizehint=34 + ncodeunits(msg))
+            $print(io, "DEBUG @ ")
+            $print(io, _file)
+            $print(io, ":")
+            $print(io, _line)
+            $print(io, " | ")
+            $print(io, msg)
+            $print(io, "\n")
+            $write(stderr, seekstart(io))
+            # $print("DEBUG @ $file:$line | $msg\n")
         end
     end
 end

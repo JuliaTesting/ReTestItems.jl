@@ -8,7 +8,7 @@ end
 struct TestItemFilter{
         F<:Function,
         T<:Union{Nothing,Symbol,AbstractVector{Symbol}},
-        N<:Union{Nothing,AbstractString,Regex}
+        N<:Union{Nothing,AbstractString,Regex,Set{<:AbstractString}}
 } <: Function
     shouldrun::F
     tags::T
@@ -21,6 +21,7 @@ end
 
 _shouldrun(name::AbstractString, ti) = name == ti.name
 _shouldrun(pattern::Regex, ti) = contains(ti.name, pattern)
+_shouldrun(names::Set{<:AbstractString}, ti) = ti.name in names
 _shouldrun(tags::AbstractVector{Symbol}, ti) = issubset(tags, ti.tags)
 _shouldrun(tag::Symbol, ti) = tag in ti.tags
 _shouldrun(::Nothing, ti) = true
