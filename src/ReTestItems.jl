@@ -12,6 +12,8 @@ export runtests, runtestitem
 export @testsetup, @testitem
 export TestSetup, TestItem, TestItemResult
 
+global TIS = nothing
+
 const RETESTITEMS_TEMP_FOLDER = Ref{String}()
 const DEFAULT_TESTITEM_TIMEOUT = 30*60
 const DEFAULT_RETRIES = 0
@@ -25,9 +27,12 @@ end
 
 # Used by failures_first to sort failures before unseen before passes.
 @enum _TEST_STATUS::UInt8 begin
-    _FAILED = 0
-    _UNSEEN = 1
+    _UNSEEN = 0
+    _STARTED = 1
     _PASSED = 2
+    _FAILED = 3
+    _CRASHED = 4
+    _TIMEDOUT = 5
 end
 const GLOBAL_TEST_STATUS = Dict{String,_TEST_STATUS}()
 reset_test_status!() = (empty!(GLOBAL_TEST_STATUS); nothing)
@@ -94,6 +99,24 @@ function softscope_all!(@nospecialize ex)
     end
 end
 
+@kwdef struct _Config
+    nworkers::Int
+    nworker_threads::String
+    worker_init_expr::Expr
+    test_end_expr::Expr
+    testitem_timeout::Int
+    testitem_failfast::Bool
+    failfast::Bool
+    retries::Int
+    logs::Symbol
+    report::Bool
+    verbose_results::Bool
+    timeout_profile_wait::Int
+    memory_threshold::Float64
+    gc_between_testitems::Bool
+    failures_first::Bool
+end
+
 include("debug.jl")
 include("workers.jl")
 using .Workers
@@ -103,6 +126,7 @@ include("testcontext.jl")
 include("log_capture.jl")
 include("filtering.jl")
 include("include_test_file.jl")
+include("run_state.jl")
 
 function __init__()
     if ccall(:jl_generating_output, Cint, ()) == 0 # not precompiling
@@ -146,21 +170,41 @@ function _validated_nworker_threads(str)
     return replace(str, "auto" => string(Sys.CPU_THREADS))
 end
 
+struct ValidatedPaths{D,F}
+    by_dir::D
+    by_file::F
+end
+
+
 function _validated_paths(paths, should_throw::Bool)
-    return filter(paths) do p
-        if !ispath(p)
+    dirs = String[]
+    files = String[]
+
+    for p in paths
+        s = stat(p)
+        if !ispath(s)
             msg = "No such path $(repr(p))"
             should_throw ? throw(NoTestException(msg)) : @warn msg
-            return false
-        elseif !(is_test_file(p) || is_testsetup_file(p)) && isfile(p)
+            continue
+        elseif !(is_test_file(s) || is_testsetup_file(s)) && isfile(s)
             msg = "$(repr(p)) is not a test file"
             should_throw ? throw(NoTestException(msg)) : @warn msg
-            return false
+            continue
+        elseif isdir(s)
+            push!(dirs, abspath(p))
         else
-            return true
+            push!(files, abspath(p))
         end
     end
+
+    return ValidatedPaths(
+        isempty(dirs) ? nothing : Tuple(dirs),
+        isempty(files) ? nothing : Set(files),
+    )
 end
+
+Base.first(vp::ValidatedPaths) = vp.by_dir === nothing ? first(vp.by_file) : first(vp.by_dir)
+Base.isempty(vp::ValidatedPaths) = vp.by_dir === nothing && vp.by_file === nothing
 
 """
     ReTestItems.runtests()
@@ -277,25 +321,6 @@ function runtests(shouldrun, pkg::Module; kw...)
     return runtests(shouldrun, dir; kw...)
 end
 
-@kwdef struct _Config
-    nworkers::Int
-    nworker_threads::String
-    worker_init_expr::Expr
-    test_end_expr::Expr
-    testitem_timeout::Int
-    testitem_failfast::Bool
-    failfast::Bool
-    retries::Int
-    logs::Symbol
-    report::Bool
-    verbose_results::Bool
-    timeout_profile_wait::Int
-    memory_threshold::Float64
-    gc_between_testitems::Bool
-    failures_first::Bool
-end
-
-
 function runtests(
     shouldrun,
     paths::AbstractString...;
@@ -409,6 +434,8 @@ function _runtests_in_current_env(
     inc_time = time()
     @debugv 1 "Including tests in $paths"
     testitems, _ = include_testfiles!(proj_name, projectfile, paths, ti_filter, cfg.verbose_results, cfg.report)
+    global TIS = testitems
+    statefile = init_run_state(joinpath(dirname(projectfile), "testrun"), testitems, projectfile, dirname(projectfile), cfg)
     @debugv 1 "Done including tests in $paths"
     nworkers = cfg.nworkers
     nworker_threads = cfg.nworker_threads
@@ -444,6 +471,7 @@ function _runtests_in_current_env(
                 max_runs = 1 + max(cfg.retries, testitem.retries)
                 is_non_pass = false
                 while run_number ≤ max_runs
+                    write_status(statefile, testitem, run_number, nothing, _STARTED)
                     res = runtestitem(testitem, ctx; cfg.test_end_expr, cfg.verbose_results, cfg.logs, failfast=cfg.testitem_failfast)
                     ts = res.testset
                     print_errors_and_captured_logs(testitem, run_number; cfg.logs)
@@ -454,9 +482,11 @@ function _runtests_in_current_env(
                     end
                     testitem.is_non_pass[] = is_non_pass = any_non_pass(ts)
                     if is_non_pass && run_number != max_runs
+                        write_status(statefile, testitem, run_number, nothing, _FAILED)
                         run_number += 1
                         @info "Retrying $(repr(testitem.name)). Run=$run_number."
                     else
+                        write_status(statefile, testitem, run_number, nothing, _PASSED)
                         break
                     end
                 end
@@ -492,7 +522,7 @@ function _runtests_in_current_env(
                 ti = starting[i]
                 @spawn begin
                     with_logger(original_logger) do
-                        manage_worker($w, $proj_name, $testitems, $ti, $cfg; worker_num=$i)
+                        manage_worker($w, $proj_name, $testitems, $ti, $cfg, $statefile; worker_num=$i)
                     end
                 end
             end
@@ -631,12 +661,13 @@ end
 
 # The provided `worker_num` is only for logging purposes, and not persisted as part of the worker.
 function manage_worker(
-    worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, cfg::_Config;
+    worker::Worker, proj_name::AbstractString, testitems::TestItems, testitem::Union{TestItem,Nothing}, cfg::_Config, statefile;
     worker_num::Int
 )
     ntestitems = length(testitems.testitems)
     run_number = 1
     memory_threshold_percent = 100 * cfg.memory_threshold
+    timeout = nothing
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
         if memory_percent() > memory_threshold_percent
@@ -648,6 +679,7 @@ function manage_worker(
         testitem.workerid[] = worker.pid
         timeout = something(testitem.timeout, cfg.testitem_timeout)
         fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(cfg.test_end_expr)), verbose_results=$(cfg.verbose_results), logs=$(QuoteNode(cfg.logs)), failfast=$(cfg.testitem_failfast))))
+        write_status_locked(statefile, testitem, run_number, timeout, _STARTED)
         max_runs = 1 + max(cfg.retries, testitem.retries)
         try
             timer = Timer(timeout) do tm
@@ -682,13 +714,16 @@ function manage_worker(
                 end
                 testitem.is_non_pass[] = is_non_pass = any_non_pass(ts)
                 if is_non_pass && run_number != max_runs
+                    write_status_locked(statefile, testitem, run_number, timeout, _FAILED)
                     run_number += 1
                     @info "Retrying $(repr(testitem.name)) on $worker. Run=$run_number."
                 else
                     if cfg.failfast && is_non_pass
+                        write_status_locked(statefile, testitem, _FAILED)
                         already_cancelled = cancel!(testitems)
                         already_cancelled || print_failfast_cancellation(testitem)
                     end
+                    write_status_locked(statefile, testitem, run_number, timeout, _PASSED)
                     testitem = next_testitem(testitems, testitem.number[])
                     run_number = 1
                 end
@@ -699,6 +734,7 @@ function manage_worker(
             @debugv 2 "Error: $e"
             # Handle the exception
             if e isa TimeoutException
+                write_status_locked(statefile, testitem, run_number, timeout, _TIMEDOUT)
                 if cfg.timeout_profile_wait > 0
                     @warn "$worker timed out running test item $(repr(testitem.name)) after $timeout seconds. \
                         A CPU profile will be triggered on the worker and then it will be terminated."
@@ -716,6 +752,7 @@ function manage_worker(
                     Recording test error."
                 record_timeout!(testitem, run_number, timeout)
             elseif e isa WorkerTerminatedException
+                write_status_locked(statefile, testitem, run_number, timeout, _CRASHED)
                 println(DEFAULT_STDOUT[])
                 _print_captured_logs(DEFAULT_STDOUT[], testitem, run_number)
                 @error "$worker died running test item $(repr(testitem.name)). \
@@ -792,14 +829,15 @@ end
 # is `dir` the root of a subproject inside the current project?
 # all three paths are assumed to be absolute paths
 let test_project = joinpath("test", "Project.toml")
-    global function _is_subproject(dir, current_projectfile, current_project_dir)
+    global function _is_subproject(dir, current_project_dir)
         projectfile = _project_file(dir)
         isnothing(projectfile) && return false
+        dir == current_project_dir && return false
 
-        projectfile == current_projectfile && return false
         # a `test/Project.toml` is special and doesn't indicate a subproject
         rel_projectfile = nestedrelpath(projectfile, current_project_dir)
         rel_projectfile == test_project && return false
+        @debugv 1 "Skipping files under subproject `$projectfile`"
         return true
     end
 end
@@ -814,7 +852,6 @@ function walkdir_task(walkdir_channel::Channel{Tuple{String,FileNode}}, project_
     @assert isabspath(project_root)
     @assert isabspath(projectfile)
     dir_nodes = Dict{String, DirNode}()
-    subproject_root = nothing # don't recurse into directories with their own Project.toml.
     abspaths = map(abspath, paths)
     try
         # Since test items don't store paths to their test setups, we need to traverse the
@@ -822,13 +859,8 @@ function walkdir_task(walkdir_channel::Channel{Tuple{String,FileNode}}, project_
         stack = [project_root]
         while !isempty(stack)
             root = pop!(stack)
-            if subproject_root !== nothing && startswith(root, subproject_root)
-                @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
-                continue
-            elseif _is_subproject(root, projectfile, project_root)
-                subproject_root = root
-                continue
-            end
+            # Don't recurse into directories with their own Project.toml.
+            _is_subproject(root, project_root) && continue
             rel_root = nestedrelpath(root, project_root)
             dir_node = DirNode(rel_root; report, verbose=verbose_results)
             dir_nodes[rel_root] = dir_node
@@ -966,11 +998,15 @@ function _throw_duplicate_ids(testitems)
 end
 
 # Is filepath one of the paths the user requested?
-is_requested(filepath, paths::Tuple{}) = true  # no paths means no restrictions
-function is_requested(filepath, abspaths::Tuple)
+is_requested_by_dir(filepath, paths::Nothing) = true  # no paths means no restrictions
+is_requested_by_file(filepath, paths::Nothing) = true # no paths means no restrictions
+function is_requested_by_dir(filepath::String, abspaths::Tuple)
     return any(abspaths) do p
         startswith(filepath, p)
     end
+end
+function is_requested_by_file(filepath::String, abspaths::Set{String})
+    return filepath in abspaths
 end
 
 function is_running_test_runtests_jl(projectfile::String)
