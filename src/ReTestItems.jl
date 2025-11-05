@@ -791,27 +791,107 @@ function nestedrelpath(path::T, startdir::AbstractString) where {T <: AbstractSt
 end
 
 # is `dir` the root of a subproject inside the current project?
-function _is_subproject(dir, current_projectfile)
-    projectfile = _project_file(dir)
-    isnothing(projectfile) && return false
+# Both paths are assumed to be absolute paths
+let test_project = joinpath("test", "Project.toml")
+    global function _is_subproject(dir, current_project_dir)
+        projectfile = _project_file(dir)
+        isnothing(projectfile) && return false
 
-    projectfile = abspath(projectfile)
-    projectfile == current_projectfile && return false
-    # a `test/Project.toml` is special and doesn't indicate a subproject
-    current_project_dir = dirname(current_projectfile)
-    rel_projectfile = nestedrelpath(projectfile, current_project_dir)
-    rel_projectfile == joinpath("test", "Project.toml") && return false
-    return true
+        dir == current_project_dir && return false
+
+        # a `test/Project.toml` is special and doesn't indicate a subproject
+        rel_projectfile = nestedrelpath(projectfile, current_project_dir)
+        rel_projectfile == test_project && return false
+        @debugv 1 "Skipping files under subproject `$projectfile`"
+        return true
+    end
 end
 
-# for each directory, kick off a recursive test-finding task
+# called on results of `readdir(root)`
+_is_hidden(name::AbstractString) = ncodeunits(name) > 1 && codeunits(name)[1] == UInt8('.')
+
+# Traverses the directory tree starting at `project_root` and grows `root_node` with
+# `DirNode`s and `FileNode`s for each directory and test file found. Filters out non-eligible
+# paths.
+function walkdir_task(walkdir_channel::Channel{Tuple{String,FileNode}}, project_root::String, root_node, ti_filter, paths, projectfile, report, verbose_results)
+    @assert isabspath(project_root)
+    @assert isabspath(projectfile)
+    # The keys are `nestedrelpath`s which return `SubString{String}`s, but we used dirname below so we have to allocate a String :(
+    dir_nodes = Dict{String, DirNode}()
+    abspaths = map(abspath, paths)
+    try
+        # Since test items don't store paths to their test setups, we need to traverse the
+        # whole project, not just the requested paths.
+        stack = [project_root]
+        while !isempty(stack)
+            root = pop!(stack)
+            # Don't recurse into directories with their own Project.toml.
+            _is_subproject(root, project_root) && continue
+            rel_root = nestedrelpath(root, project_root)
+            dir_node = DirNode(rel_root; report, verbose=verbose_results)
+            dir_nodes[rel_root] = dir_node
+            push!(get(dir_nodes, dirname(rel_root), root_node), dir_node)
+            for file in readdir(root) # TODO: Use https://github.com/JuliaLang/julia/pull/55358 once it lands
+                _is_hidden(file) && continue # skip hidden files/directories
+                full_path = joinpath(root, file)
+                if isdir(full_path)
+                    push!(stack, full_path)
+                else
+                    # We filter here, rather than the testitem level, to make sure we don't
+                    # `include` a file that isn't supposed to be a test-file at all, e.g. its
+                    # not on a path the user requested but it happens to have a test-file suffix.
+                    # We always include testsetup-files so users don't need to request them,
+                    # even if they're not in a requested path, e.g. they are a level up in the
+                    # directory tree. The testsetup-file suffix is hopefully specific enough
+                    # to ReTestItems that this doesn't lead to `include`ing unexpected files.
+                    if !(is_testsetup_file(full_path) || (is_test_file(full_path) && is_requested(full_path, abspaths)))
+                        continue
+                    end
+                    rel_full_path = nestedrelpath(full_path, project_root)
+                    file_node = FileNode(rel_full_path, ti_filter; report, verbose=verbose_results)
+                    push!(dir_node, file_node)
+                    put!(walkdir_channel, (full_path, file_node))
+                end
+            end
+        end
+        close(walkdir_channel)
+    catch err
+        close(walkdir_channel, err)
+        rethrow()
+    end
+    return nothing
+end
+
+# Parses and evals files found by the `walkdir_task`. During macro expansion of `@testitem`
+# test items are push!d onto the FileNode stored in task local storage as `:__RE_TEST_ITEMS__`.
+function include_task(walkdir_channel, setup_channel, project_root, ti_filter)
+    try
+        testitem_names = Set{String}() # to enforce that names in the same file are unique
+        task_local_storage(:__RE_TEST_RUNNING__, true) do
+            task_local_storage(:__RE_TEST_PROJECT__, project_root) do
+                task_local_storage(:__RE_TEST_SETUPS__, setup_channel) do
+                    for (file_path, file_node) in walkdir_channel
+                        @debugv 1 "Including test items from file `$(file_path)`"
+                        task_local_storage(:__RE_TEST_ITEMS__, (file_node, empty!(testitem_names))) do
+                            Base.include(ti_filter, Main, file_path)
+                        end
+                    end
+                end
+            end
+        end
+    catch err
+        close(walkdir_channel, err)
+        rethrow(err)
+    end
+    return nothing
+end
+
+# Find test items using a pool of tasks to include files in parallel.
 # Returns (testitems::TestItems, setups::Dict{Symbol,TestSetup})
 # Assumes `isdir(project_root)`, which is guaranteed by `_runtests`.
 function include_testfiles!(project_name, projectfile, paths, ti_filter::TestItemFilter, verbose_results::Bool, report::Bool)
     project_root = dirname(projectfile)
-    subproject_root = nothing  # don't recurse into directories with their own Project.toml.
     root_node = DirNode(project_name; report, verbose=verbose_results)
-    dir_nodes = Dict{String, DirNode}()
     # setup_channel is populated in store_test_setup when we expand a @testsetup
     # we set it below in tls as __RE_TEST_SETUPS__ for each included file
     setup_channel = Channel{Pair{Symbol, TestSetup}}(Inf)
@@ -825,51 +905,20 @@ function include_testfiles!(project_name, projectfile, paths, ti_filter::TestIte
         end
         return setups
     end
-    hidden_re = r"\.\w"
-    @sync for (root, d, files) in Base.walkdir(project_root)
-        if subproject_root !== nothing && startswith(root, subproject_root)
-            @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
-            continue
-        elseif _is_subproject(root, projectfile)
-            subproject_root = root
-            continue
-        end
-        rpath = nestedrelpath(root, project_root)
-        startswith(rpath, hidden_re) && continue # skip hidden directories
-        dir_node = DirNode(rpath; report, verbose=verbose_results)
-        dir_nodes[rpath] = dir_node
-        push!(get(dir_nodes, dirname(rpath), root_node), dir_node)
-        for file in files
-            startswith(file, hidden_re) && continue # skip hidden files
-            filepath = joinpath(root, file)
-            # We filter here, rather than the testitem level, to make sure we don't
-            # `include` a file that isn't supposed to be a test-file at all, e.g. its
-            # not on a path the user requested but it happens to have a test-file suffix.
-            # We always include testsetup-files so users don't need to request them,
-            # even if they're not in a requested path, e.g. they are a level up in the
-            # directory tree. The testsetup-file suffix is hopefully specific enough
-            # to ReTestItems that this doesn't lead to `include`ing unexpected files.
-            if !(is_testsetup_file(filepath) || (is_test_file(filepath) && is_requested(filepath, paths)))
-                continue
-            end
-            fpath = nestedrelpath(filepath, project_root)
-            file_node = FileNode(fpath, ti_filter; report, verbose=verbose_results)
-            testitem_names = Set{String}() # to enforce that names in the same file are unique
-            push!(dir_node, file_node)
-            @debugv 1 "Including test items from file `$filepath`"
-            @spawn begin
-                task_local_storage(:__RE_TEST_RUNNING__, true) do
-                    task_local_storage(:__RE_TEST_ITEMS__, ($file_node, $testitem_names)) do
-                        task_local_storage(:__RE_TEST_PROJECT__, $(project_root)) do
-                            task_local_storage(:__RE_TEST_SETUPS__, $setup_channel) do
-                                Base.include($ti_filter, Main, $filepath)
-                            end
-                        end
-                    end
-                end
-            end
+
+    walkdir_channel = Channel{Tuple{String, FileNode}}(1024) # bounded queue to avoid too much memory usage
+    @sync begin
+        @spawn walkdir_task(
+            $walkdir_channel, $project_root, $root_node, $ti_filter, $paths, $projectfile, $report, $verbose_results
+        )
+        # 1 to 16 tasks, 1 if single-threaded. The idea is to over-subscribe a bit to for
+        # performance but not overdo it since the include tasks parse and eval, which allocates
+        # and we don't want to trigger the GC too often.
+        for _ in 1:clamp(2*(nthreads()-(nthreads() == 1)), 1, 16)
+            @spawn include_task($walkdir_channel, $setup_channel, $project_root, $ti_filter)
         end
     end
+
     @debugv 2 "Finished including files"
     # finished including all test files, so finalize our graph
     # prune empty directories/files
@@ -919,9 +968,9 @@ end
 
 # Is filepath one of the paths the user requested?
 is_requested(filepath, paths::Tuple{}) = true  # no paths means no restrictions
-function is_requested(filepath, paths::Tuple)
-    return any(paths) do p
-        startswith(filepath, abspath(p))
+function is_requested(filepath, abspaths::Tuple)
+    return any(abspaths) do p
+        startswith(filepath, p)
     end
 end
 
