@@ -132,7 +132,9 @@ If you want individual test-items to stop on their first test failure, but not s
 
 #### Running previous failures first
 
-You can set `runtests` to run first any test-items that failed the last time they were run by passing `failures_first=true`.
+By default `runtests` uses `failures_first=true` to run first any test-items that failed the last time they were run.
+This became the default in v1.35.0.
+
 When `failures_first=true` is set, test-items are order so that previously failing test-items run first, followed by previously unseen test-items, followed by previously passing test-items.
 
 This option can be combined with `failfast=true` to efficiently find the next failing test-item during development.

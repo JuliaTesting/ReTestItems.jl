@@ -259,7 +259,7 @@ will be run.
   Defaults to the value passed to the `failfast` keyword.
   If a `@testitem` sets its own `failfast` keyword, then that takes precedence.
   Note that the `testitem_failfast` keyword only takes effect in Julia v1.9+ and is ignored in earlier Julia versions.
-- `failures_first::Bool=false`: if `true`, first runs test items that failed the last time
+- `failures_first::Bool=true`: if `true`, first runs test items that failed the last time
   they ran, followed by new test items, followed by test items that passed the last time they ran.
   Can also be set using the `RETESTITEMS_FAILURES_FIRST` environment variable.
 """
@@ -316,7 +316,7 @@ function runtests(
     gc_between_testitems::Bool=parse(Bool, get(ENV, "RETESTITEMS_GC_BETWEEN_TESTITEMS", string(nworkers > 1))),
     failfast::Bool=parse(Bool, get(ENV, "RETESTITEMS_FAILFAST", "false")),
     testitem_failfast::Bool=parse(Bool, get(ENV, "RETESTITEMS_TESTITEM_FAILFAST", string(failfast))),
-    failures_first::Bool=parse(Bool, get(ENV, "RETESTITEMS_FAILURES_FIRST", "false")),
+    failures_first::Bool=parse(Bool, get(ENV, "RETESTITEMS_FAILURES_FIRST", "true")),
 )
     nworker_threads = _validated_nworker_threads(nworker_threads)
     paths′ = _validated_paths(paths, validate_paths)
