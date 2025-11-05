@@ -39,6 +39,8 @@ function remove_variables(str)
         # e.g. "UndefVarError: `x` not defined in ..." => "UndefVarError: x not defined"
         # see: https://github.com/JuliaLang/julia/commit/449c7a2504191a96cfd382e0dbc0b40bf922cd6d
         r"UndefVarError: `(?<var>[^`]*)` not defined in (.+)" => s"UndefVarError: \g<var> not defined",
+        # Remove the extra info added to `UndefVarError` messages in Julia v1.12
+        r"\s+Suggestion: check for spelling errors or missing imports." => "",
     )
 end
 
