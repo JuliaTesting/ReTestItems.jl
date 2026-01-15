@@ -790,6 +790,19 @@ function nestedrelpath(path::T, startdir::AbstractString) where {T <: AbstractSt
     end
 end
 
+# Like `Base.walkdir` but does not descend into hidden directories (those starting with '.')
+function _walkdir(root)
+    return Channel{Tuple{String, Vector{String}, Vector{String}}}() do ch
+        for (dir, dirs, files) in Base.walkdir(root)
+            # Filter out hidden directories to prevent descending into them.
+            # Modifying `dirs` in-place works because walkdir uses it to determine
+            # which subdirectories to visit next (when topdown=true, the default).
+            filter!(d -> !startswith(d, '.'), dirs)
+            put!(ch, (dir, dirs, files))
+        end
+    end
+end
+
 # is `dir` the root of a subproject inside the current project?
 function _is_subproject(dir, current_projectfile)
     projectfile = _project_file(dir)
@@ -825,8 +838,8 @@ function include_testfiles!(project_name, projectfile, paths, ti_filter::TestIte
         end
         return setups
     end
-    hidden_re = r"\.\w"
-    @sync for (root, d, files) in Base.walkdir(project_root)
+    # Use _walkdir to skip hidden directories
+    @sync for (root, d, files) in _walkdir(project_root)
         if subproject_root !== nothing && startswith(root, subproject_root)
             @debugv 1 "Skipping files in `$root` in subproject `$subproject_root`"
             continue
@@ -835,12 +848,11 @@ function include_testfiles!(project_name, projectfile, paths, ti_filter::TestIte
             continue
         end
         rpath = nestedrelpath(root, project_root)
-        startswith(rpath, hidden_re) && continue # skip hidden directories
         dir_node = DirNode(rpath; report, verbose=verbose_results)
         dir_nodes[rpath] = dir_node
         push!(get(dir_nodes, dirname(rpath), root_node), dir_node)
         for file in files
-            startswith(file, hidden_re) && continue # skip hidden files
+            startswith(file, '.') && continue # skip hidden files
             filepath = joinpath(root, file)
             # We filter here, rather than the testitem level, to make sure we don't
             # `include` a file that isn't supposed to be a test-file at all, e.g. its
