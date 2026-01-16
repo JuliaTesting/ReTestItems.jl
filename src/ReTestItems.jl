@@ -793,7 +793,7 @@ end
 # Like `Base.walkdir` but does not descend into hidden directories (those starting with '.')
 function _walkdir(root)
     return Channel{Tuple{String, Vector{String}, Vector{String}}}() do ch
-        for (dir, dirs, files) in Base.walkdir(root)
+        for (dir, dirs, files) in Base.walkdir(root; topdown=true)
             # Filter out hidden directories to prevent descending into them.
             # Modifying `dirs` in-place works because walkdir uses it to determine
             # which subdirectories to visit next (when topdown=true, the default).
