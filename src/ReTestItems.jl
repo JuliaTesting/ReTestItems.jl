@@ -299,14 +299,20 @@ end
     failures_first::Bool
 end
 
+const _EMPTY_BLOCK = Expr(:block)
+
+# Use init_expr if set, otherwise use worker_init_expr
+# (they are mutually exclusive, as enforced in `runtests`)
+_get_init_expr(cfg::_Config) = cfg.init_expr !== _EMPTY_BLOCK ? cfg.init_expr : cfg.worker_init_expr
+_is_set(expr::Expr) = expr !== _EMPTY_BLOCK
 
 function runtests(
     shouldrun,
     paths::AbstractString...;
     nworkers::Int=parse(Int, get(ENV, "RETESTITEMS_NWORKERS", "0")),
     nworker_threads::Union{Int,String}=get(ENV, "RETESTITEMS_NWORKER_THREADS", "2"),
-    init_expr::Expr=Expr(:block),
-    worker_init_expr::Expr=Expr(:block),
+    init_expr::Expr=_EMPTY_BLOCK,
+    worker_init_expr::Expr=_EMPTY_BLOCK,
     testitem_timeout::Real=parse(Float64, get(ENV, "RETESTITEMS_TESTITEM_TIMEOUT", string(DEFAULT_TESTITEM_TIMEOUT))),
     retries::Int=parse(Int, get(ENV, "RETESTITEMS_RETRIES", string(DEFAULT_RETRIES))),
     memory_threshold::Real=parse(Float64, get(ENV, "RETESTITEMS_MEMORY_THRESHOLD", string(DEFAULT_MEMORY_THRESHOLD[]))),
@@ -316,7 +322,7 @@ function runtests(
     report::Bool=parse(Bool, get(ENV, "RETESTITEMS_REPORT", "false")),
     logs::Symbol=Symbol(get(ENV, "RETESTITEMS_LOGS", default_log_display_mode(report, nworkers))),
     verbose_results::Bool=(logs !== :issues && isinteractive()),
-    test_end_expr::Expr=Expr(:block),
+    test_end_expr::Expr=_EMPTY_BLOCK,
     validate_paths::Bool=parse(Bool, get(ENV, "RETESTITEMS_VALIDATE_PATHS", "false")),
     timeout_profile_wait::Real=parse(Int, get(ENV, "RETESTITEMS_TIMEOUT_PROFILE_WAIT", "0")),
     gc_between_testitems::Bool=parse(Bool, get(ENV, "RETESTITEMS_GC_BETWEEN_TESTITEMS", string(nworkers > 1))),
@@ -334,7 +340,8 @@ function runtests(
     timeout_profile_wait >= 0 || throw(ArgumentError("`timeout_profile_wait` must be a non-negative number, got $(repr(timeout_profile_wait))"))
     test_end_expr.head === :block || throw(ArgumentError("`test_end_expr` must be a `:block` expression, got a `$(repr(test_end_expr.head))` expression"))
     init_expr.head === :block || throw(ArgumentError("`init_expr` must be a `:block` expression, got a `$(repr(init_expr.head))` expression"))
-    (length(init_expr.args) > 0 && length(worker_init_expr.args) > 0) && throw(ArgumentError("Cannot specify both `init_expr` and `worker_init_expr`. Use `init_expr` instead."))
+    worker_init_expr.head === :block || throw(ArgumentError("`worker_init_expr` must be a `:block` expression, got a `$(repr(init_expr.head))` expression"))
+    (_is_set(init_expr) && _is_set(worker_init_expr)) && throw(ArgumentError("Cannot specify both `init_expr` and `worker_init_expr`. Use `init_expr` instead."))
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
     ti_filter = TestItemFilter(shouldrun, tags, name)
@@ -437,11 +444,11 @@ function _runtests_in_current_env(
             is_sorted_queue = false
         end
         if nworkers == 0
-            length(cfg.worker_init_expr.args) > 0 && error("worker_init_expr is set, but will not run because number of workers is 0. Use `init_expr` instead.")
+            _is_set(cfg.worker_init_expr) && error("worker_init_expr is set, but will not run because number of workers is 0. Use `init_expr` instead.")
             # This is where we disable printing for the serial executor case.
             Test.TESTSET_PRINT_ENABLE[] = false
             # Run init_expr before any testitems
-            if length(cfg.init_expr.args) > 0
+            if _is_set(cfg.init_expr)
                 Core.eval(Main, cfg.init_expr)
             end
             ctx = TestContext(proj_name, ntestitems)
@@ -481,8 +488,7 @@ function _runtests_in_current_env(
             # Try to free up memory on the coordinator before starting workers, since
             # the workers won't be able to collect it if they get under memory pressure.
             GC.gc(true)
-            # Use init_expr if set, otherwise use worker_init_expr (they are mutually exclusive)
-            effective_init_expr = length(cfg.init_expr.args) > 0 ? cfg.init_expr : cfg.worker_init_expr
+            effective_init_expr = _get_init_expr(cfg)
             # Use the logger that was set before we eval'd any user code to avoid world age
             # issues when logging https://github.com/JuliaLang/julia/issues/33865
             original_logger = current_logger()
@@ -652,8 +658,7 @@ function manage_worker(
     ntestitems = length(testitems.testitems)
     run_number = 1
     memory_threshold_percent = 100 * cfg.memory_threshold
-    # Use init_expr if set, otherwise use worker_init_expr (they are mutually exclusive)
-    effective_init_expr = length(cfg.init_expr.args) > 0 ? cfg.init_expr : cfg.worker_init_expr
+    effective_init_expr = _get_init_expr(cfg)
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
         if memory_percent() > memory_threshold_percent
