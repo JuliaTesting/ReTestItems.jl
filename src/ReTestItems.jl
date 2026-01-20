@@ -206,8 +206,12 @@ will be run.
 - `nworker_threads::Union{String,Int}`: The number of threads to use for each worker process. Defaults to 2.
   Can also be set using the `RETESTITEMS_NWORKER_THREADS` environment variable. Interactive threads are
   supported through a string (e.g. "auto,2").
+- `init_expr::Expr`: an expression that will be run before any tests are run. When `nworkers > 0`, it runs
+  on each worker process. When `nworkers == 0`, it runs in the main process. Can be used to load packages
+  or set up the environment. Must be a `:block` expression. Cannot be used together with `worker_init_expr`.
 - `worker_init_expr::Expr`: an expression that will be run on each worker process before any tests are run.
   Can be used to load packages or set up the environment. Must be a `:block` expression.
+  Only valid when `nworkers > 0`. Prefer using `init_expr` instead, which also works when `nworkers == 0`.
 - `test_end_expr::Expr`: an expression that will be run after each testitem is run.
   Can be used to verify that global state is unchanged after running a test. Must be a `:block` expression.
   The `test_end_expr` is evaluated whether a testitem passes, fails, or errors. If the
@@ -279,6 +283,7 @@ end
 @kwdef struct _Config
     nworkers::Int
     nworker_threads::String
+    init_expr::Expr
     worker_init_expr::Expr
     test_end_expr::Expr
     testitem_timeout::Int
@@ -300,6 +305,7 @@ function runtests(
     paths::AbstractString...;
     nworkers::Int=parse(Int, get(ENV, "RETESTITEMS_NWORKERS", "0")),
     nworker_threads::Union{Int,String}=get(ENV, "RETESTITEMS_NWORKER_THREADS", "2"),
+    init_expr::Expr=Expr(:block),
     worker_init_expr::Expr=Expr(:block),
     testitem_timeout::Real=parse(Float64, get(ENV, "RETESTITEMS_TESTITEM_TIMEOUT", string(DEFAULT_TESTITEM_TIMEOUT))),
     retries::Int=parse(Int, get(ENV, "RETESTITEMS_RETRIES", string(DEFAULT_RETRIES))),
@@ -327,6 +333,8 @@ function runtests(
     testitem_timeout > 0 || throw(ArgumentError("`testitem_timeout` must be a positive number, got $(repr(testitem_timeout))"))
     timeout_profile_wait >= 0 || throw(ArgumentError("`timeout_profile_wait` must be a non-negative number, got $(repr(timeout_profile_wait))"))
     test_end_expr.head === :block || throw(ArgumentError("`test_end_expr` must be a `:block` expression, got a `$(repr(test_end_expr.head))` expression"))
+    init_expr.head === :block || throw(ArgumentError("`init_expr` must be a `:block` expression, got a `$(repr(init_expr.head))` expression"))
+    (length(init_expr.args) > 0 && length(worker_init_expr.args) > 0) && throw(ArgumentError("Cannot specify both `init_expr` and `worker_init_expr`. Use `init_expr` instead."))
     # If we were given paths but none were valid, then nothing to run.
     !isempty(paths) && isempty(paths′) && return nothing
     ti_filter = TestItemFilter(shouldrun, tags, name)
@@ -337,7 +345,7 @@ function runtests(
     (timeout_profile_wait > 0 && Sys.iswindows()) && @warn "CPU profiles on timeout is not supported on Windows, ignoring `timeout_profile_wait`"
     mkpath(RETESTITEMS_TEMP_FOLDER[]) # ensure our folder wasn't removed
     save_current_stdio()
-    cfg = _Config(; nworkers, nworker_threads, worker_init_expr, test_end_expr, testitem_timeout, testitem_failfast, failfast, retries, logs, report, verbose_results, timeout_profile_wait, memory_threshold, gc_between_testitems, failures_first)
+    cfg = _Config(; nworkers, nworker_threads, init_expr, worker_init_expr, test_end_expr, testitem_timeout, testitem_failfast, failfast, retries, logs, report, verbose_results, timeout_profile_wait, memory_threshold, gc_between_testitems, failures_first)
     debuglvl = Int(debug)
     if debuglvl > 0
         withdebug(debuglvl) do
@@ -429,9 +437,13 @@ function _runtests_in_current_env(
             is_sorted_queue = false
         end
         if nworkers == 0
-            length(cfg.worker_init_expr.args) > 0 && error("worker_init_expr is set, but will not run because number of workers is 0.")
+            length(cfg.worker_init_expr.args) > 0 && error("worker_init_expr is set, but will not run because number of workers is 0. Use `init_expr` instead.")
             # This is where we disable printing for the serial executor case.
             Test.TESTSET_PRINT_ENABLE[] = false
+            # Run init_expr before any testitems
+            if length(cfg.init_expr.args) > 0
+                Core.eval(Main, cfg.init_expr)
+            end
             ctx = TestContext(proj_name, ntestitems)
             # we use a single TestSetupModules
             ctx.setups_evaled = TestSetupModules()
@@ -469,6 +481,8 @@ function _runtests_in_current_env(
             # Try to free up memory on the coordinator before starting workers, since
             # the workers won't be able to collect it if they get under memory pressure.
             GC.gc(true)
+            # Use init_expr if set, otherwise use worker_init_expr (they are mutually exclusive)
+            effective_init_expr = length(cfg.init_expr.args) > 0 ? cfg.init_expr : cfg.worker_init_expr
             # Use the logger that was set before we eval'd any user code to avoid world age
             # issues when logging https://github.com/JuliaLang/julia/issues/33865
             original_logger = current_logger()
@@ -480,7 +494,7 @@ function _runtests_in_current_env(
             @sync for i in 1:nworkers
                 @spawn begin
                     with_logger(original_logger) do
-                        $workers[$i] = robust_start_worker($proj_name, $(cfg.nworker_threads), $(cfg.worker_init_expr), $ntestitems; worker_num=$i)
+                        $workers[$i] = robust_start_worker($proj_name, $(cfg.nworker_threads), $effective_init_expr, $ntestitems; worker_num=$i)
                     end
                 end
             end
@@ -638,13 +652,15 @@ function manage_worker(
     ntestitems = length(testitems.testitems)
     run_number = 1
     memory_threshold_percent = 100 * cfg.memory_threshold
+    # Use init_expr if set, otherwise use worker_init_expr (they are mutually exclusive)
+    effective_init_expr = length(cfg.init_expr.args) > 0 ? cfg.init_expr : cfg.worker_init_expr
     while testitem !== nothing
         ch = Channel{TestItemResult}(1)
         if memory_percent() > memory_threshold_percent
             @warn "Memory usage ($(Base.Ryu.writefixed(memory_percent(), 1))%) is higher than threshold ($(Base.Ryu.writefixed(memory_threshold_percent, 1))%). Restarting process for worker $worker_num to try to free memory."
             terminate!(worker)
             wait(worker)
-            worker = robust_start_worker(proj_name, cfg.nworker_threads, cfg.worker_init_expr, ntestitems)
+            worker = robust_start_worker(proj_name, cfg.nworker_threads, effective_init_expr, ntestitems)
         end
         testitem.workerid[] = worker.pid
         timeout = something(testitem.timeout, cfg.testitem_timeout)
@@ -743,7 +759,7 @@ function manage_worker(
             end
             # The worker was terminated, so replace it unless there are no more testitems to run
             if testitem !== nothing
-                worker = robust_start_worker(proj_name, cfg.nworker_threads, cfg.worker_init_expr, ntestitems)
+                worker = robust_start_worker(proj_name, cfg.nworker_threads, effective_init_expr, ntestitems)
             end
             # Now loop back around to reschedule the testitem
             continue
