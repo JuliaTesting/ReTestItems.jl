@@ -247,13 +247,14 @@ end
 
 @testset "init_expr" verbose=true begin
     init_expr_test_file = joinpath(TEST_FILES_DIR, "_init_expr_test.jl")
+    # Use @eval to assign to Main, which works in Julia 1.8+
     init_expr = quote
-        Main.INIT_EXPR_RAN = true
+        @eval Main INIT_EXPR_RAN = true
     end
 
     @testset "init_expr runs when nworkers=0" begin
         # Clean up any previous state
-        isdefined(Main, :INIT_EXPR_RAN) && (Main.INIT_EXPR_RAN = false)
+        @eval Main INIT_EXPR_RAN = false
         results = encased_testset() do
             runtests(init_expr_test_file; nworkers=0, init_expr)
         end
