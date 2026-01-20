@@ -126,7 +126,7 @@ struct TestItem
     line::Int
     project_root::String
     code::Any
-    testsetups::Vector{TestSetup} # populated by runtests coordinator
+    testsetups::Dict{Symbol,TestSetup} # populated by runtests coordinator
     workerid::Base.RefValue{Int} # populated when the test item is scheduled
     testsets::Vector{DefaultTestSet} # populated when the test item is finished running
     is_non_pass::Base.RefValue{Bool} # populated when the test item is finished running
@@ -138,7 +138,7 @@ function TestItem(number, name, id, tags, default_imports, setups, retries, time
     _id = @something(id, repr(hash(name, hash(relpath(file, project_root)))))
     return TestItem(
         number, name, _id, tags, default_imports, setups, retries, timeout, skip, failfast, file, line, project_root, code,
-        TestSetup[],
+        Dict{Symbol,TestSetup}(),
         Ref{Int}(0),
         DefaultTestSet[],
         Ref{Bool}(),
