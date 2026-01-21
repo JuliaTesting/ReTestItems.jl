@@ -23,6 +23,54 @@ else
     const errmon = identity
 end
 
+# Julia 1.12+ changed Test.TESTSET_PRINT_ENABLE from a mutable type to a ScopedValue.
+# ScopedValues don't support setindex!, so we need different strategies for different Julia versions.
+const _TESTSET_PRINT_ENABLE_IS_SCOPED = @static if isdefined(Base, :ScopedValues)
+    Test.TESTSET_PRINT_ENABLE isa Base.ScopedValues.ScopedValue
+else
+    false
+end
+
+# Helper to run code with Test.TESTSET_PRINT_ENABLE set to false
+# For older Julia: uses setindex! to temporarily disable printing
+# For Julia 1.12+: uses Base.ScopedValues.with to create a new scope
+function _with_testset_print_disabled(f)
+    @static if _TESTSET_PRINT_ENABLE_IS_SCOPED
+        Base.ScopedValues.with(f, Test.TESTSET_PRINT_ENABLE => false)
+    else
+        old = Test.TESTSET_PRINT_ENABLE[]
+        Test.TESTSET_PRINT_ENABLE[] = false
+        try
+            return f()
+        finally
+            Test.TESTSET_PRINT_ENABLE[] = old
+        end
+    end
+end
+
+# Helper to ensure Test.TESTSET_PRINT_ENABLE is true (for post-test cleanup)
+# For older Julia: uses setindex!
+# For Julia 1.12+: ScopedValue is already true by default, so this is a no-op
+function _ensure_testset_print_enabled()
+    @static if !_TESTSET_PRINT_ENABLE_IS_SCOPED
+        Test.TESTSET_PRINT_ENABLE[] = true
+    end
+end
+
+# Generate a quoted expression that disables test printing on a worker
+# For older Julia: generates `Test.TESTSET_PRINT_ENABLE[] = false`
+# For Julia 1.12+: generates nothing (workers will use @with blocks for test execution)
+function _worker_disable_testset_print_expr()
+    @static if _TESTSET_PRINT_ENABLE_IS_SCOPED
+        # For ScopedValues, we can't set this globally. Instead, test execution
+        # on workers should be wrapped in the appropriate scope.
+        # Return a no-op expression.
+        :(nothing)
+    else
+        :(Test.TESTSET_PRINT_ENABLE[] = false)
+    end
+end
+
 # Used by failures_first to sort failures before unseen before passes.
 @enum _TEST_STATUS::UInt8 begin
     _FAILED = 0
@@ -430,39 +478,42 @@ function _runtests_in_current_env(
         end
         if nworkers == 0
             length(cfg.worker_init_expr.args) > 0 && error("worker_init_expr is set, but will not run because number of workers is 0.")
-            # This is where we disable printing for the serial executor case.
-            Test.TESTSET_PRINT_ENABLE[] = false
-            ctx = TestContext(proj_name, ntestitems)
-            # we use a single TestSetupModules
-            ctx.setups_evaled = TestSetupModules()
-            for (i, testitem) in enumerate(testitems.testitems)
-                testitem.workerid[] = Libc.getpid()
-                testitem.eval_number[] = i
-                @atomic :monotonic testitems.count += 1
-                run_number = 1
-                max_runs = 1 + max(cfg.retries, testitem.retries)
-                is_non_pass = false
-                while run_number ≤ max_runs
-                    res = runtestitem(testitem, ctx; cfg.test_end_expr, cfg.verbose_results, cfg.logs, failfast=cfg.testitem_failfast)
-                    ts = res.testset
-                    print_errors_and_captured_logs(testitem, run_number; cfg.logs)
-                    report_empty_testsets(testitem, ts)
-                    if cfg.gc_between_testitems
-                        @debugv 2 "Running GC"
-                        GC.gc(true)
+            # Disable test printing for the serial executor case.
+            # Uses _with_testset_print_disabled to handle both old Julia (setindex!) and
+            # new Julia 1.12+ (ScopedValue) where TESTSET_PRINT_ENABLE changed type.
+            _with_testset_print_disabled() do
+                ctx = TestContext(proj_name, ntestitems)
+                # we use a single TestSetupModules
+                ctx.setups_evaled = TestSetupModules()
+                for (i, testitem) in enumerate(testitems.testitems)
+                    testitem.workerid[] = Libc.getpid()
+                    testitem.eval_number[] = i
+                    @atomic :monotonic testitems.count += 1
+                    run_number = 1
+                    max_runs = 1 + max(cfg.retries, testitem.retries)
+                    is_non_pass = false
+                    while run_number ≤ max_runs
+                        res = runtestitem(testitem, ctx; cfg.test_end_expr, cfg.verbose_results, cfg.logs, failfast=cfg.testitem_failfast)
+                        ts = res.testset
+                        print_errors_and_captured_logs(testitem, run_number; cfg.logs)
+                        report_empty_testsets(testitem, ts)
+                        if cfg.gc_between_testitems
+                            @debugv 2 "Running GC"
+                            GC.gc(true)
+                        end
+                        testitem.is_non_pass[] = is_non_pass = any_non_pass(ts)
+                        if is_non_pass && run_number != max_runs
+                            run_number += 1
+                            @info "Retrying $(repr(testitem.name)). Run=$run_number."
+                        else
+                            break
+                        end
                     end
-                    testitem.is_non_pass[] = is_non_pass = any_non_pass(ts)
-                    if is_non_pass && run_number != max_runs
-                        run_number += 1
-                        @info "Retrying $(repr(testitem.name)). Run=$run_number."
-                    else
+                    if cfg.failfast && is_non_pass
+                        cancel!(testitems)
+                        print_failfast_cancellation(testitem)
                         break
                     end
-                end
-                if cfg.failfast && is_non_pass
-                    cancel!(testitems)
-                    print_failfast_cancellation(testitem)
-                    break
                 end
             end
         elseif !isempty(testitems.testitems)
@@ -496,7 +547,7 @@ function _runtests_in_current_env(
                 end
             end
         end
-        Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
+        _ensure_testset_print_enabled() # reenable printing so our `finish` prints
         # Let users know if tests are done, and if all of them ran (or if we failed fast).
         # Print this above the final report as there might have been other logs printed
         # since a failfast-cancellation was printed, but print it ASAP after tests finish
@@ -507,7 +558,7 @@ function _runtests_in_current_env(
         @debugv 1 "Calling Test.finish(testitems)"
         Test.finish(testitems) # print summary of total passes/failures/errors
     finally
-        Test.TESTSET_PRINT_ENABLE[] = true
+        _ensure_testset_print_enabled()
         @debugv 1 "Cleaning up test setup logs"
         foreach(Iterators.filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER[], join=true))) do logfile
             try
@@ -530,10 +581,14 @@ function start_worker(proj_name, nworker_threads::String, worker_init_expr::Expr
     i = worker_num == nothing ? "" : " $worker_num"
     proj = Base.active_project()
     # remote_fetch here because we want to make sure the worker is all setup before starting to eval testitems
+    # Build the worker initialization expression
+    # For Julia 1.12+, TESTSET_PRINT_ENABLE is a ScopedValue and can't be set with setindex!
+    # The _worker_disable_testset_print_expr() returns the appropriate expression for the Julia version
+    disable_print_expr = _worker_disable_testset_print_expr()
     remote_fetch(w, quote
         Base.set_active_project($proj)
         using ReTestItems, Test
-        Test.TESTSET_PRINT_ENABLE[] = false
+        $disable_print_expr
         const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)
         GLOBAL_TEST_CONTEXT.setups_evaled = ReTestItems.TestSetupModules()
         nthreads_str = $nworker_threads
@@ -610,21 +665,24 @@ function record_worker_terminated!(testitem, worker::Worker, run_number::Int)
 end
 
 function record_test_error!(testitem, msg, elapsed_seconds::Real=0.0)
-    Test.TESTSET_PRINT_ENABLE[] = false
-    ts = DefaultTestSet(testitem.name)
-    err = ErrorException(msg)
-    Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
-        Base.ExceptionStack([(exception=err, backtrace=Union{Ptr{Nothing}, Base.InterpreterIP}[])]),
-        LineNumberNode(testitem.line, testitem.file)))
-    try
-        Test.finish(ts)
-    catch e2
-        e2 isa TestSetException || rethrow()
+    # Wrap in _with_testset_print_disabled to handle both old Julia (setindex!) and
+    # new Julia 1.12+ (ScopedValue) where TESTSET_PRINT_ENABLE changed type.
+    ts = _with_testset_print_disabled() do
+        ts = DefaultTestSet(testitem.name)
+        err = ErrorException(msg)
+        Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
+            Base.ExceptionStack([(exception=err, backtrace=Union{Ptr{Nothing}, Base.InterpreterIP}[])]),
+            LineNumberNode(testitem.line, testitem.file)))
+        try
+            Test.finish(ts)
+        catch e2
+            e2 isa TestSetException || rethrow()
+        end
+        ts
     end
     # Since we're manually constructing a TestSet here to report tests that already ran and
     # were killed, we need to manually set how long those tests were running (if known).
     ts.time_end = ts.time_start + elapsed_seconds
-    Test.TESTSET_PRINT_ENABLE[] = true
     push!(testitem.testsets, ts)
     push!(testitem.stats, PerfStats())  # No data since testitem didn't complete
     return testitem
@@ -648,7 +706,11 @@ function manage_worker(
         end
         testitem.workerid[] = worker.pid
         timeout = something(testitem.timeout, cfg.testitem_timeout)
-        fut = remote_eval(worker, :(ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(cfg.test_end_expr)), verbose_results=$(cfg.verbose_results), logs=$(QuoteNode(cfg.logs)), failfast=$(cfg.testitem_failfast))))
+        # Wrap runtestitem in _with_testset_print_disabled to handle both old Julia (setindex!)
+        # and new Julia 1.12+ (ScopedValue) where TESTSET_PRINT_ENABLE changed type.
+        fut = remote_eval(worker, :(ReTestItems._with_testset_print_disabled() do
+            ReTestItems.runtestitem($testitem, GLOBAL_TEST_CONTEXT; test_end_expr=$(QuoteNode(cfg.test_end_expr)), verbose_results=$(cfg.verbose_results), logs=$(QuoteNode(cfg.logs)), failfast=$(cfg.testitem_failfast))
+        end))
         max_runs = 1 + max(cfg.retries, testitem.retries)
         try
             timer = Timer(timeout) do tm
