@@ -1600,4 +1600,13 @@ end
     run(addenv(cmd, "JULIA_PROJECT" => pkg))
 end
 
+@testset "paths in different projects" begin
+    @test_throws "different projects" begin
+        runtests(
+            "test/packages/NoDeps.jl/test",
+            "test/packages/TestOnlyDeps.jl/test",
+        )
+    end
+end
+
 end # integrationtests.jl testset

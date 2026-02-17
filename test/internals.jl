@@ -415,4 +415,24 @@ end
     end
 end
 
+@testset "identify_project" begin
+    using ReTestItems: identify_project
+    test_pkg_dir = joinpath(pkgdir(ReTestItems), "test", "packages")
+    # MonoRepo.jl has a `Project.toml` at the root and a `Project.toml` in subdirectories
+    monorepo = joinpath(test_pkg_dir, "MonoRepo.jl")
+    monorepo_proj = joinpath(monorepo, "Project.toml")
+    @assert isfile(monorepo_proj)
+    paths_same = (monorepo, joinpath(monorepo, "src"), joinpath(monorepo, "test"))
+    @test identify_project(paths_same) == monorepo_proj
+    for path in paths_same
+        @test identify_project(path) == monorepo_proj
+    end
+    subpkg = joinpath(monorepo, "monorepo_packages", "B")
+    subpkg_proj = joinpath(subpkg, "Project.toml")
+    @assert isfile(subpkg_proj)
+    @test identify_project(joinpath(subpkg, "test")) == subpkg_proj
+    paths_diff = (joinpath(monorepo, "test"), joinpath(subpkg, "test"))
+    @test_throws "different project" identify_project(paths_diff)
+end
+
 end # internals.jl testset

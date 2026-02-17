@@ -363,14 +363,10 @@ function _runtests(ti_filter, paths, cfg::_Config)
     # So we ignore the `runtests(...)` call in `test/runtests.jl` when `runtests(...)`
     # was called from the command line.
     get(task_local_storage(), :__RE_TEST_RUNNING__, false) && return nothing
-    # If passed multiple directories/files, we assume/require they share the same environment.
-    dir = first(paths)
-    @assert dir isa AbstractString
     # If the test env is already active, then we just need to find the main `Project.toml`
     # to find the package name so we can import the package inside the `@testitem`s.
     # Otherwise, then we need the `Project.toml` to activate the env.
-    proj_file = identify_project(dir)
-    proj_file == "" && error("Could not find project directory for `$(dir)`")
+    proj_file = identify_project(paths)
     @debugv 1 "Running tests in `$paths` for project at `$proj_file`"
     # Wrapping with the logger that was set before eval'ing any user code to
     # avoid world age issues when logging https://github.com/JuliaLang/julia/issues/33865
@@ -944,7 +940,7 @@ function is_running_test_runtests_jl(projectfile::String)
 end
 
 function _project_file(env::String)
-    for proj in Base.project_names
+    for proj in ("Project.toml", "JuliaProject.toml")
         project_file = joinpath(env, proj)
         if Base.isfile_casesensitive(project_file)
             return project_file
@@ -954,7 +950,7 @@ function _project_file(env::String)
 end
 
 # identify project file for which we're running tests
-function identify_project(dir)
+function identify_project(dir::AbstractString)
     projectfile = ""
     path = abspath(dir)
     while true
@@ -967,6 +963,29 @@ function identify_project(dir)
         path = dirname(path)
     end
     return projectfile
+end
+
+function identify_project(paths::Tuple)
+    path1, rest = Iterators.peel(paths)
+    proj_file = identify_project(path1)
+    proj_file == "" && error("Could not find project directory for `$(path1)`")
+    # If passed multiple directories/files, we require they share the same environment.
+    for path in rest
+        if identify_project(path) != proj_file
+            _throw_wrong_project(path1, path)
+        end
+    end
+    return proj_file
+end
+
+function _throw_wrong_project(path1, path2)
+    error("""All paths passed to `runtests` must belong to the same project \
+        but `$(path2)` does not belong to the same project as `$(path1)`. \
+        Call `runtests` individually for paths in different projects, like:
+          runtests(\"$(path1)\")
+          runtests(\"$(path2)\")`
+        """
+    )
 end
 
 function with_source_path(f, path)
