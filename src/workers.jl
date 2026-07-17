@@ -84,7 +84,14 @@ function terminate!(w::Worker, from::Symbol=:manual)
     end
     signal = Base.SIGTERM
     while true
-        kill(w.process, signal)
+        try
+            kill(w.process, signal)
+        catch e
+            # Windows: TerminateProcess on a process that is currently exiting
+            # fails with ERROR_ACCESS_DENIED before the process object is
+            # signaled; libuv surfaces that as EACCES instead of ESRCH.
+            (Sys.iswindows() && e isa Base.IOError && e.code == Base.UV_EACCES) || rethrow()
+        end
         signal = signal == Base.SIGTERM ? Base.SIGINT : Base.SIGKILL
         process_exited(w.process) && break
         sleep(0.1)

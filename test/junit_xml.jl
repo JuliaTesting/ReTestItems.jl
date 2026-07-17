@@ -50,6 +50,7 @@ function test_reference(reference, comparison)
     end
     a = remove_variables(read(reference, String))
     b = remove_variables(read(comparison, String))
+    b = VERSION >= v"1.12" ? replace(b, r" *Suggestion: check for spelling errors or missing imports. *\n" => "") : b
     if a == b
         @test true
         return nothing
