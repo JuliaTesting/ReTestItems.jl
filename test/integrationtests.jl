@@ -245,6 +245,35 @@ end
     @test length(errors(results)) == 1
 end
 
+@testset "init_expr" verbose=true begin
+    init_expr_test_file = joinpath(TEST_FILES_DIR, "_init_expr_test.jl")
+    # Use @eval to assign to Main, which works in Julia 1.8+
+    init_expr = quote
+        @eval Main INIT_EXPR_RAN = true
+    end
+
+    @testset "init_expr runs when nworkers=0" begin
+        # Clean up any previous state
+        @eval Main INIT_EXPR_RAN = false
+        results = encased_testset() do
+            runtests(init_expr_test_file; nworkers=0, init_expr)
+        end
+        @test all_passed(results)
+    end
+
+    @testset "init_expr runs when nworkers>0" begin
+        results = encased_testset() do
+            runtests(init_expr_test_file; nworkers=1, init_expr)
+        end
+        @test all_passed(results)
+    end
+
+    @testset "error when both init_expr and worker_init_expr are set" begin
+        worker_init_expr = :(1+1)
+        @test_throws ArgumentError runtests(joinpath(TEST_PKG_DIR, "NoDeps.jl"); init_expr, worker_init_expr)
+    end
+end
+
 nworkers = 2
 @testset "runtests with nworkers = $nworkers" verbose=true begin
     @testset "Pkg.test() $pkg" for pkg in TEST_PKGS
