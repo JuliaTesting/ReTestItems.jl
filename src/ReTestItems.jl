@@ -1008,7 +1008,7 @@ function ensure_setup!(ctx::TestContext, setup::Symbol, setups::Vector{TestSetup
         # failed test item, we'd print the cumulative logs from all the previous attempts.
         isassigned(ts.logstore) && close(ts.logstore[])
         ts.logstore[] = open(logpath(ts), "w")
-        mod_expr = :(module $(gensym(ts.name)) end)
+        mod_expr = :(module $(ts.name) end)
         # replace the module expr body with our @testsetup code
         mod_expr.args[3] = ts.code
         newmod = _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : ts.logstore[]) do
@@ -1125,7 +1125,7 @@ function runtestitem(
             push!(body.args, Expr(:using, Expr(:., :Main, ts_mod)))
             # ts_mod is a gensym'd name so that setup modules don't clash
             # so we set a const alias inside our @testitem module to make things work
-            push!(body.args, :(const $setup = $ts_mod))
+            # push!(body.args, :(const $setup = $ts_mod))
         end
         @debugv 1 "Setup for test item $(repr(name)) done$(_on_worker())."
 
