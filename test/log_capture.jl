@@ -34,8 +34,8 @@ end
     setup1 = @testsetup module TheTestSetup1 end
     setup2 = @testsetup module TheTestSetup2 end
     ti = TestItem(Ref(42), "TheTestItem", "ID007", [], false, [], 0, nothing, false, nothing, "source/path", 42, ".", nothing)
-    push!(ti.testsetups, setup1)
-    push!(ti.testsetups, setup2)
+    push!(ti.testsetups, :TheTestSetup1 => setup1)
+    push!(ti.testsetups, :TheTestSetup2 => setup2)
     push!(ti.testsets, Test.DefaultTestSet("dummy"))
     setup1.logstore[] = open(ReTestItems.logpath(setup1), "w")
     setup2.logstore[] = open(ReTestItems.logpath(setup2), "w")

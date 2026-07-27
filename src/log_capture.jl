@@ -172,7 +172,7 @@ function print_errors_and_captured_logs(
 )
     ts = ti.testsets[run_number]
     has_errors = any_non_pass(ts)
-    has_logs = _has_logs(ti, run_number) || any(_has_logs, ti.testsetups)
+    has_logs = _has_logs(ti, run_number) || any(_has_logs, values(ti.testsetups))
     if has_errors || logs == :batched
         report_iob = IOContext(IOBuffer(), :color=>Base.get_have_color())
         println(report_iob)
@@ -214,7 +214,7 @@ end
 # the captured logs or a messgage that no logs were captured. `print_errors_and_captured_logs`
 # will call this function only if some logs were collected or when called with `verbose_results`.
 function _print_captured_logs(io, ti::TestItem, run_number::Int)
-    for setup in ti.testsetups
+    for (_name, setup) in ti.testsetups
         _print_captured_logs(io, setup, ti)
     end
     has_logs = _has_logs(ti, run_number)
