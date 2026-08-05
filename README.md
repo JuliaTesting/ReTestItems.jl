@@ -229,6 +229,30 @@ end
 
 If a test-items set the `failfast` then that value takes precedence over the `testitem_failfast` keyword passed to `runtests`.
 
+#### Running expensive test-items first
+
+If a test-item takes much longer to run than the others, it can say so using the `cost` keyword.
+Test-items that declare a cost are run before those that don't, most expensive first.
+
+```julia
+@testitem "slow integration test" cost=450 begin
+    @test long_running_thing()
+end
+```
+
+Starting the most expensive test-items first shortens the whole test run, since a long test-item that starts near the end of the run leaves every other worker idle waiting for it to finish.
+A cost is a number of nominal seconds. Only the relative size of costs matters, so costs need not be accurate — a rough measurement is enough to get most of the benefit — but they should be on a consistent scale within a project.
+
+A cost can also be computed from the configuration of the test run, by passing a function.
+It is called once per test-item, before any test-item runs, with a `NamedTuple` holding `nworkers::Int`, the number of worker processes (`0` when tests run serially), and `nworker_threads::Int`, the number of threads each test-item will run with.
+For example, a test-item with 15 seconds of fixed cost plus 450 seconds of work that its worker can parallelize across threads:
+
+```julia
+@testitem "slow integration test" cost=(cfg -> 15 + 450 / cfg.nworker_threads) begin
+    @test long_running_thing()
+end
+```
+
 #### Post-testitem hook
 
 If there is something that should be checked after every single `@testitem`, then it's possible to pass an expression to `runtests` using the `test_end_expr` keyword.
