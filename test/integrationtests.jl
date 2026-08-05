@@ -25,6 +25,15 @@ const TEST_PKGS = ("NoDeps.jl", "TestsInSrc.jl", "TestProjectFile.jl", "TestEndE
 
 include(joinpath(_TEST_DIR, "_integration_test_tools.jl"))
 
+# The order in which a `runtests` call ran its test items, reconstructed from the
+# "START (i/n)" messages in the captured logs.
+function testitems_runorder(logstr::String)
+    re = r"START \(\s*(?<num>\d+)/\d+\) test item \"(?<name>.*)\""
+    names = [String(m[:name]) for m in eachmatch(re, logstr)]
+    order = [parse(Int, m[:num]) for m in eachmatch(re, logstr)]
+    return names[order]
+end
+
 # Run `f` in the given package's environment and inside a `testset` which doesn't let
 # the package's test failures/errors cause ReTestItems' tests to fail/error.
 function with_test_package(f, name)
@@ -1518,13 +1527,6 @@ end
 
 @testset "failures_first" verbose=true begin
     using IOCapture
-    # we use logs to tell us the order in which tests were run.
-    function testitems_runorder(logstr::String)
-        re = r"START \((?<num>\d)/\d\) test item \"(?<name>.*)\""
-        names = [String(m[:name]) for m in eachmatch(re, logstr)]
-        order = [parse(Int, m[:num]) for m in eachmatch(re, logstr)]
-        return names[order]
-    end
     file = joinpath(TEST_FILES_DIR, "_failures_first_tests.jl")
     @testset for nworkers in (0, 1)
         ReTestItems.reset_test_status!()
@@ -1586,6 +1588,36 @@ end
             end
         end
     end
+end
+
+@testset "testitem cost" verbose=true begin
+    using IOCapture
+    file = joinpath(TEST_FILES_DIR, "_cost_tests.jl")
+    # Most expensive first, then the test items declaring no cost, in the order they
+    # appear in the file.
+    expected = ["b. cost 100", "e. cost function", "d. cost 50", "a. no cost", "c. no cost"]
+    @testset for nworkers in (0, 1)
+        ReTestItems.reset_test_status!()
+        c = IOCapture.capture() do
+            encased_testset(()->runtests(file; nworkers))
+        end
+        results = c.value
+        @test n_tests(results) == 5
+        @test n_passed(results) == 5
+        @test testitems_runorder(c.output) == expected
+    end
+    @testset "workers start on the most expensive test items" begin
+        ReTestItems.reset_test_status!()
+        c = IOCapture.capture() do
+            encased_testset(()->runtests(file; nworkers=2))
+        end
+        results = c.value
+        @test n_tests(results) == 5
+        @test n_passed(results) == 5
+        tis = testitems_runorder(c.output)
+        @test Set(tis[1:2]) == Set(["b. cost 100", "e. cost function"])
+    end
+    ReTestItems.reset_test_status!()
 end
 
 # https://github.com/JuliaTesting/ReTestItems.jl/issues/228

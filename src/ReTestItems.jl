@@ -262,6 +262,8 @@ will be run.
 - `failures_first::Bool=true`: if `true`, first runs test items that failed the last time
   they ran, followed by new test items, followed by test items that passed the last time they ran.
   Can also be set using the `RETESTITEMS_FAILURES_FIRST` environment variable.
+  Within each of those groups, test items that declare a `cost` run before those that
+  don't, most expensive first; see the `cost` keyword of `@testitem`.
 """
 function runtests end
 
@@ -399,6 +401,87 @@ function _runtests(ti_filter, paths, cfg::_Config)
     end
 end
 
+# Stands in for the cost of a test item that declares none. Lower than every valid cost, so
+# that once costs are negated to sort descending, those test items sort last.
+const _NO_COST = -Inf
+
+# The run configuration passed to a `@testitem`'s `cost` function. `nworker_threads` is
+# the number of (default-threadpool) threads each test item will run with, so a cost can
+# scale with the parallelism available to the test item: the validated "N" or "N,M"
+# setting when there are workers, and this process's thread count when running serially
+# (the setting is unused then).
+function _cost_config(cfg::_Config)
+    nthreads = if cfg.nworkers == 0
+        Threads.nthreads()
+    else
+        parse(Int, first(split(cfg.nworker_threads, ',')))
+    end
+    return (; nworkers=cfg.nworkers, nworker_threads=nthreads)
+end
+
+_scheduling_cost(ti::TestItem) = (c = ti.cost[]; c isa Real ? Float64(c) : _NO_COST)
+
+# The one-argument form is the documented interface; a function of no arguments is accepted
+# too, for a cost that doesn't depend on the run configuration. If neither form is
+# applicable (e.g. the one-argument method demands some other type), still call the
+# one-argument form, so the resulting `MethodError` points at the documented interface.
+function _call_cost(f::Function, cost_cfg::NamedTuple)
+    applicable(f, cost_cfg) && return f(cost_cfg)
+    applicable(f) && return f()
+    return f(cost_cfg)
+end
+
+function _call_cost_function(f::Function, ti::TestItem, cost_cfg::NamedTuple)
+    # The test files were included by this same `runtests` call, so a cost function defined
+    # in a test file is newer than the world age we are running in, and both the call and
+    # the check of which form it takes have to happen in the latest world.
+    try
+        return _validated_cost_result(Base.invokelatest(_call_cost, f, cost_cfg))
+    catch
+        @error "Error evaluating `cost` for test item $(repr(ti.name)) at $(ti.file):$(ti.line)"
+        rethrow()
+    end
+end
+
+# Replace each `Function` cost by the number it returns. Costs are resolved here, once per
+# run and before any test item is sent to a worker, so that a cost function is called
+# exactly once and never leaves the coordinator process.
+# Returns whether any test item declares a cost.
+function _resolve_costs!(testitems::Vector{TestItem}, cfg::_Config)
+    any_cost = false
+    cost_cfg = _cost_config(cfg)
+    for ti in testitems
+        cost = ti.cost[]
+        if cost isa Function
+            cost = _call_cost_function(cost, ti, cost_cfg)
+            ti.cost[] = cost
+        end
+        any_cost |= !isnothing(cost)
+    end
+    return any_cost
+end
+
+# Put the queue in the order we want test items picked up in: test items that failed the
+# last time they ran first (`failures_first`), then most expensive first.
+# Returns whether the queue is now sorted, i.e. whether workers should start from the front
+# of the queue rather than from evenly spaced positions.
+function _sort_testitems!(testitems::TestItems, cfg::_Config)
+    any_cost = _resolve_costs!(testitems.testitems, cfg)
+    by_status = cfg.failures_first && !isempty(GLOBAL_TEST_STATUS)
+    (any_cost || by_status) || return false
+    # `number` is unique, so the key is a total order and the resulting order is
+    # deterministic whether or not the sort algorithm is stable.
+    sort!(testitems.testitems; by=ti -> (
+        by_status ? _status_when_last_seen(ti) : _UNSEEN,
+        -_scheduling_cost(ti),
+        ti.number[],
+    ))
+    foreach(enumerate(testitems.testitems)) do (i, ti)
+        ti.number[] = i # reset number to match new order
+    end
+    return true
+end
+
 function _runtests_in_current_env(
     ti_filter, paths, projectfile::String, cfg::_Config
 )
@@ -419,15 +502,7 @@ function _runtests_in_current_env(
     @info "Scheduling $ntestitems tests on pid $(Libc.getpid())" *
         (nworkers == 0 ? "" : " with $nworkers worker processes and $nworker_threads threads per worker.")
     try
-        if cfg.failures_first && !isempty(GLOBAL_TEST_STATUS)
-            sort!(testitems.testitems; by=_status_when_last_seen)
-            foreach(enumerate(testitems.testitems)) do (i, ti)
-                ti.number[] = i # reset number to match new order
-            end
-            is_sorted_queue = true
-        else
-            is_sorted_queue = false
-        end
+        is_sorted_queue = _sort_testitems!(testitems, cfg)
         if nworkers == 0
             length(cfg.worker_init_expr.args) > 0 && error("worker_init_expr is set, but will not run because number of workers is 0.")
             # This is where we disable printing for the serial executor case.

@@ -122,6 +122,11 @@ struct TestItem
     timeout::Union{Int,Nothing} # in seconds
     skip::Union{Bool,Expr}
     failfast::Union{Bool,Nothing}
+    # Nominal seconds this test item takes to run, used to schedule expensive test items
+    # first; `nothing` if the test item declares no cost. A `Function` cost is called by
+    # the runtests coordinator and replaced by the number it returns, before any test item
+    # is sent to a worker, so a worker only ever sees a number or `nothing`.
+    cost::Base.RefValue{Union{Nothing,Float64,Function}}
     file::String
     line::Int
     project_root::String
@@ -134,10 +139,33 @@ struct TestItem
     stats::Vector{PerfStats} # populated when the test item is finished running
     scheduled_for_evaluation::ScheduledForEvaluation # to keep track of whether the test item has been scheduled for evaluation
 end
-function TestItem(number, name, id, tags, default_imports, setups, retries, timeout, skip, failfast, file, line, project_root, code)
+# Normalize what `@testitem` was given as a `cost` to `nothing`, a `Float64`, or the
+# `Function` that will compute it.
+_invalid_cost(x) = throw(ArgumentError("`cost` must be a `Real` or a `Function`, got `cost=$(repr(x))`"))
+_validated_cost(::Nothing) = nothing
+_validated_cost(f::Function) = f
+function _validated_cost(x::Real)
+    (isfinite(x) && x >= 0) || throw(ArgumentError("`cost` must be a finite, non-negative number, got `cost=$x`"))
+    return Float64(x)
+end
+_validated_cost(x::Bool) = _invalid_cost(x) # `Bool <: Real`, but a cost of `true` is a mistake
+_validated_cost(x) = _invalid_cost(x)
+
+# Validate what a `Function` cost returned. Unlike `_validated_cost`, a `Function` is not
+# accepted: resolving a cost must produce the number (or `nothing`) that the scheduler
+# and the workers will see.
+_invalid_cost_result(x) = throw(ArgumentError("`cost` function must return a `Real` or `nothing`, got `$(repr(x))`"))
+_validated_cost_result(::Nothing) = nothing
+_validated_cost_result(x::Real) = _validated_cost(x)
+_validated_cost_result(x::Bool) = _invalid_cost_result(x)
+_validated_cost_result(x) = _invalid_cost_result(x)
+
+function TestItem(number, name, id, tags, default_imports, setups, retries, timeout, skip, failfast, cost, file, line, project_root, code)
     _id = @something(id, repr(hash(name, hash(relpath(file, project_root)))))
     return TestItem(
-        number, name, _id, tags, default_imports, setups, retries, timeout, skip, failfast, file, line, project_root, code,
+        number, name, _id, tags, default_imports, setups, retries, timeout, skip, failfast,
+        Ref{Union{Nothing,Float64,Function}}(_validated_cost(cost)),
+        file, line, project_root, code,
         TestSetup[],
         Ref{Int}(0),
         DefaultTestSet[],
@@ -149,7 +177,7 @@ function TestItem(number, name, id, tags, default_imports, setups, retries, time
 end
 
 """
-    @testitem "name" [tags=[] setup=[] retries=0 skip=false default_imports=true] begin
+    @testitem "name" [tags=[] setup=[] retries=0 skip=false cost=nothing default_imports=true] begin
         # code that will be run as tests
     end
 
@@ -252,6 +280,38 @@ If a `@testitem` should stop running on the first test failure, then you can set
         @test true
         @test error("oops")
     end
+
+If a `@testitem` takes much longer to run than the others, it can declare how long by
+passing the `cost` keyword. Test items that declare a cost are run before those that don't,
+most expensive first. Starting the most expensive test items first shortens the whole test
+run, since a long test item that starts near the end of the run leaves every other worker
+idle waiting for it.
+
+    @testitem "slow integration test" cost=450 begin
+        @test long_running_thing()
+    end
+
+A cost is a number of nominal seconds. Only the relative size of costs matters, so costs
+need only be on a consistent scale within a project; costs need not be accurate, and a
+rough measurement is enough to get most of the benefit. Test items that declare no cost run
+after all test items that do, in the order they would otherwise have run in.
+
+A cost can also be computed from the configuration of the test run, by passing a function.
+For example, a test item with 15 seconds of fixed cost plus 450 seconds of work that its
+worker can parallelize across threads:
+
+    @testitem "slow integration test" cost=(cfg -> 15 + 450 / cfg.nworker_threads) begin
+        @test long_running_thing()
+    end
+
+The function is passed a `NamedTuple` with fields `nworkers::Int`, the number of worker
+processes (`0` when tests run serially in the coordinator process), and
+`nworker_threads::Int`, the number of threads each test item will run with (from the
+`nworker_threads` setting, or this process's thread count when running serially). The
+function is called exactly once per test item, in the coordinator process, before any
+test item starts running; it is never called in a worker process, so it cannot measure a
+worker's environment. A function taking no arguments is also accepted, as is returning
+`nothing` to declare no cost after all.
 """
 macro testitem(nm, exs...)
     default_imports = true
@@ -261,6 +321,7 @@ macro testitem(nm, exs...)
     setup = Any[]
     skip = false
     failfast = nothing
+    cost = nothing
     _id = nothing
     _run = true  # useful for testing `@testitem` itself
     _source = QuoteNode(__source__)
@@ -299,6 +360,12 @@ macro testitem(nm, exs...)
             elseif kw == :failfast
                 failfast = ex.args[2]
                 @assert failfast isa Bool "`failfast` keyword must be passed a `Bool`. Got `failfast=$failfast`"
+            elseif kw == :cost
+                cost = ex.args[2]
+                # A `Function` is written as an expression, so anything but a number is
+                # only checked here for being expression-shaped; the value it evaluates to
+                # is validated when the test item is created.
+                @assert cost isa Union{Real,Symbol,Expr} "`cost` keyword must be passed a `Real` or a `Function`. Got `cost=$cost`"
             elseif kw == :_id
                 _id = ex.args[2]
                 # This will always be written to the JUnit XML as a String, require the user
@@ -324,7 +391,7 @@ macro testitem(nm, exs...)
     ti = gensym(:ti)
     esc(quote
         let $ti = $TestItem(
-            $Ref(0), $nm, $_id, $tags, $default_imports, $setup, $retries, $timeout, $skip, $failfast,
+            $Ref(0), $nm, $_id, $tags, $default_imports, $setup, $retries, $timeout, $skip, $failfast, $cost,
             $String($_source.file), $_source.line,
             $gettls(:__RE_TEST_PROJECT__, "."),
             $q,

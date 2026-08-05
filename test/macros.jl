@@ -420,6 +420,123 @@ end
     )
 end
 
+# Here we are just testing how the `cost` keyword is parsed.
+# The scheduling that `cost` drives is tested in `internals.jl` and `integrationtests.jl`.
+@testset "testitem `cost` keyword" begin
+    @testset "no cost" begin
+        ti = @testitem "no cost" _run=false begin
+            @test true
+        end
+        @test isnothing(ti.cost[])
+    end
+
+    @testset "number cost" begin
+        ti = @testitem "int cost" cost=450 _run=false begin
+            @test true
+        end
+        @test ti.cost[] === 450.0
+        ti = @testitem "float cost" cost=1.5 _run=false begin
+            @test true
+        end
+        @test ti.cost[] === 1.5
+        ti = @testitem "zero cost" cost=0 _run=false begin
+            @test true
+        end
+        @test ti.cost[] === 0.0
+    end
+
+    @testset "function cost" begin
+        # A named function, an anonymous function of the run config, and a function of no
+        # arguments are all kept as-is until the coordinator resolves them.
+        cost_fn(cfg) = 10.0 * cfg.nworkers
+        ti = @testitem "named function cost" cost=cost_fn _run=false begin
+            @test true
+        end
+        @test ti.cost[] === cost_fn
+        ti = @testitem "anonymous function cost" cost=(cfg -> 10.0 * cfg.nworkers) _run=false begin
+            @test true
+        end
+        @test ti.cost[] isa Function
+        ti = @testitem "no-argument function cost" cost=(() -> 10.0) _run=false begin
+            @test true
+        end
+        @test ti.cost[] isa Function
+    end
+
+    @testset "rejects a cost that is not a number or a function" begin
+        # A literal that could never be either is rejected where it is written.
+        expected = "`cost` keyword must be passed a `Real` or a `Function`"
+        @test_throws expected (
+            @eval @testitem "bad 1" cost="slow" begin
+                @test true
+            end
+        )
+        @test_throws expected (
+            @eval @testitem "bad 2" cost=:slow begin
+                @test true
+            end
+        )
+        # An expression is only checked once it has been evaluated.
+        @test_throws "`cost` must be a `Real` or a `Function`, got `cost=\"slow\"`" (
+            @eval @testitem "bad 3" cost=("sl" * "ow") _run=false begin
+                @test true
+            end
+        )
+        @test_throws "`cost` must be a `Real` or a `Function`, got `cost=true`" (
+            @eval @testitem "bad 4" cost=true _run=false begin
+                @test true
+            end
+        )
+    end
+
+    @testset "rejects a cost that is not a finite, non-negative number" begin
+        for c in (-1, -0.5, Inf, NaN)
+            @test_throws "`cost` must be a finite, non-negative number, got `cost=$c`" (
+                @eval @testitem "bad" cost=$c _run=false begin
+                    @test true
+                end
+            )
+        end
+    end
+
+    @testset "a cost function that fits neither form errors on the one-argument call" begin
+        # A one-argument method that can't take the config `NamedTuple` should produce a
+        # `MethodError` for the documented one-argument interface, not for a zero-argument
+        # call the user never wrote.
+        cost_cfg = (; nworkers=1, nworker_threads=1)
+        ti = @testitem "typed-argument cost" cost=((x::Int) -> x) _run=false begin
+            @test true
+        end
+        err = try
+            ReTestItems._call_cost_function(ti.cost[], ti, cost_cfg)
+        catch e
+            e
+        end
+        @test err isa MethodError
+        @test err.args == (cost_cfg,)
+    end
+
+    @testset "rejects a function cost returning an invalid cost" begin
+        # The cost function is only called by the coordinator, so its result is validated
+        # then rather than when the test item is created.
+        cost_cfg = (; nworkers=1, nworker_threads=1)
+        ti = @testitem "bad function cost" cost=(cfg -> "slow") _run=false begin
+            @test true
+        end
+        @test_throws "`cost` function must return a `Real` or `nothing`" (
+            ReTestItems._call_cost_function(ti.cost[], ti, cost_cfg)
+        )
+        # A `Function` is not a valid result either: a cost must resolve to a number (or
+        # `nothing`) before test items are sent to workers.
+        ti = @testitem "function cost returning a function" cost=(cfg -> (() -> 1.0)) _run=false begin
+            @test true
+        end
+        @test_throws "`cost` function must return a `Real` or `nothing`" (
+            ReTestItems._call_cost_function(ti.cost[], ti, cost_cfg)
+        )
+    end
+end
+
 @testset "testitem with `default_imports`" begin
     ti = @testitem "default_imports" default_imports=true _run=false begin
         @test @isdefined Test
