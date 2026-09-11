@@ -16,11 +16,14 @@ using DeepDiffs: deepdiff
 function remove_variables(str)
     return replace(str,
         # Replace timestamps and times with "0"
-        r" timestamp=\\\"[0-9-T:.]*\\\"" => " timestamp=\"0\"",
-        r" time=\\\"[0-9]*.[0-9]*\\\"" => " time=\"0\"",
+        r" timestamp=\\\"[^\\\"]*\\\"" => " timestamp=\"0\"",
+        r" time=\\\"[^\\\"]*\\\"" => " time=\"0\"",
         # Replace tag `value` in a <property> with "0"
         # e.g. "<property name=\"dd_tags[perf.gctime]\" value=\"1.23e-6\"></property>"
-        r" value=\"[-]?[\d]*[.]?[\d]*?[e]?[-]?[\d]?\"(?=></property>)" => " value=\"0\"",
+        r"(<property name=\"dd_tags\[[^\]]+\]\" value=\")[^\"]*(\"></property>)" => s"\g<1>0\g<2>",
+        # Rendered values for failed expressions are version specific. Julia 1.13
+        # omits them when displaying comparisons between literal values.
+        r"\n *Evaluated:[^\n]*" => "",
         # Omit stacktrace info between "Stacktrace" and the line containing "</error>".
         # Stacktraces are version specific.
         r" Stacktrace:[\s\S]*(?=\n\s*</error)" => " Stacktrace:\n [omitted]",
@@ -193,6 +196,16 @@ end
         @test tc3[:errors] == "1"
         @test tc3[:failures] == "1"
     end
+end
+
+@testset "JUnitCounts produces nonnegative durations" begin
+    using ReTestItems: JUnitCounts
+
+    ts = Test.DefaultTestSet("unfinished")
+    @test JUnitCounts(ts).time == 0.0
+
+    ReTestItems._set_testset_time_end!(ts, ts.time_start - 1.0)
+    @test JUnitCounts(ts).time == 0.0
 end
 
 @testset "JUnit properties / DataDog tags" begin

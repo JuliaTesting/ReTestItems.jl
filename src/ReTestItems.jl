@@ -56,8 +56,8 @@ else # @testset does not yet support `failfast`
     CompatDefaultTestSet(a...; failfast::Bool=false, kw...) = DefaultTestSet(a...; kw...)
 end
 
-# TESTSET_PRINT_ENABLE is one piece of process-wide Test configuration on Julia <= 1.12,
-# so batch semantics do not apply. It became a ScopedValue on Julia 1.13.
+# TESTSET_PRINT_ENABLE is process-wide mutable configuration on Julia <= 1.12.
+# It became dynamically scoped configuration on Julia 1.13.
 function _with_testset_print_enabled(f, enabled::Bool)
     print_enabled = Test.TESTSET_PRINT_ENABLE
     if print_enabled isa Base.RefValue
@@ -74,8 +74,8 @@ function _with_testset_print_enabled(f, enabled::Bool)
 end
 
 function _with_testset(f, testset::Test.AbstractTestSet)
-    # A running test item has exactly one dynamic parent test set, so batch semantics do
-    # not apply. Test moved this stack from task-local storage to ScopedValues in 1.13.
+    # Test tracked the current test set stack in task-local storage on Julia <= 1.12.
+    # It moved the current test set and depth to ScopedValues in Julia 1.13.
     if isdefined(Test, :CURRENT_TESTSET)
         return Base.ScopedValues.with(
             f,
