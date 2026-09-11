@@ -56,6 +56,52 @@ else # @testset does not yet support `failfast`
     CompatDefaultTestSet(a...; failfast::Bool=false, kw...) = DefaultTestSet(a...; kw...)
 end
 
+# TESTSET_PRINT_ENABLE is one piece of process-wide Test configuration on Julia <= 1.12,
+# so batch semantics do not apply. It became a ScopedValue on Julia 1.13.
+function _with_testset_print_enabled(f, enabled::Bool)
+    print_enabled = Test.TESTSET_PRINT_ENABLE
+    if print_enabled isa Base.RefValue
+        previous = print_enabled[]
+        print_enabled[] = enabled
+        try
+            return f()
+        finally
+            print_enabled[] = previous
+        end
+    else
+        return Base.ScopedValues.with(f, print_enabled => enabled)
+    end
+end
+
+function _with_testset(f, testset::Test.AbstractTestSet)
+    # A running test item has exactly one dynamic parent test set, so batch semantics do
+    # not apply. Test moved this stack from task-local storage to ScopedValues in 1.13.
+    if isdefined(Test, :CURRENT_TESTSET)
+        return Base.ScopedValues.with(
+            f,
+            Test.CURRENT_TESTSET => testset,
+            Test.TESTSET_DEPTH => Test.get_testset_depth() + 1,
+        )
+    end
+    Test.push_testset(testset)
+    try
+        return f()
+    finally
+        popped = Test.pop_testset()
+        @assert popped === testset
+    end
+end
+
+function _set_testset_time_end!(testset::DefaultTestSet, time_end::Float64)
+    # Each finished test set has one end time. The field became atomic in Julia 1.13.
+    if isdefined(Test, :CURRENT_TESTSET)
+        @atomic testset.time_end = time_end
+    else
+        testset.time_end = time_end
+    end
+    return testset
+end
+
 struct NoTestException <: Exception
     msg::String
 end
@@ -431,38 +477,39 @@ function _runtests_in_current_env(
         if nworkers == 0
             length(cfg.worker_init_expr.args) > 0 && error("worker_init_expr is set, but will not run because number of workers is 0.")
             # This is where we disable printing for the serial executor case.
-            Test.TESTSET_PRINT_ENABLE[] = false
-            ctx = TestContext(proj_name, ntestitems)
-            # we use a single TestSetupModules
-            ctx.setups_evaled = TestSetupModules()
-            for (i, testitem) in enumerate(testitems.testitems)
-                testitem.workerid[] = Libc.getpid()
-                testitem.eval_number[] = i
-                @atomic :monotonic testitems.count += 1
-                run_number = 1
-                max_runs = 1 + max(cfg.retries, testitem.retries)
-                is_non_pass = false
-                while run_number ≤ max_runs
-                    res = runtestitem(testitem, ctx; cfg.test_end_expr, cfg.verbose_results, cfg.logs, failfast=cfg.testitem_failfast)
-                    ts = res.testset
-                    print_errors_and_captured_logs(testitem, run_number; cfg.logs)
-                    report_empty_testsets(testitem, ts)
-                    if cfg.gc_between_testitems
-                        @debugv 2 "Running GC"
-                        GC.gc(true)
+            _with_testset_print_enabled(false) do
+                ctx = TestContext(proj_name, ntestitems)
+                # we use a single TestSetupModules
+                ctx.setups_evaled = TestSetupModules()
+                for (i, testitem) in enumerate(testitems.testitems)
+                    testitem.workerid[] = Libc.getpid()
+                    testitem.eval_number[] = i
+                    @atomic :monotonic testitems.count += 1
+                    run_number = 1
+                    max_runs = 1 + max(cfg.retries, testitem.retries)
+                    is_non_pass = false
+                    while run_number ≤ max_runs
+                        res = runtestitem(testitem, ctx; cfg.test_end_expr, cfg.verbose_results, cfg.logs, failfast=cfg.testitem_failfast)
+                        ts = res.testset
+                        print_errors_and_captured_logs(testitem, run_number; cfg.logs)
+                        report_empty_testsets(testitem, ts)
+                        if cfg.gc_between_testitems
+                            @debugv 2 "Running GC"
+                            GC.gc(true)
+                        end
+                        testitem.is_non_pass[] = is_non_pass = any_non_pass(ts)
+                        if is_non_pass && run_number != max_runs
+                            run_number += 1
+                            @info "Retrying $(repr(testitem.name)). Run=$run_number."
+                        else
+                            break
+                        end
                     end
-                    testitem.is_non_pass[] = is_non_pass = any_non_pass(ts)
-                    if is_non_pass && run_number != max_runs
-                        run_number += 1
-                        @info "Retrying $(repr(testitem.name)). Run=$run_number."
-                    else
+                    if cfg.failfast && is_non_pass
+                        cancel!(testitems)
+                        print_failfast_cancellation(testitem)
                         break
                     end
-                end
-                if cfg.failfast && is_non_pass
-                    cancel!(testitems)
-                    print_failfast_cancellation(testitem)
-                    break
                 end
             end
         elseif !isempty(testitems.testitems)
@@ -496,7 +543,6 @@ function _runtests_in_current_env(
                 end
             end
         end
-        Test.TESTSET_PRINT_ENABLE[] = true # reenable printing so our `finish` prints
         # Let users know if tests are done, and if all of them ran (or if we failed fast).
         # Print this above the final report as there might have been other logs printed
         # since a failfast-cancellation was printed, but print it ASAP after tests finish
@@ -505,9 +551,10 @@ function _runtests_in_current_env(
         record_results!(testitems)
         cfg.report && write_junit_file(proj_name, dirname(projectfile), testitems.graph.junit)
         @debugv 1 "Calling Test.finish(testitems)"
-        Test.finish(testitems) # print summary of total passes/failures/errors
+        _with_testset_print_enabled(true) do
+            Test.finish(testitems) # print summary of total passes/failures/errors
+        end
     finally
-        Test.TESTSET_PRINT_ENABLE[] = true
         @debugv 1 "Cleaning up test setup logs"
         foreach(Iterators.filter(endswith(".log"), readdir(RETESTITEMS_TEMP_FOLDER[], join=true))) do logfile
             try
@@ -533,7 +580,6 @@ function start_worker(proj_name, nworker_threads::String, worker_init_expr::Expr
     remote_fetch(w, quote
         Base.set_active_project($proj)
         using ReTestItems, Test
-        Test.TESTSET_PRINT_ENABLE[] = false
         const GLOBAL_TEST_CONTEXT = ReTestItems.TestContext($proj_name, $ntestitems)
         GLOBAL_TEST_CONTEXT.setups_evaled = ReTestItems.TestSetupModules()
         nthreads_str = $nworker_threads
@@ -610,21 +656,21 @@ function record_worker_terminated!(testitem, worker::Worker, run_number::Int)
 end
 
 function record_test_error!(testitem, msg, elapsed_seconds::Real=0.0)
-    Test.TESTSET_PRINT_ENABLE[] = false
     ts = DefaultTestSet(testitem.name)
     err = ErrorException(msg)
     Test.record(ts, Test.Error(:nontest_error, Test.Expr(:tuple), err,
         Base.ExceptionStack([(exception=err, backtrace=Union{Ptr{Nothing}, Base.InterpreterIP}[])]),
         LineNumberNode(testitem.line, testitem.file)))
-    try
-        Test.finish(ts)
-    catch e2
-        e2 isa TestSetException || rethrow()
+    _with_testset_print_enabled(false) do
+        try
+            Test.finish(ts)
+        catch e2
+            e2 isa TestSetException || rethrow()
+        end
     end
     # Since we're manually constructing a TestSet here to report tests that already ran and
     # were killed, we need to manually set how long those tests were running (if known).
-    ts.time_end = ts.time_start + elapsed_seconds
-    Test.TESTSET_PRINT_ENABLE[] = true
+    _set_testset_time_end!(ts, ts.time_start + elapsed_seconds)
     push!(testitem.testsets, ts)
     push!(testitem.stats, PerfStats())  # No data since testitem didn't complete
     return testitem
@@ -1101,7 +1147,6 @@ function runtestitem(
             push!(test_end_body.args, :(using $(Symbol(ctx.projectname))))
         end
     end
-    Test.push_testset(ts)
     # This allows us to identify if the code is running inside a `@testitem`, which is
     # useful for e.g. macros that behave differently conditional on being in a `@testitem`.
     # This was added so we could have a `@test_foo` macro exapnd to a `@testset` if already
@@ -1109,56 +1154,58 @@ function runtestitem(
     prev = get(task_local_storage(), :__TESTITEM_ACTIVE__, false)
     task_local_storage()[:__TESTITEM_ACTIVE__] = true
     try
-        for setup in ti.setups
-            # TODO(nhd): Consider implementing some affinity to setups, so that we can
-            # prefer to send testitems to the workers that have already eval'd setups.
-            # Or maybe allow user-configurable grouping of test items by worker?
-            # Or group them by file by default?
+        _with_testset(ts) do
+            for setup in ti.setups
+                # TODO(nhd): Consider implementing some affinity to setups, so that we can
+                # prefer to send testitems to the workers that have already eval'd setups.
+                # Or maybe allow user-configurable grouping of test items by worker?
+                # Or group them by file by default?
 
-            # ensure setup has been evaled before
-            @debugv 1 "Ensuring setup for test item $(repr(name)) $(setup)$(_on_worker())."
-            ts_mod = ensure_setup!(ctx, setup, ti.testsetups, logs)
-            # eval using in our @testitem module
-            @debugv 1 "Importing setup for test item $(repr(name)) $(setup)$(_on_worker())."
-            # We look up the testsetups from Main (since tests are eval'd in their own
-            # temporary anonymous module environment.)
-            push!(body.args, Expr(:using, Expr(:., :Main, ts_mod)))
-            # ts_mod is a gensym'd name so that setup modules don't clash
-            # so we set a const alias inside our @testitem module to make things work
-            push!(body.args, :(const $setup = $ts_mod))
-        end
-        @debugv 1 "Setup for test item $(repr(name)) done$(_on_worker())."
-
-        # add our `@testitem` quoted code to module body expr
-        append!(body.args, ti.code.args)
-        mod_expr = :(module $(gensym(name)) end)
-        softscope_all!(body)
-        mod_expr.args[3] = body
-
-        # add the `test_end_expr` to a module to be run after the test item
-        append!(test_end_body.args, test_end_expr.args)
-        softscope_all!(test_end_body)
-        test_end_mod_expr = :(module $(gensym(name * " test_end")) end)
-        test_end_mod_expr.args[3] = test_end_body
-
-        # eval the testitem into a temporary module, so that all results can be GC'd
-        # once the test is done and sent over the wire. (However, note that anonymous modules
-        # aren't always GC'd right now: https://github.com/JuliaLang/julia/issues/48711)
-        # disabled for now since there were issues when tests tried serialize/deserialize
-        # with things defined in an anonymous module
-        # environment = Module()
-        @debugv 1 "Running test item $(repr(name))$(_on_worker())."
-        _, stats = @timed_with_compilation _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : logpath(ti)) do
-            # Always run the test_end_mod_expr, even if the test item fails / throws
-            try
-                with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
-            finally
-                has_test_end_expr && @debugv 1 "Running test_end_expr for test item $(repr(name))$(_on_worker())."
-                with_source_path(() -> Core.eval(Main, test_end_mod_expr), ti.file)
+                # ensure setup has been evaled before
+                @debugv 1 "Ensuring setup for test item $(repr(name)) $(setup)$(_on_worker())."
+                ts_mod = ensure_setup!(ctx, setup, ti.testsetups, logs)
+                # eval using in our @testitem module
+                @debugv 1 "Importing setup for test item $(repr(name)) $(setup)$(_on_worker())."
+                # We look up the testsetups from Main (since tests are eval'd in their own
+                # temporary anonymous module environment.)
+                push!(body.args, Expr(:using, Expr(:., :Main, ts_mod)))
+                # ts_mod is a gensym'd name so that setup modules don't clash
+                # so we set a const alias inside our @testitem module to make things work
+                push!(body.args, :(const $setup = $ts_mod))
             end
-            nothing # return nothing as the first return value of @timed_with_compilation
+            @debugv 1 "Setup for test item $(repr(name)) done$(_on_worker())."
+
+            # add our `@testitem` quoted code to module body expr
+            append!(body.args, ti.code.args)
+            mod_expr = :(module $(gensym(name)) end)
+            softscope_all!(body)
+            mod_expr.args[3] = body
+
+            # add the `test_end_expr` to a module to be run after the test item
+            append!(test_end_body.args, test_end_expr.args)
+            softscope_all!(test_end_body)
+            test_end_mod_expr = :(module $(gensym(name * " test_end")) end)
+            test_end_mod_expr.args[3] = test_end_body
+
+            # eval the testitem into a temporary module, so that all results can be GC'd
+            # once the test is done and sent over the wire. (However, note that anonymous modules
+            # aren't always GC'd right now: https://github.com/JuliaLang/julia/issues/48711)
+            # disabled for now since there were issues when tests tried serialize/deserialize
+            # with things defined in an anonymous module
+            # environment = Module()
+            @debugv 1 "Running test item $(repr(name))$(_on_worker())."
+            _, stats = @timed_with_compilation _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : logpath(ti)) do
+                # Always run the test_end_mod_expr, even if the test item fails / throws
+                try
+                    with_source_path(() -> Core.eval(Main, mod_expr), ti.file)
+                finally
+                    has_test_end_expr && @debugv 1 "Running test_end_expr for test item $(repr(name))$(_on_worker())."
+                    with_source_path(() -> Core.eval(Main, test_end_mod_expr), ti.file)
+                end
+                nothing # return nothing as the first return value of @timed_with_compilation
+            end
+            @debugv 1 "Done running test item $(repr(name))$(_on_worker())."
         end
-        @debugv 1 "Done running test item $(repr(name))$(_on_worker())."
     catch err
         err isa InterruptException && rethrow()
         # Handle exceptions thrown outside a `@test` in the body of the @testitem:
@@ -1184,9 +1231,7 @@ function runtestitem(
     finally
         # Make sure all test setup logs are commited to file
         foreach(ts->isassigned(ts.logstore) && flush(ts.logstore[]), ti.testsetups)
-        ts1 = Test.pop_testset()
         task_local_storage()[:__TESTITEM_ACTIVE__] = prev
-        @assert ts1 === ts
         if finish_test
             if catch_test_error
                 try

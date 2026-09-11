@@ -224,15 +224,25 @@ end
     using Dates: datetime2unix, DateTime
 
     function get_test_suite(suite_name, test_name)
-        ts = @testset "$test_name" begin
-            @test true
-            @testset "inner" begin
+        time_start = datetime2unix(DateTime(2023, 01, 15, 16, 42))
+        ts = if isdefined(Test, :CURRENT_TESTSET)
+            @testset "$test_name" time_start=time_start begin
                 @test true
+                @testset "inner" begin
+                    @test true
+                end
+            end
+        else
+            @testset "$test_name" begin
+                @test true
+                @testset "inner" begin
+                    @test true
+                end
             end
         end
         # Make the test time deterministic to make testing report output easier
-        ts.time_start = datetime2unix(DateTime(2023, 01, 15, 16, 42))
-        ts.time_end = datetime2unix(DateTime(2023, 01, 15, 16, 42, 30))
+        isdefined(Test, :CURRENT_TESTSET) || (ts.time_start = time_start)
+        ReTestItems._set_testset_time_end!(ts, datetime2unix(DateTime(2023, 01, 15, 16, 42, 30)))
 
         # should be able to construct a TestCase from a TestSet
         tc = JUnitTestCase(ts)
@@ -276,13 +286,21 @@ end
     using Dates: datetime2unix, DateTime
 
     function get_test_suite(suite_name, test_name)
-        ts = @testset "$test_name" begin
-            # would rather make this false, but failing @test makes the ReTestItems test fail as well
-            @test true
+        time_start = datetime2unix(DateTime(2023, 01, 15, 16, 42))
+        ts = if isdefined(Test, :CURRENT_TESTSET)
+            @testset "$test_name" time_start=time_start begin
+                # would rather make this false, but failing @test makes the ReTestItems test fail as well
+                @test true
+            end
+        else
+            @testset "$test_name" begin
+                # would rather make this false, but failing @test makes the ReTestItems test fail as well
+                @test true
+            end
         end
         # Make the test time deterministic to make testing report output easier
-        ts.time_start = datetime2unix(DateTime(2023, 01, 15, 16, 42))
-        ts.time_end = datetime2unix(DateTime(2023, 01, 15, 16, 42, 30))
+        isdefined(Test, :CURRENT_TESTSET) || (ts.time_start = time_start)
+        ReTestItems._set_testset_time_end!(ts, datetime2unix(DateTime(2023, 01, 15, 16, 42, 30)))
 
         # should be able to construct a TestCase from a TestSet
         tc = JUnitTestCase(ts)
