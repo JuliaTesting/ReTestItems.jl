@@ -588,40 +588,41 @@ end
             runtests(path; nworkers=1)
         end
     end
+    output = replace(c.output, r" on worker \d+" => "", r"\e\[\d+m~?" => "")
 if Base.Sys.iswindows()
     @test occursin(
-        "\e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at",
-        replace(c.output, r" on worker \d+" => "")
+        "Captured logs for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at",
+        output,
     )
 else
     @test occursin("""
-    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1m$(path):1\e[22m
+    Captured logs for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at $(path):1
     SetupThatErrors msg
     """,
-    replace(c.output, r" on worker \d+" => ""))
+    output)
 
     @test occursin("""
-    \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1m$(path):1\e[22m
+    Captured logs for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at $(path):1
     SetupThatErrors msg
     """,
-    replace(c.output, r" on worker \d+" => ""))
+    output)
 
     # Since the test setup never succeeds it will be run mutliple times. Here we test
     # that we don't accumulate logs from all previous failed attempts (which would get
     # really spammy if the test setup is used by 100 test items).
     @test !occursin("""
-        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at \e[39m\e[1m$(path):1\e[22m
+        Captured logs for test setup \"SetupThatErrors\" (dependency of \"bad setup, good test\") at $(path):1
         SetupThatErrors msg
         SetupThatErrors msg
         """,
-        replace(c.output, r" on worker \d+" => "")
+        output,
     )
     @test !occursin("""
-        \e[36m\e[1mCaptured logs\e[22m\e[39m for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at \e[39m\e[1m$(path):1\e[22m
+        Captured logs for test setup \"SetupThatErrors\" (dependency of \"bad setup, bad test\") at $(path):1
         SetupThatErrors msg
         SetupThatErrors msg
         """,
-        replace(c.output, r" on worker \d+" => "")
+        output,
     )
 end # iswindows
 end

@@ -16,11 +16,14 @@ using DeepDiffs: deepdiff
 function remove_variables(str)
     return replace(str,
         # Replace timestamps and times with "0"
-        r" timestamp=\\\"[0-9-T:.]*\\\"" => " timestamp=\"0\"",
-        r" time=\\\"[0-9]*.[0-9]*\\\"" => " time=\"0\"",
+        r" timestamp=\\\"[^\\\"]*\\\"" => " timestamp=\"0\"",
+        r" time=\\\"[^\\\"]*\\\"" => " time=\"0\"",
         # Replace tag `value` in a <property> with "0"
         # e.g. "<property name=\"dd_tags[perf.gctime]\" value=\"1.23e-6\"></property>"
-        r" value=\"[-]?[\d]*[.]?[\d]*?[e]?[-]?[\d]?\"(?=></property>)" => " value=\"0\"",
+        r"(<property name=\"dd_tags\[[^\]]+\]\" value=\")[^\"]*(\"></property>)" => s"\g<1>0\g<2>",
+        # Rendered values for failed expressions are version specific. Julia 1.13
+        # omits them when displaying comparisons between literal values.
+        r"\n *Evaluated:[^\n]*" => "",
         # Omit stacktrace info between "Stacktrace" and the line containing "</error>".
         # Stacktraces are version specific.
         r" Stacktrace:[\s\S]*(?=\n\s*</error)" => " Stacktrace:\n [omitted]",
@@ -195,6 +198,16 @@ end
     end
 end
 
+@testset "JUnitCounts produces nonnegative durations" begin
+    using ReTestItems: JUnitCounts
+
+    ts = Test.DefaultTestSet("unfinished")
+    @test JUnitCounts(ts).time == 0.0
+
+    ReTestItems._set_testset_time_end!(ts, ts.time_start - 1.0)
+    @test JUnitCounts(ts).time == 0.0
+end
+
 @testset "JUnit properties / DataDog tags" begin
     # The reference tests ensure the properties are written as we expect,
     # BUT they can't test the values (since they will differ between runs)
@@ -224,15 +237,25 @@ end
     using Dates: datetime2unix, DateTime
 
     function get_test_suite(suite_name, test_name)
-        ts = @testset "$test_name" begin
-            @test true
-            @testset "inner" begin
+        time_start = datetime2unix(DateTime(2023, 01, 15, 16, 42))
+        ts = if isdefined(Test, :CURRENT_TESTSET)
+            @testset "$test_name" time_start=time_start begin
                 @test true
+                @testset "inner" begin
+                    @test true
+                end
+            end
+        else
+            @testset "$test_name" begin
+                @test true
+                @testset "inner" begin
+                    @test true
+                end
             end
         end
         # Make the test time deterministic to make testing report output easier
-        ts.time_start = datetime2unix(DateTime(2023, 01, 15, 16, 42))
-        ts.time_end = datetime2unix(DateTime(2023, 01, 15, 16, 42, 30))
+        isdefined(Test, :CURRENT_TESTSET) || (ts.time_start = time_start)
+        ReTestItems._set_testset_time_end!(ts, datetime2unix(DateTime(2023, 01, 15, 16, 42, 30)))
 
         # should be able to construct a TestCase from a TestSet
         tc = JUnitTestCase(ts)
@@ -276,13 +299,21 @@ end
     using Dates: datetime2unix, DateTime
 
     function get_test_suite(suite_name, test_name)
-        ts = @testset "$test_name" begin
-            # would rather make this false, but failing @test makes the ReTestItems test fail as well
-            @test true
+        time_start = datetime2unix(DateTime(2023, 01, 15, 16, 42))
+        ts = if isdefined(Test, :CURRENT_TESTSET)
+            @testset "$test_name" time_start=time_start begin
+                # would rather make this false, but failing @test makes the ReTestItems test fail as well
+                @test true
+            end
+        else
+            @testset "$test_name" begin
+                # would rather make this false, but failing @test makes the ReTestItems test fail as well
+                @test true
+            end
         end
         # Make the test time deterministic to make testing report output easier
-        ts.time_start = datetime2unix(DateTime(2023, 01, 15, 16, 42))
-        ts.time_end = datetime2unix(DateTime(2023, 01, 15, 16, 42, 30))
+        isdefined(Test, :CURRENT_TESTSET) || (ts.time_start = time_start)
+        ReTestItems._set_testset_time_end!(ts, datetime2unix(DateTime(2023, 01, 15, 16, 42, 30)))
 
         # should be able to construct a TestCase from a TestSet
         tc = JUnitTestCase(ts)

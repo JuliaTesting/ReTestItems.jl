@@ -19,7 +19,10 @@ JUnitCounts() = JUnitCounts(nothing, 0.0, 0, 0, 0, 0)
 
 function JUnitCounts(ts::Test.DefaultTestSet)
     timestamp = unix2datetime(ts.time_start)
-    time = isnothing(ts.time_end) ? 0.0 : (ts.time_end - ts.time_start)
+    # Before Test.finish, time_end is nothing through Julia 1.12 and 0.0 on 1.13.
+    # JUnit durations are nonnegative, so unfinished or inconsistent times become zero.
+    time_end = ts.time_end
+    time = isnothing(time_end) ? 0.0 : max(0.0, time_end - ts.time_start)
     (; tests, failures, errors, skipped) = test_counts(ts)
     return JUnitCounts(timestamp, time, tests, failures, errors, skipped)
 end

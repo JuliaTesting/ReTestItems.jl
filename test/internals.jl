@@ -4,6 +4,24 @@ using ReTestItems
 
 @testset "internals.jl" verbose=true begin
 
+@testset "_with_testset_print_enabled" begin
+    using ReTestItems: _with_testset_print_enabled
+
+    initial = Test.TESTSET_PRINT_ENABLE[]
+    for enabled in (false, true)
+        @test _with_testset_print_enabled(enabled) do
+            Test.TESTSET_PRINT_ENABLE[]
+        end == enabled
+        @test Test.TESTSET_PRINT_ENABLE[] == initial
+    end
+
+    @test_throws ErrorException _with_testset_print_enabled(false) do
+        @test !Test.TESTSET_PRINT_ENABLE[]
+        error("test exception")
+    end
+    @test Test.TESTSET_PRINT_ENABLE[] == initial
+end
+
 @testset "get_starting_testitems" begin
     using ReTestItems: get_starting_testitems, TestItems, @testitem
     graph = ReTestItems.FileNode("")  # we don't use the graph info for this test
@@ -207,7 +225,7 @@ end # `include_testfiles!` testset
     end
 
     ts = DefaultTestSet("Testset containing a passing test")
-    ts.n_passed = 1
+    Test.record(ts, Test.Pass(:test, nothing, nothing, nothing))
     @test_nowarn report_empty_testsets(ti, ts)
 
     ts = DefaultTestSet("Testset containing a failed test")
