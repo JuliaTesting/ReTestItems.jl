@@ -186,7 +186,7 @@ function Worker(;
     # end copied from Distributed.launch
     ## start the worker process
     color = get(worker_redirect_io, :color, false) ? "yes" : "no" # respect color of target io
-    cmd = `$(Base.julia_cmd()) $exeflags --startup-file=no --color=$color -e 'using ReTestItems; ReTestItems.Workers.startworker()'`
+    cmd = `$(Base.julia_cmd()) $exeflags --startup-file=no --color=$color -e 'using ReTestItems; ReTestItems._with_testset_print_enabled(false) do; ReTestItems.Workers.startworker(); end'`
     proc = open(detach(setenv(addenv(cmd, env), dir=dir)), "r+")
     pid = Libc.getpid(proc)
 

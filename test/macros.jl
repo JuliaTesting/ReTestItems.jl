@@ -165,6 +165,13 @@ end
         using IOCapture
         # run `testset_func` as if not already inside a testset, so it prints results immediately.
         function toplevel_testset(testset_func)
+            if isdefined(Test, :CURRENT_TESTSET)
+                return Base.ScopedValues.with(
+                    testset_func,
+                    Test.CURRENT_TESTSET => Test.FallbackTestSet(),
+                    Test.TESTSET_DEPTH => 0,
+                )
+            end
             old = get(task_local_storage(), :__BASETESTNEXT__, nothing)
             try
                 if old !== nothing
