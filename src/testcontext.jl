@@ -116,12 +116,23 @@ function record_results!(ti::TestItems)
     return ti
 end
 
+function test_record!(ts_parent, ts_child)
+    record_test_time!(ts_parent, ts_child)
+    Test.record(ts_parent, ts_child)
+end
+
+function record_test_time!(ts_parent, ts_child)
+    ts_parent.time_end = something(ts_parent.time_end, ts_parent.time_start)
+    child_duration = ts_child.time_end::Float64 - ts_child.time_start
+    ts_parent.time_end += child_duration
+end
+
 function record_results!(dir::DirNode, child_dir::DirNode)
     @debugv 1 "Recording dir $(repr(child_dir.path)) to dir $(repr(dir.path))"
     foreach(child_dir.children) do child
         record_results!(child_dir, child)
     end
-    Test.record(dir.testset, child_dir.testset)
+    test_record!(dir.testset, child_dir.testset)
     junit_record!(dir.junit, child_dir.junit)
 end
 
@@ -130,7 +141,7 @@ function record_results!(dir::DirNode, file::FileNode)
     foreach(file.testitems) do ti
         record_results!(file, ti)
     end
-    Test.record(dir.testset, file.testset)
+    test_record!(dir.testset, file.testset)
     junit_record!(dir.junit, file.junit)
 end
 
@@ -139,7 +150,7 @@ function record_results!(file::FileNode, ti::TestItem)
     # If `failfast`, this testitem might never have been run, so nothing to record.
     if ti.eval_number[] != 0
         # Always record last try as the final status, so a pass-on-retry is a pass.
-        Test.record(file.testset, last(ti.testsets))
+        test_record!(file.testset, last(ti.testsets))
         junit_record!(file.junit, ti)
         _cache_status!(ti)
     end
