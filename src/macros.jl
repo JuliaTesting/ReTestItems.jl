@@ -49,7 +49,8 @@ A `@testitem` depends on a `@testsetup` via the `setup` keyword e.g
 """
 macro testsetup(mod)
     (mod isa Expr && mod.head == :module) || error("`@testsetup` expects a `module ... end` argument")
-    _, name, code = mod.args
+    # Julia 1.14 may prepend a syntax version: `Expr(:module, [version,] std_imports, name, body)`
+    name, code = mod.args[end-1], mod.args[end]
     name isa Symbol || error("`@testsetup module` expects a valid module name")
     nm = QuoteNode(name)
     q = QuoteNode(code)

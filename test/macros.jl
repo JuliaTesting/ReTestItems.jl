@@ -27,6 +27,16 @@ end
     @test ts.name == :TS1
 end
 
+@testset "testsetup macro with syntax-versioned module" begin
+    # Under a 1.14 syntax version the parser prepends that version to the `module` expression
+    # a macro receives: `Expr(:module, v"1.14.0", true, :Name, body)` (JuliaLang/julia#60018).
+    # Build that form directly so it is covered on every Julia version, not only on 1.14+.
+    mod = Expr(:module, v"1.14.0", true, :TSVersioned, Expr(:block, :(x = 1)))
+    ts = @eval @testsetup $mod
+    @test ts.name == :TSVersioned
+    @test ts.code == Expr(:block, :(x = 1))
+end
+
 @testset "testitem macro basic" begin
     ti = no_run() do
         @testitem "TI1" begin
