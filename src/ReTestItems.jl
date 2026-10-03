@@ -1055,8 +1055,9 @@ function ensure_setup!(ctx::TestContext, setup::Symbol, setups::Vector{TestSetup
         isassigned(ts.logstore) && close(ts.logstore[])
         ts.logstore[] = open(logpath(ts), "w")
         mod_expr = :(module $(gensym(ts.name)) end)
-        # replace the module expr body with our @testsetup code
-        mod_expr.args[3] = ts.code
+        # replace the module expr body with our @testsetup code; the body is always the last
+        # argument, whether or not the parser prepended a syntax version (Julia 1.14+)
+        mod_expr.args[end] = ts.code
         newmod = _redirect_logs(logs == :eager ? DEFAULT_STDOUT[] : ts.logstore[]) do
             with_source_path(() -> Core.eval(Main, mod_expr), ts.file)
         end
